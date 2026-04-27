@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* ─── Design tokens ─────────────────────────────────────── */
+:root {
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  --bg-0: #0e0d0b;
+  --bg-1: #15130f;
+  --bg-2: #1c1a16;
+  --bg-3: #24211c;
+  --bg-4: #2d2924;
+  --line: #2a2722;
+  --line-strong: #3a3631;
+
+  --fg-0: #f3ece2;
+  --fg-1: #c9c0b3;
+  --fg-2: #8a8478;
+  --fg-3: #5e5950;
+
+  --accent: #ff8a5b;
+  --accent-soft: rgba(255, 138, 91, 0.14);
+  --accent-line: rgba(255, 138, 91, 0.45);
+
+  --ok: #7cd9a8;
+  --warn: #f4c365;
+  --err: #ef7a7a;
+  --info: #8ab4ff;
+  --danger: #e25c5c;
+  --danger-soft: rgba(226, 92, 92, 0.12);
+  --danger-line: rgba(226, 92, 92, 0.45);
+
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+}
+
+.theme-light {
+  --bg-0: #faf8f4;
+  --bg-1: #f3efe7;
+  --bg-2: #ece7dc;
+  --bg-3: #e3ddcf;
+  --bg-4: #d8d1c0;
+  --line: #e1dbcd;
+  --line-strong: #c8c0ad;
+
+  --fg-0: #1c1814;
+  --fg-1: #4a443c;
+  --fg-2: #7a7368;
+  --fg-3: #a09889;
+
+  --accent: #d96a3a;
+  --accent-soft: rgba(217, 106, 58, 0.10);
+  --accent-line: rgba(217, 106, 58, 0.45);
+
+  --ok: #3d9b6c;
+  --warn: #b88425;
+  --err: #c0463f;
+  --info: #4a7bce;
+  --danger: #c0463f;
+  --danger-soft: rgba(192, 70, 63, 0.08);
+  --danger-line: rgba(192, 70, 63, 0.40);
+}
+
+/* ─── Base ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-ui);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { cursor: pointer; font-family: inherit; }
+
+a { text-decoration: none; color: inherit; }
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "liga" 0;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ─── Animations ─────────────────────────────────────────── */
+@keyframes cc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes cc-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+
+.anim-pulse { animation: cc-pulse 1.4s ease-in-out infinite; }
+.anim-blink { animation: cc-blink 1s steps(2) infinite; }
