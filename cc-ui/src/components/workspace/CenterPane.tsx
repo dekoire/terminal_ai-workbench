@@ -1,18 +1,113 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import type { TurnMessage } from '../../store/useAppStore'
-import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, ISend, IWarn, ITerminal } from '../primitives/Icons'
+import type { TurnMessage, Template } from '../../store/useAppStore'
+import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand } from '../primitives/Icons'
 import { Pill } from '../primitives/Pill'
 import { Kbd } from '../primitives/Kbd'
 import { Avatar } from '../primitives/Avatar'
 import { DiffBlock } from '../terminal/DiffBlock'
 import { XTermPane } from '../terminal/XTermPane'
 
+// ── horizontal drag-to-resize for input panel ─────────────────────────────────
+function useRowDrag(onMove: (delta: number) => void) {
+  const dragging = useRef(false)
+  const lastY    = useRef(0)
+
+  return useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+    lastY.current = e.clientY
+    const move = (ev: MouseEvent) => {
+      if (!dragging.current) return
+      const dy = ev.clientY - lastY.current
+      lastY.current = ev.clientY
+      onMove(dy)
+    }
+    const up = () => {
+      dragging.current = false
+      document.removeEventListener('mousemove', move)
+      document.removeEventListener('mouseup', up)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', move)
+    document.addEventListener('mouseup', up)
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+  }, [onMove])
+}
+
 export function CenterPane() {
-  const { dangerMode, projects, activeProjectId, activeSessionId, setNewSessionOpen, aliases } = useAppStore()
+  const { dangerMode, projects, activeProjectId, activeSessionId, setActiveSession, setNewSessionOpen, aliases } = useAppStore()
+  // setActiveSession used in selectSession below
   const project = projects.find(p => p.id === activeProjectId)
   const sessions = project?.sessions ?? []
   const activeSession = sessions.find(s => s.id === activeSessionId)
+
+  const [inputH, setInputH] = useState(220)
+  const dragInput = useRowDrag(useCallback((dy: number) => {
+    setInputH(h => Math.min(400, Math.max(80, h - dy)))
+  }, []))
+
+  // File tabs — opened via right-click "In Tab öffnen"
+  const [fileTabs, setFileTabs] = useState<string[]>([])
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const path = (e as CustomEvent<string>).detail
+      setFileTabs(prev => prev.includes(path) ? prev : [...prev, path])
+      setActiveFilePath(path) // show file view; session stays in store
+    }
+    window.addEventListener('cc:open-file-tab', handler)
+    return () => window.removeEventListener('cc:open-file-tab', handler)
+  }, [])
+
+  const closeFileTab = (path: string) => {
+    setFileTabs(prev => {
+      const next = prev.filter(p => p !== path)
+      if (activeFilePath === path) {
+        if (next.length > 0) setActiveFilePath(next[next.length - 1])
+        else { setActiveFilePath(null) }
+      }
+      return next
+    })
+  }
+
+  const selectSession = (sid: string) => {
+    setActiveFilePath(null)
+    setActiveSession(sid)
+  }
+
+  const showFileViewer = activeFilePath !== null
+
+  // Keyboard shortcuts: Cmd/Ctrl+T = new session, Cmd+1-9 = switch tab, Cmd+W = close file tab
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+      if (e.key === 't') {
+        e.preventDefault()
+        setNewSessionOpen(true)
+      } else if (e.key === 'w' && activeFilePath) {
+        e.preventDefault()
+        closeFileTab(activeFilePath)
+      } else {
+        const n = parseInt(e.key)
+        if (n >= 1 && n <= 9) {
+          e.preventDefault()
+          if (n <= sessions.length) {
+            selectSession(sessions[n - 1].id)
+          } else {
+            const fi = n - sessions.length - 1
+            if (fi >= 0 && fi < fileTabs.length) setActiveFilePath(fileTabs[fi])
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [sessions, fileTabs, activeFilePath, selectSession, closeFileTab, setNewSessionOpen])
 
   // Resolve alias cmd+args from the session's alias name
   const alias = aliases.find(a => a.name === activeSession?.alias)
@@ -22,11 +117,22 @@ export function CenterPane() {
   return (
     <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg-0)' }}>
       <ProjectHeader />
-      <SessionTabs sessions={sessions} activeId={activeSessionId} onNew={() => setNewSessionOpen(true)} />
+      <SessionTabs
+        sessions={sessions}
+        activeId={showFileViewer ? '' : activeSessionId}
+        onNew={() => setNewSessionOpen(true)}
+        onSelectSession={selectSession}
+        fileTabs={fileTabs}
+        activeFilePath={activeFilePath}
+        onSelectFileTab={setActiveFilePath}
+        onCloseFileTab={closeFileTab}
+      />
       {dangerMode && <DangerBanner />}
       {/* flex:1 + minHeight:0 ensures xterm fills remaining space */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {activeSession ? (
+        {showFileViewer ? (
+          <FileTabViewer path={activeFilePath} />
+        ) : activeSession ? (
           <XTermPane
             sessionId={activeSession.id}
             cmd={aliasCmd}
@@ -34,11 +140,38 @@ export function CenterPane() {
             cwd={project?.path ?? '~'}
           />
         ) : (
-          <TerminalPane />
+          <EmptyState onNew={() => setNewSessionOpen(true)} />
         )}
       </div>
-      <InputArea />
+
+      {/* Horizontal drag handle */}
+      <HDivider onMouseDown={dragInput} />
+
+      <div style={{ height: inputH, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <InputArea onRequestH={(h) => setInputH(ih => Math.max(ih, h))} />
+      </div>
     </main>
+  )
+}
+
+function HDivider({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+  const [hover, setHover] = useState(false)
+  return (
+    /* 8 px hit area, 1 px visible line centred inside */
+    <div
+      onMouseDown={onMouseDown}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        height: 8, flexShrink: 0, cursor: 'row-resize',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
+      }}
+    >
+      <div style={{
+        height: 1, background: hover ? 'var(--accent)' : 'var(--line)',
+        transition: 'background 0.15s',
+      }} />
+    </div>
   )
 }
 
@@ -62,41 +195,29 @@ function useGitInfo(projectPath: string | undefined): GitInfo | null {
       try {
         const res = await fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
         const data = await res.json() as {
+          hasGit: boolean
           status: { flag: string; file: string }[]
-          log: { hash: string; msg: string; author: string; when: string; date: string }[]
           branches: { name: string; hash: string; msg: string; current: boolean }[]
           remotes: string[]
           lastCommit: string
           error?: string
         }
-
         if (cancelled) return
-
-        // "fatal: not a git repository" lands in data.error or empty branches
-        const hasGit = !data.error?.includes('not a git repository') && (data.branches.length > 0 || data.log.length > 0)
-
-        if (!hasGit) {
+        if (!data.hasGit) {
           setInfo({ hasGit: false, branch: '', remote: null, dirty: 0, ahead: 0, lastCommit: '' })
           return
         }
-
-        const currentBranch = data.branches.find(b => b.current)
-        const branch = currentBranch?.name ?? data.branches[0]?.name ?? 'main'
-        // Parse remote URL from first remote name (e.g. "origin")
-        // We only have the remote name from the API, not the URL — show it as-is
+        const branch = data.branches.find(b => b.current)?.name ?? data.branches[0]?.name ?? 'main'
         const remote = data.remotes[0] ?? null
-        const dirty = data.status.filter(s => s.flag !== '??').length
-        // Count commits ahead: look for "ahead X" in status, or just count since we don't have that — use 0
-        const lastCommit = data.lastCommit ?? ''
-
-        setInfo({ hasGit: true, branch, remote, dirty, ahead: 0, lastCommit })
+        const dirty  = data.status.filter(s => s.flag !== '??').length
+        setInfo({ hasGit: true, branch, remote, dirty, ahead: 0, lastCommit: data.lastCommit ?? '' })
       } catch {
         if (!cancelled) setInfo(null)
       }
     }
 
     load()
-    const timer = setInterval(load, 8000) // refresh every 8s
+    const timer = setInterval(load, 10_000)
     return () => { cancelled = true; clearInterval(timer) }
   }, [projectPath])
 
@@ -108,83 +229,86 @@ function ProjectHeader() {
   const project = projects.find(p => p.id === activeProjectId)
   const git = useGitInfo(project?.path)
 
-  if (!project) {
-    return (
-      <div style={{ height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', borderBottom: '1px solid var(--line)', background: 'linear-gradient(180deg, var(--bg-1), var(--bg-0))' }}>
-        <IGit style={{ color: 'var(--fg-3)' }} />
-        <span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>Kein Projekt ausgewählt</span>
-      </div>
-    )
-  }
-
-  // Git not set up
-  if (git && !git.hasGit) {
-    return (
-      <div style={{ height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', borderBottom: '1px solid var(--line)', background: 'linear-gradient(180deg, var(--bg-1), var(--bg-0))' }}>
-        <IGit style={{ color: 'var(--fg-3)' }} />
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{project.name}</span>
-        <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>·</span>
-        <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>Kein Git-Repository</span>
-        <span style={{ flex: 1 }} />
-        <Pill tone="neutral">git init?</Pill>
-      </div>
-    )
-  }
-
-  // Loading state (git === null = not yet fetched)
-  const branch   = git?.branch    ?? project.branch ?? '…'
-  const remote   = git?.remote    ?? null
-  const dirty    = git?.dirty     ?? 0
+  const noGit  = git !== null && !git?.hasGit
+  const branch = git?.branch    ?? project?.branch ?? '…'
+  const dirty  = git?.dirty     ?? 0
   const lastCommit = git?.lastCommit ?? ''
 
   return (
-    <div style={{ height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', borderBottom: '1px solid var(--line)', background: 'linear-gradient(180deg, var(--bg-1), var(--bg-0))' }}>
-      <IGit style={{ color: 'var(--fg-2)', flexShrink: 0 }} />
+    <div style={{ height: 38, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)' }}>
+      {noGit
+        ? <IFolder style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
+        : <IGit style={{ color: 'var(--fg-2)', flexShrink: 0 }} />
+      }
 
-      {/* Project name + remote */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', whiteSpace: 'nowrap' }}>{project.name}</span>
-        {remote && (
-          <>
-            <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>·</span>
-            <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{remote}</span>
-          </>
-        )}
-      </div>
+      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', whiteSpace: 'nowrap' }}>{project?.name ?? '—'}</span>
 
       <span style={{ flex: 1 }} />
 
-      {/* Last commit time */}
-      {lastCommit && (
-        <span style={{ fontSize: 10.5, color: 'var(--fg-3)', whiteSpace: 'nowrap' }}>{lastCommit}</span>
+      {noGit ? (
+        <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>lokal</span>
+      ) : (
+        <>
+          {lastCommit && <span style={{ fontSize: 10.5, color: 'var(--fg-3)', whiteSpace: 'nowrap' }}>{lastCommit}</span>}
+          {dirty > 0 && <Pill tone="warn" dot>{dirty} modified</Pill>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 5, background: 'var(--bg-2)', border: '1px solid var(--line)', flexShrink: 0 }}>
+            <IBranch style={{ color: 'var(--accent)', flexShrink: 0 }} />
+            <span className="mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>{branch}</span>
+          </div>
+        </>
       )}
-
-      {/* Dirty files badge */}
-      {dirty > 0 && (
-        <Pill tone="warn" dot>{dirty} modified</Pill>
-      )}
-
-      {/* Branch pill */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 5, background: 'var(--bg-2)', border: '1px solid var(--line)', flexShrink: 0 }}>
-        <IBranch style={{ color: 'var(--accent)', flexShrink: 0 }} />
-        <span className="mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>{branch}</span>
-      </div>
     </div>
   )
 }
 
-function SessionTabs({ sessions, activeId, onNew }: { sessions: { id: string; name: string; alias: string; status: string }[]; activeId: string; onNew: () => void }) {
-  const { setActiveSession, activeProjectId, removeSession } = useAppStore()
+function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, activeFilePath, onSelectFileTab, onCloseFileTab }: {
+  sessions: { id: string; name: string; alias: string; status: string; permMode: string }[]
+  activeId: string
+  onNew: () => void
+  onSelectSession: (id: string) => void
+  fileTabs: string[]
+  activeFilePath: string | null
+  onSelectFileTab: (path: string) => void
+  onCloseFileTab: (path: string) => void
+}) {
+  const { activeProjectId, removeSession, aliases } = useAppStore()
 
   return (
-    <div style={{ height: 34, flexShrink: 0, display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 4, gap: 1 }}>
+    <div style={{ height: 34, flexShrink: 0, display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 4, gap: 1, overflowX: 'auto' }}>
       {sessions.map(s => {
-        const active = s.id === activeId
-        const dotColor = s.status === 'active' ? 'var(--accent)' : s.status === 'error' ? 'var(--err)' : 'var(--fg-3)'
+        const active = s.id === activeId && activeFilePath === null
+        const alias = aliases.find(a => a.name === s.alias)
+        const isDangerous = s.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous'
+        const isExited = s.status === 'exited'
+        const topBorderColor = isDangerous ? 'var(--err)' : active ? 'var(--accent)' : 'transparent'
+        const dotColor = isDangerous ? 'var(--err)' : s.status === 'active' ? 'var(--ok)' : s.status === 'error' ? 'var(--err)' : 'var(--fg-3)'
         return (
-          <div key={s.id} onClick={() => setActiveSession(s.id)} style={{ height: 30, padding: '0 10px 0 12px', display: 'flex', alignItems: 'center', gap: 7, borderRadius: '6px 6px 0 0', background: active ? 'var(--bg-0)' : 'transparent', borderTop: active ? '1px solid var(--accent)' : '1px solid transparent', borderLeft: active ? '1px solid var(--line)' : 'none', borderRight: active ? '1px solid var(--line)' : 'none', color: active ? 'var(--fg-0)' : 'var(--fg-2)', fontSize: 11.5, cursor: 'pointer', position: 'relative', marginBottom: -1, maxWidth: 240 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0, ...(s.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}) }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+          <div
+            key={s.id}
+            onClick={() => onSelectSession(s.id)}
+            style={{
+              height: 30, padding: '0 10px 0 12px',
+              display: 'flex', alignItems: 'center', gap: 7,
+              borderRadius: '6px 6px 0 0',
+              background: active ? (isDangerous ? 'rgba(239,122,122,0.07)' : 'var(--bg-0)') : 'transparent',
+              borderTop: `2px solid ${topBorderColor}`,
+              borderLeft: active ? '1px solid var(--line)' : 'none',
+              borderRight: active ? '1px solid var(--line)' : 'none',
+              color: isExited ? 'var(--fg-3)' : isDangerous ? (active ? '#ef7a7a' : 'var(--fg-2)') : active ? 'var(--fg-0)' : 'var(--fg-2)',
+              fontSize: 11.5, cursor: 'pointer', position: 'relative', marginBottom: -1, maxWidth: 240,
+              opacity: isExited && !active ? 0.6 : 1,
+            }}
+          >
+            {/* Status indicator: dash for exited, dot for others */}
+            {isExited
+              ? <span style={{ width: 8, height: 2, borderRadius: 1, background: 'var(--fg-3)', flexShrink: 0 }} />
+              : <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0, ...(s.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}) }} />
+            }
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isExited ? 'line-through' : 'none' }}>{s.name}</span>
+            {isDangerous && (
+              <span title="--dangerously-skip-permissions" style={{ fontSize: 8, color: 'var(--err)', background: 'rgba(239,122,122,0.15)', border: '1px solid rgba(239,122,122,0.3)', borderRadius: 3, padding: '1px 3px', letterSpacing: 0.2, flexShrink: 0 }}>YOLO</span>
+            )}
+            {isExited && <span style={{ fontSize: 8.5, color: 'var(--fg-3)', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 3, padding: '1px 4px', flexShrink: 0 }}>ended</span>}
             <span className="mono" style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0 }}>{s.alias}</span>
             <IClose
               style={{ color: 'var(--fg-3)', opacity: 0.7, marginLeft: 2, flexShrink: 0 }}
@@ -193,7 +317,39 @@ function SessionTabs({ sessions, activeId, onNew }: { sessions: { id: string; na
           </div>
         )
       })}
-      <button onClick={onNew} style={{ background: 'transparent', border: 'none', color: 'var(--fg-2)', padding: '0 10px', height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontFamily: 'inherit' }}>
+      {/* File viewer tabs */}
+      {fileTabs.length > 0 && <div style={{ width: 1, height: 18, background: 'var(--line)', alignSelf: 'center', flexShrink: 0 }} />}
+      {fileTabs.map(path => {
+        const name = path.split('/').pop() ?? path
+        const active = path === activeFilePath
+        return (
+          <div
+            key={path}
+            onClick={() => onSelectFileTab(path)}
+            title={path}
+            style={{
+              height: 30, padding: '0 8px 0 10px',
+              display: 'flex', alignItems: 'center', gap: 6,
+              borderRadius: '6px 6px 0 0',
+              background: active ? 'rgba(212,163,72,0.07)' : 'transparent',
+              borderTop: `2px solid ${active ? '#d4a348' : 'transparent'}`,
+              borderLeft: active ? '1px solid var(--line)' : 'none',
+              borderRight: active ? '1px solid var(--line)' : 'none',
+              color: active ? '#d4a348' : 'var(--fg-3)',
+              fontSize: 11.5, cursor: 'pointer', position: 'relative', marginBottom: -1, maxWidth: 200, flexShrink: 0,
+            }}
+          >
+            <IFile style={{ color: active ? '#d4a348' : 'var(--fg-3)', width: 11, height: 11, flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>{name}</span>
+            <IClose
+              style={{ color: 'var(--fg-3)', opacity: 0.7, marginLeft: 2, flexShrink: 0 }}
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); onCloseFileTab(path) }}
+            />
+          </div>
+        )
+      })}
+
+      <button onClick={onNew} style={{ background: 'transparent', border: 'none', color: 'var(--fg-2)', padding: '0 10px', height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontFamily: 'inherit', flexShrink: 0 }}>
         <IPlus /><span>New</span><Kbd>⌘T</Kbd>
       </button>
     </div>
@@ -210,6 +366,99 @@ function DangerBanner() {
       <span style={{ flex: 1 }} />
       <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)' }}>--dangerously-skip-permissions</span>
       <button onClick={() => setDangerMode(false)} style={{ background: 'transparent', border: '1px solid var(--danger-line)', color: 'var(--danger)', padding: '2px 8px', borderRadius: 4, fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit' }}>Disarm</button>
+    </div>
+  )
+}
+
+function EmptyState({ onNew }: { onNew: () => void }) {
+  const { aliases, activeProjectId, activeSessionId, setActiveProject, setActiveSession, setNewSessionOpen, projects } = useAppStore()
+  const top4 = aliases.slice(0, 4)
+
+  // Start a session with a specific alias by opening the new-session modal
+  // We pre-select via a tiny event trick — simpler than threading props
+  const start = () => onNew()
+
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', gap: 32, padding: '40px 24px', minHeight: 0,
+    }}>
+      {/* Icon + heading */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        <div style={{
+          width: 52, height: 52, borderRadius: 14, background: 'var(--accent)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--accent-fg, #1a1410)',
+          boxShadow: '0 0 0 8px var(--accent-soft)',
+        }}>
+          <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 5l3 3-3 3M9 11h4"/>
+          </svg>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 5 }}>
+            Keine aktive Session
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--fg-3)', maxWidth: 320 }}>
+            Wähle einen Agent und starte eine neue Terminal-Session in diesem Projekt.
+          </div>
+        </div>
+      </div>
+
+      {/* Quick-start alias cards */}
+      {top4.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 220px)', gap: 10 }}>
+          {top4.map(alias => (
+            <AliasCard key={alias.id} alias={alias} onStart={onNew} />
+          ))}
+        </div>
+      )}
+
+      {/* Primary CTA */}
+      <button
+        onClick={onNew}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'var(--accent)', color: 'var(--accent-fg, #1a1410)',
+          border: 'none', borderRadius: 8, padding: '9px 20px',
+          fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        <IPlus />
+        Neue Session starten
+      </button>
+    </div>
+  )
+}
+
+function AliasCard({ alias, onStart }: { alias: { id: string; name: string; cmd: string; args: string }; onStart: () => void }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onClick={onStart}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        border: `1px solid ${hovered ? 'var(--accent-line)' : 'var(--line-strong)'}`,
+        borderRadius: 8, padding: '12px 14px', cursor: 'pointer',
+        background: hovered ? 'var(--accent-soft)' : 'var(--bg-1)',
+        transition: 'border-color 0.15s, background 0.15s',
+        display: 'flex', flexDirection: 'column', gap: 6,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{
+          width: 26, height: 26, borderRadius: 6, background: hovered ? 'var(--accent)' : 'var(--bg-3)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          transition: 'background 0.15s',
+        }}>
+          <ITerminal style={{ color: hovered ? 'var(--accent-fg, #1a1410)' : 'var(--fg-2)', width: 12, height: 12 }} />
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{alias.name}</span>
+      </div>
+      <div style={{ fontSize: 10.5, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {alias.cmd}{alias.args ? ' ' + alias.args : ''}
+      </div>
     </div>
   )
 }
@@ -305,20 +554,98 @@ function Turn({ turn, onAllow, onDeny }: { turn: TurnMessage; onAllow: (id: stri
   return null
 }
 
-function InputArea() {
+// ── Template context-menu row ─────────────────────────────────────────────────
+
+function TplCtxItem({ label, onClick }: { label: string; onClick: () => void }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ padding: '6px 14px', cursor: 'pointer', fontSize: 11.5, color: 'var(--fg-0)', background: hov ? 'var(--accent-soft)' : 'transparent', userSelect: 'none' }}
+    >
+      {label}
+    </div>
+  )
+}
+
+// ── Edit template modal ───────────────────────────────────────────────────────
+
+function EditTemplateModal({ template, onClose }: { template: Template; onClose: () => void }) {
+  const { updateTemplate } = useAppStore()
+  const [name, setName] = useState(template.name)
+  const [body, setBody] = useState(template.body)
+  const [hint, setHint] = useState(template.hint ?? '')
+
+  const save = () => {
+    if (!name.trim() || !body.trim()) return
+    updateTemplate(template.id, { name: name.trim(), body: body.trim(), hint: hint.trim() })
+    onClose()
+  }
+
+  const fl: React.CSSProperties = { display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 5 }
+  const fi: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, boxShadow: '0 16px 48px rgba(0,0,0,0.4)', width: 440, padding: 24 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)', marginBottom: 18 }}>Template bearbeiten</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
+          <div>
+            <label style={fl}>Name</label>
+            <input style={fi} value={name} onChange={e => setName(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label style={fl}>Inhalt</label>
+            <textarea style={{ ...fi, resize: 'vertical', minHeight: 90, fontFamily: 'var(--font-mono)', lineHeight: 1.5 }} value={body} onChange={e => setBody(e.target.value)} />
+          </div>
+          <div>
+            <label style={fl}>Hint (optional)</label>
+            <input style={fi} value={hint} onChange={e => setHint(e.target.value)} placeholder="z.B. /check" />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '6px 14px', color: 'var(--fg-1)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>
+            Abbrechen
+          </button>
+          <button onClick={save} disabled={!name.trim() || !body.trim()} style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '6px 14px', color: 'var(--accent-fg)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', opacity: (!name.trim() || !body.trim()) ? 0.5 : 1 }}>
+            Speichern
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   const {
-    inputValue, setInputValue, sendMessage, templates,
+    inputValue, setInputValue, sendMessage, templates, updateTemplate,
     projects, activeProjectId, activeSessionId,
     playwrightCheck, setPlaywrightCheck,
     localhostCheck, setLocalhostCheck,
+    aiProviders, activeAiProvider,
   } = useAppStore()
-  const [attachments, setAttachments] = useState<string[]>([])
+  const [attachments, setAttachments]   = useState<string[]>([])
+  const [picking, setPicking]           = useState(false)
+  const [recording, setRecording]       = useState(false)
+  const [editTemplate, setEditTemplate] = useState<Template | null>(null)
+  const [tplMenu, setTplMenu]           = useState<{ x: number; y: number; tpl: Template } | null>(null)
+  const [aiRefining, setAiRefining]     = useState(false)
+  const [aiError, setAiError]           = useState('')
+  const taRef      = useRef<HTMLTextAreaElement>(null)
+  const recRef     = useRef<SpeechRecognition | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const project = projects.find(p => p.id === activeProjectId)
   const activeSession = project?.sessions.find(s => s.id === activeSessionId)
-
-  // Terminal-Modus: wenn Session aktiv ist
   const isTerminal = !!activeSession
+
+  // Grow the outer container when content has many lines
+  useEffect(() => {
+    const lines = (inputValue.match(/\n/g) ?? []).length + 1
+    if (lines > 3) onRequestH?.(Math.min(400, lines * 20 + 160))
+  }, [inputValue, onRequestH])
 
   const handleAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -330,15 +657,36 @@ function InputArea() {
     setAttachments(prev => prev.filter(a => a !== name))
   }
 
+  // Terminal mode: native macOS file picker → insert path into textarea so user sees & edits it
+  const pickFileForTerminal = async () => {
+    if (picking) return
+    setPicking(true)
+    try {
+      const startPath = project?.path ?? '~'
+      const r = await fetch(`/api/pick-file?path=${encodeURIComponent(startPath)}`)
+      const data = await r.json() as { ok: boolean; path: string | null }
+      if (data.ok && data.path) {
+        const p = data.path
+        // Quote path if it contains spaces
+        const quoted = p.includes(' ') ? `"${p}"` : p
+        // Insert into text input at end (with a leading space if there's already text)
+        setInputValue(prev => prev ? prev + ' ' + quoted : quoted)
+      }
+    } finally {
+      setPicking(false)
+    }
+  }
+
   const send = () => {
-    if (!inputValue.trim() && attachments.length === 0) return
+    const favBodies = templates.filter(t => t.favorite).map(t => t.body)
+    if (!inputValue.trim() && attachments.length === 0 && favBodies.length === 0) return
 
     let fullMsg = inputValue
+    if (favBodies.length > 0) fullMsg += (fullMsg ? '\n\n' : '') + favBodies.join('\n\n')
     if (playwrightCheck) fullMsg += '\n\nTeste es mit Playwright aus und fixe Fehler die du beim Testen findest'
     if (localhostCheck)  fullMsg += '\n\nNach dem du fertig bist starte es im Browser unter localhost und dem richtigen Port'
 
     if (isTerminal) {
-      // Direkt ans Terminal-PTY übergeben
       window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: fullMsg }))
     } else {
       sendMessage(attachments)
@@ -347,12 +695,61 @@ function InputArea() {
     setInputValue('')
   }
 
+  const refineWithAI = async () => {
+    if (!inputValue.trim()) return
+    const provider = aiProviders.find(p => p.id === activeAiProvider) ?? aiProviders[0]
+    if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
+    setAiRefining(true)
+    setAiError('')
+    try {
+      const r = await fetch('/api/ai-refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: provider.provider, apiKey: provider.apiKey, model: provider.model, text: inputValue }),
+      })
+      const d = await r.json() as { ok: boolean; text?: string; error?: string }
+      if (d.ok && d.text) setInputValue(d.text)
+      else setAiError(d.error ?? 'Fehler beim Überarbeiten')
+    } catch (e) { setAiError(String(e)) }
+    setAiRefining(false)
+  }
+
+  const toggleVoice = () => {
+    const SR = (window as unknown as { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition
+      ?? (window as unknown as { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition
+    if (!SR) return
+
+    if (recording) {
+      recRef.current?.stop()
+      setRecording(false)
+    } else {
+      const rec = new SR()
+      rec.continuous = false
+      rec.interimResults = false
+      rec.lang = 'de-DE'
+      rec.onresult = (e: SpeechRecognitionEvent) => {
+        const t = Array.from(e.results).map(r => r[0].transcript).join('')
+        setInputValue(prev => prev ? prev + ' ' + t : t)
+      }
+      rec.onend = () => setRecording(false)
+      rec.onerror = () => setRecording(false)
+      rec.start()
+      recRef.current = rec
+      setRecording(true)
+    }
+  }
+
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+    // Ctrl+C in terminal mode → send interrupt signal to process
+    if (e.ctrlKey && e.key === 'c' && isTerminal) {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('cc:terminal-send-raw', { detail: '\x03' }))
+    }
   }
 
   return (
-    <div style={{ flexShrink: 0, padding: '10px 14px 12px', borderTop: `1px solid ${isTerminal ? 'var(--accent-line)' : 'var(--line)'}`, background: 'var(--bg-1)' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '8px 14px 10px', background: 'var(--bg-1)', overflow: 'hidden' }}>
       <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleAttach} />
 
       {/* Terminal-Modus Badge */}
@@ -365,25 +762,30 @@ function InputArea() {
         </div>
       )}
 
-      <div style={{ border: `1px solid ${isTerminal ? 'var(--accent-line)' : 'var(--line-strong)'}`, borderRadius: 8, background: 'var(--bg-2)', padding: '8px 10px 6px', boxShadow: isTerminal ? '0 0 0 2px var(--accent-soft)' : inputValue ? '0 0 0 3px var(--accent-soft)' : 'none' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: `1px solid ${isTerminal ? 'var(--accent-line)' : 'var(--line-strong)'}`, borderRadius: 8, background: 'var(--bg-2)', padding: '8px 10px 6px', boxShadow: isTerminal ? '0 0 0 2px var(--accent-soft)' : inputValue ? '0 0 0 3px var(--accent-soft)' : 'none', overflow: 'hidden' }}>
         {attachments.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
-            {attachments.map(name => (
-              <span key={name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 7px', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 4, fontSize: 10.5, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)' }}>
-                <IFile style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                {name}
-                <IClose style={{ color: 'var(--fg-3)', cursor: 'pointer', marginLeft: 2 }} onClick={() => removeAttachment(name)} />
-              </span>
-            ))}
+            {attachments.map(p => {
+              const label = isTerminal ? p.split('/').pop() ?? p : p
+              const title = isTerminal ? p : undefined
+              return (
+                <span key={p} title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 7px', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 4, fontSize: 10.5, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', maxWidth: 280 }}>
+                  <IFile style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                  <IClose style={{ color: 'var(--fg-3)', cursor: 'pointer', marginLeft: 2, flexShrink: 0 }} onClick={() => removeAttachment(p)} />
+                </span>
+              )
+            })}
           </div>
         )}
 
         <textarea
+          ref={taRef}
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
           onKeyDown={handleKey}
           placeholder={isTerminal ? 'Befehl oder Text ans Terminal senden…' : 'Nachricht senden… (⏎ senden, ⇧⏎ neue Zeile)'}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'none', width: '100%', minHeight: 38, maxHeight: 120 }}
+          style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'none', width: '100%', flex: 1, minHeight: 0 }}
         />
 
         {/* Automation-Checkboxes (nur im Nicht-Terminal-Modus relevant, aber immer sichtbar) */}
@@ -398,32 +800,408 @@ function InputArea() {
           </label>
         </div>
 
+        {/* Favorite templates — always auto-included on send */}
+        {templates.some(t => t.favorite) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '5px 0 4px', borderTop: '1px solid var(--line)', alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: 0.3, userSelect: 'none' }}>auto:</span>
+            {templates.filter(t => t.favorite).map(t => (
+              <span
+                key={t.id}
+                title={t.body}
+                onContextMenu={e => { e.preventDefault(); setTplMenu({ x: e.clientX, y: e.clientY, tpl: t }) }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px 2px 6px', background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', borderRadius: 99, color: 'var(--accent)', fontSize: 10.5, userSelect: 'none' }}
+              >
+                <span style={{ fontSize: 10 }}>★</span>
+                {t.name}
+                <span
+                  title="Aus Favoriten entfernen"
+                  onClick={() => updateTemplate(t.id, { favorite: false })}
+                  style={{ marginLeft: 2, lineHeight: 1, cursor: 'pointer', opacity: 0.6, fontSize: 11, display: 'flex', alignItems: 'center' }}
+                >×</span>
+              </span>
+            ))}
+          </div>
+        )}
+        {/* Template context menu */}
+        {tplMenu && (
+          <div
+            onClick={() => setTplMenu(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 1000 }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ position: 'fixed', left: tplMenu.x, top: tplMenu.y, zIndex: 1001, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.3)', minWidth: 160, padding: '3px 0' }}
+            >
+              {[
+                { label: 'Bearbeiten', action: () => { setEditTemplate(tplMenu.tpl); setTplMenu(null) } },
+                { label: 'Aus Favoriten entfernen', action: () => { updateTemplate(tplMenu.tpl.id, { favorite: false }); setTplMenu(null) } },
+              ].map(item => (
+                <TplCtxItem key={item.label} label={item.label} onClick={item.action} />
+              ))}
+            </div>
+          </div>
+        )}
+        {editTemplate && (
+          <EditTemplateModal template={editTemplate} onClose={() => setEditTemplate(null)} />
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 5, borderTop: '1px solid var(--line)' }}>
-          {!isTerminal && (
-            <>
-              <button style={chip} onClick={() => setInputValue(inputValue ? inputValue + '\n' + (templates[0]?.body ?? '') : (templates[0]?.body ?? ''))}>
-                <ISpark style={{ color: 'var(--accent)' }} />
-                @{templates[0]?.name ?? 'template'}
-              </button>
-              <button style={chip} onClick={() => fileInputRef.current?.click()}>
-                <IPlus /> Anhang
-              </button>
-            </>
-          )}
+          <button
+            style={{ ...chip, opacity: picking ? 0.6 : 1, cursor: picking ? 'wait' : 'pointer' }}
+            onClick={isTerminal ? pickFileForTerminal : () => fileInputRef.current?.click()}
+            disabled={picking}
+          >
+            <IFile style={{ color: 'var(--accent)', flexShrink: 0 }} />
+            {picking ? 'Wähle…' : isTerminal ? 'Pfad einfügen' : 'Anhang'}
+          </button>
           <span style={{ flex: 1 }} />
           <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
             <Kbd>⏎</Kbd>{isTerminal ? ' Terminal' : ' senden'} · <Kbd>⇧⏎</Kbd> Zeile
           </span>
-          <button onClick={send} style={{ ...primaryBtn, display: 'flex', alignItems: 'center', gap: 5, background: isTerminal ? 'var(--accent)' : 'var(--accent)' }}>
-            {isTerminal ? <ITerminal style={{ color: '#1a1410' }} /> : <ISend style={{ color: '#1a1410' }} />}
-            {isTerminal ? 'Senden' : 'Senden'}
+          <button
+            onClick={toggleVoice}
+            title={recording ? 'Aufnahme stoppen' : 'Spracheingabe starten'}
+            style={{ ...chip, padding: '4px 7px', color: recording ? 'var(--err)' : 'var(--fg-2)', border: `1px solid ${recording ? 'var(--err)' : 'var(--line)'}`, background: recording ? 'rgba(239,122,122,0.1)' : 'var(--bg-3)' }}
+          >
+            <IMic style={{ color: recording ? 'var(--err)' : 'var(--fg-3)', flexShrink: 0, ...(recording ? { animation: 'cc-pulse 1s ease-in-out infinite' } : {}) }} />
           </button>
+          <button
+            onClick={refineWithAI}
+            disabled={aiRefining || !inputValue.trim()}
+            title={(() => {
+              if (aiProviders.length === 0) return 'AI-Anbieter in Settings → AI einrichten'
+              const p = aiProviders.find(p => p.id === activeAiProvider) ?? aiProviders[0]
+              return `Text mit ${p.name} überarbeiten`
+            })()}
+            style={{ ...chip, padding: '4px 7px', color: 'var(--accent)', border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', opacity: (aiRefining || !inputValue.trim()) ? 0.5 : 1 }}
+          >
+            <IAiWand style={{ flexShrink: 0, ...(aiRefining ? { animation: 'cc-pulse 0.7s ease-in-out infinite' } : {}) }} />
+          </button>
+          <button onClick={send} style={{ ...primaryBtn, display: 'flex', alignItems: 'center', gap: 5 }}>
+            {isTerminal ? <ITerminal style={{ color: 'var(--accent-fg)' }} /> : <ISend style={{ color: 'var(--accent-fg)' }} />}
+            Senden
+          </button>
+        </div>
+        {aiError && (
+          <div style={{ padding: '4px 10px 6px', fontSize: 10.5, color: 'var(--err)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>✗</span> {aiError}
+            <span onClick={() => setAiError('')} style={{ marginLeft: 'auto', cursor: 'pointer', opacity: 0.6 }}>×</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── File Tab Viewer ───────────────────────────────────────────────────────────
+
+function FileTabViewer({ path }: { path: string }) {
+  const [content, setContent]       = useState<string | null>(null)
+  const [error, setError]           = useState('')
+  const [search, setSearch]         = useState('')
+  const [showLineNums, setShowLineNums] = useState(true)
+  const [editMode, setEditMode]     = useState(false)
+  const [editText, setEditText]     = useState('')
+  const [history, setHistory]       = useState<string[]>([])
+  const [hIdx, setHIdx]             = useState(0)
+  const [dirty, setDirty]           = useState(false)
+  const [replaceStr, setReplaceStr] = useState('')
+  const [showReplace, setShowReplace] = useState(false)
+  const [saving, setSaving]         = useState(false)
+
+  useEffect(() => {
+    setContent(null); setError(''); setSearch('')
+    setEditMode(false); setDirty(false); setShowReplace(false)
+    fetch(`/api/file-read?path=${encodeURIComponent(path)}`)
+      .then(r => r.json())
+      .then((d: { ok: boolean; content?: string; error?: string }) => {
+        if (d.ok) setContent(d.content ?? '')
+        else setError(d.error ?? 'Fehler')
+      })
+      .catch(e => setError(String(e)))
+  }, [path])
+
+  const ext = path.split('.').pop()?.toLowerCase() ?? ''
+  const isJson = ext === 'json'
+  const lowerSearch = search.toLowerCase()
+
+  const displayContent = React.useMemo(() => {
+    if (!content || !isJson) return content ?? ''
+    try { return JSON.stringify(JSON.parse(content), null, 2) } catch { return content }
+  }, [content, isJson])
+
+  let parsedJson: unknown = undefined
+  if (isJson && content && !search && !editMode) {
+    try { parsedJson = JSON.parse(content) } catch { /* raw */ }
+  }
+
+  const enterEdit = () => {
+    const text = displayContent
+    setEditText(text)
+    setHistory([text])
+    setHIdx(0)
+    setDirty(false)
+    setEditMode(true)
+  }
+
+  const exitEdit = () => { setEditMode(false); setSearch(''); setShowReplace(false) }
+
+  const handleEditChange = (val: string) => {
+    setEditText(val)
+    setDirty(true)
+    const next = [...history.slice(0, hIdx + 1), val].slice(-300)
+    setHistory(next)
+    setHIdx(next.length - 1)
+  }
+
+  const undo = () => {
+    if (hIdx > 0) { setHIdx(hIdx - 1); setEditText(history[hIdx - 1]) }
+  }
+  const redo = () => {
+    if (hIdx < history.length - 1) { setHIdx(hIdx + 1); setEditText(history[hIdx + 1]) }
+  }
+
+  const saveFile = async (savePath = path) => {
+    if (saving) return
+    setSaving(true)
+    try {
+      const r = await fetch('/api/file-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: savePath, content: editText }),
+      })
+      const d = await r.json() as { ok: boolean; error?: string }
+      if (d.ok) { setDirty(false); setContent(editText) }
+      else alert(`Fehler beim Speichern: ${d.error}`)
+    } catch (e) {
+      alert(`Fehler: ${String(e)}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveAs = async () => {
+    const newPath = window.prompt('Speichern unter:', path)
+    if (newPath?.trim()) await saveFile(newPath.trim())
+  }
+
+  const replaceFirst = () => {
+    if (!search) return
+    const idx = editText.toLowerCase().indexOf(lowerSearch)
+    if (idx === -1) return
+    handleEditChange(editText.slice(0, idx) + replaceStr + editText.slice(idx + search.length))
+  }
+
+  const replaceAll = () => {
+    if (!search) return
+    const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+    handleEditChange(editText.replace(regex, replaceStr))
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const mod = e.metaKey || e.ctrlKey
+    if (mod && e.key === 's') { e.preventDefault(); saveFile() }
+    if (mod && !e.shiftKey && e.key === 'z') { e.preventDefault(); undo() }
+    if (mod && e.shiftKey && e.key === 'z') { e.preventDefault(); redo() }
+  }
+
+  const autoEnterEdit = () => { if (!editMode) enterEdit() }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg-0)' }}>
+
+      {/* Row 1 — path */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderBottom: '1px solid var(--line)', flexShrink: 0, background: 'var(--bg-1)' }}>
+        <IFile style={{ color: 'var(--accent)', flexShrink: 0 }} />
+        <span className="mono" style={{ flex: 1, fontSize: 10.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{path}</span>
+        {dirty && <span style={{ fontSize: 9, color: 'var(--warn)', background: 'rgba(244,195,101,0.12)', border: '1px solid rgba(244,195,101,0.35)', borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>nicht gespeichert</span>}
+        {editMode && <span style={{ fontSize: 9, color: 'var(--ok)', letterSpacing: 0.2, flexShrink: 0 }}>● Bearbeiten</span>}
+      </div>
+
+      {/* Row 2 — always-visible editor toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 14px', borderBottom: '1px solid var(--line)', flexShrink: 0, background: 'var(--bg-1)' }}>
+        {/* Undo / Redo */}
+        <button onClick={() => { autoEnterEdit(); undo() }} disabled={editMode && hIdx <= 0} title="Rückgängig (⌘Z)" style={{ ...ftBtn, opacity: editMode && hIdx <= 0 ? 0.35 : 1 }}>↩ Rückgängig</button>
+        <button onClick={() => { autoEnterEdit(); redo() }} disabled={!editMode || hIdx >= history.length - 1} title="Wiederholen (⌘⇧Z)" style={{ ...ftBtn, opacity: !editMode || hIdx >= history.length - 1 ? 0.35 : 1 }}>↪ Wiederholen</button>
+
+        <span style={{ width: 1, height: 14, background: 'var(--line)', flexShrink: 0, margin: '0 2px' }} />
+
+        {/* S&E toggle */}
+        <button
+          onClick={() => { autoEnterEdit(); setShowReplace(v => !v) }}
+          title="Suchen & Ersetzen"
+          style={{ ...ftBtn, background: showReplace ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${showReplace ? 'var(--accent-line)' : 'var(--line)'}`, color: showReplace ? 'var(--accent)' : 'var(--fg-1)' }}
+        >S&amp;E</button>
+
+        <span style={{ width: 1, height: 14, background: 'var(--line)', flexShrink: 0, margin: '0 2px' }} />
+
+        {/* Line numbers + search */}
+        <button onClick={() => setShowLineNums(v => !v)} title="Zeilennummern" style={{ ...ftBtn, background: showLineNums ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${showLineNums ? 'var(--accent-line)' : 'var(--line)'}`, color: showLineNums ? 'var(--accent)' : 'var(--fg-3)' }}>#</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '2px 7px', flex: 1, minWidth: 0 }}>
+          <ISearch style={{ color: 'var(--fg-3)', width: 11, height: 11, flexShrink: 0 }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Suchen…"
+            style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 11, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', width: '100%', minWidth: 0 }}
+          />
+          {search && <IClose style={{ width: 9, height: 9, color: 'var(--fg-3)', cursor: 'pointer', flexShrink: 0 }} onClick={() => setSearch('')} />}
+        </div>
+
+        <span style={{ width: 1, height: 14, background: 'var(--line)', flexShrink: 0, margin: '0 2px' }} />
+
+        {/* View toggle */}
+        {editMode
+          ? <button onClick={exitEdit} style={ftBtn}>Vorschau</button>
+          : <button onClick={enterEdit} style={{ ...ftBtn, background: 'var(--bg-3)', border: '1px solid var(--line-strong)' }}>Bearbeiten</button>
+        }
+
+        {/* Save */}
+        <button onClick={saveAs} style={ftBtn} title="Speichern unter…">Speichern unter</button>
+        <button
+          onClick={() => saveFile()}
+          disabled={saving || !editMode}
+          title="Speichern (⌘S)"
+          style={{ ...ftBtn, background: dirty ? 'var(--accent)' : 'transparent', color: dirty ? '#1a1410' : 'var(--fg-2)', border: dirty ? 'none' : '1px solid var(--line)', fontWeight: dirty ? 600 : 400, opacity: !editMode && !dirty ? 0.4 : 1 }}
+        >{saving ? '…' : 'Speichern'}</button>
+      </div>
+
+      {/* Row 3 — Search & Replace (visible when S&E active) */}
+      {showReplace && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderBottom: '1px solid var(--line)', flexShrink: 0, background: 'var(--bg-0)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '3px 8px', flex: 1 }}>
+            <ISearch style={{ color: 'var(--fg-3)', width: 11, height: 11, flexShrink: 0 }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Suchen…" style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 11, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', width: '100%' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '3px 8px', flex: 1 }}>
+            <input value={replaceStr} onChange={e => setReplaceStr(e.target.value)} placeholder="Ersetzen durch…" style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 11, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', width: '100%' }} />
+          </div>
+          <button onClick={() => { autoEnterEdit(); replaceFirst() }} disabled={!search} style={{ ...ftBtn, opacity: !search ? 0.4 : 1 }}>Ersetzen</button>
+          <button onClick={() => { autoEnterEdit(); replaceAll() }} disabled={!search} style={{ ...ftBtn, opacity: !search ? 0.4 : 1 }}>Alle ersetzen</button>
+          <IClose style={{ width: 10, height: 10, color: 'var(--fg-3)', cursor: 'pointer', flexShrink: 0 }} onClick={() => setShowReplace(false)} />
+        </div>
+      )}
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minHeight: 0 }}>
+        {error && <div style={{ padding: 20, color: 'var(--err)', fontSize: 12 }}>{error}</div>}
+        {!error && content === null && <div style={{ padding: 20, color: 'var(--fg-3)', fontSize: 12 }}>Lade…</div>}
+        {!error && content !== null && editMode && (
+          <textarea
+            value={editText}
+            onChange={e => handleEditChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            spellCheck={false}
+            style={{ display: 'block', width: '100%', height: '100%', minHeight: '400px', background: 'var(--bg-0)', border: 'none', outline: 'none', resize: 'none', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', lineHeight: 1.65, padding: '10px 18px', boxSizing: 'border-box' }}
+          />
+        )}
+        {!error && content !== null && !editMode && parsedJson !== undefined && (
+          <div style={{ padding: '12px 20px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.65 }}>
+            <FtvJsonNode value={parsedJson} depth={0} />
+          </div>
+        )}
+        {!error && content !== null && !editMode && parsedJson === undefined && (
+          <FtvTextViewer content={displayContent} search={lowerSearch} showLineNums={showLineNums} ext={ext} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Minimal JSON tree for FileTabViewer (same logic as DataViewer's JsonNode)
+function FtvJsonNode({ value, depth }: { value: unknown; depth: number }): React.ReactElement {
+  if (value === null)             return <span style={{ color: 'var(--fg-3)' }}>null</span>
+  if (typeof value === 'boolean') return <span style={{ color: '#3b82f6' }}>{String(value)}</span>
+  if (typeof value === 'number')  return <span style={{ color: '#10b981' }}>{value}</span>
+  if (typeof value === 'string')  return <span style={{ color: '#a78bfa' }}>"{value}"</span>
+  if (Array.isArray(value))       return <FtvJsonArr arr={value} depth={depth} />
+  if (typeof value === 'object' && value !== null) return <FtvJsonObj obj={value as Record<string, unknown>} depth={depth} />
+  return <span>{String(value)}</span>
+}
+function FtvJsonObj({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
+  const [col, setCol] = useState(depth >= 2)
+  const keys = Object.keys(obj)
+  if (!keys.length) return <span style={{ color: 'var(--fg-2)' }}>{'{}'}</span>
+  return (
+    <span>
+      <span onClick={() => setCol(c => !c)} style={{ cursor: 'pointer', color: 'var(--fg-3)', fontSize: 10 }}>{col ? '▶' : '▼'} </span>
+      {col
+        ? <span onClick={() => setCol(false)} style={{ color: 'var(--fg-3)', cursor: 'pointer' }}>{'{'} {keys.length} keys {'}'}</span>
+        : <>{'{'}
+            <div style={{ paddingLeft: 20 }}>{keys.map((k, i) => (
+              <div key={k}><span style={{ color: 'var(--accent)' }}>"{k}"</span><span style={{ color: 'var(--fg-3)' }}>: </span><FtvJsonNode value={obj[k]} depth={depth + 1} />{i < keys.length - 1 && <span style={{ color: 'var(--fg-3)' }}>,</span>}</div>
+            ))}</div>{'}'}</>
+      }
+    </span>
+  )
+}
+function FtvJsonArr({ arr, depth }: { arr: unknown[]; depth: number }) {
+  const [col, setCol] = useState(depth >= 2)
+  if (!arr.length) return <span style={{ color: 'var(--fg-2)' }}>{'[]'}</span>
+  return (
+    <span>
+      <span onClick={() => setCol(c => !c)} style={{ cursor: 'pointer', color: 'var(--fg-3)', fontSize: 10 }}>{col ? '▶' : '▼'} </span>
+      {col
+        ? <span onClick={() => setCol(false)} style={{ color: 'var(--fg-3)', cursor: 'pointer' }}>{'['} {arr.length} items {']'}</span>
+        : <>{'['}
+            <div style={{ paddingLeft: 20 }}>{arr.map((v, i) => (
+              <div key={i}><FtvJsonNode value={v} depth={depth + 1} />{i < arr.length - 1 && <span style={{ color: 'var(--fg-3)' }}>,</span>}</div>
+            ))}</div>{']'}</>
+      }
+    </span>
+  )
+}
+
+function FtvHighlight({ line, query }: { line: string; query: string }): React.ReactElement {
+  if (!query) return <>{line}</>
+  const parts: React.ReactNode[] = []
+  const lower = line.toLowerCase()
+  let cursor = 0, idx = lower.indexOf(query)
+  while (idx !== -1) {
+    if (idx > cursor) parts.push(line.slice(cursor, idx))
+    parts.push(<mark key={idx} style={{ background: 'rgba(255,200,50,0.4)', color: 'inherit', borderRadius: 2 }}>{line.slice(idx, idx + query.length)}</mark>)
+    cursor = idx + query.length
+    idx = lower.indexOf(query, cursor)
+  }
+  if (cursor < line.length) parts.push(line.slice(cursor))
+  return <>{parts}</>
+}
+
+function FtvTextViewer({ content, search, showLineNums, ext }: { content: string; search: string; showLineNums: boolean; ext: string }) {
+  const lines = content.split('\n')
+  const isMono = !['md', 'txt', 'log'].includes(ext)
+  const matchSet = search ? new Set(lines.map((l, i) => l.toLowerCase().includes(search) ? i : -1).filter(i => i !== -1)) : null
+  const matchCount = matchSet?.size ?? 0
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      {search && (
+        <div style={{ padding: '3px 14px', fontSize: 10.5, color: matchCount > 0 ? 'var(--ok)' : 'var(--err)', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)' }}>
+          {matchCount > 0 ? `${matchCount} Treffer` : 'Keine Treffer'}
+        </div>
+      )}
+      <div style={{ display: 'flex', flex: 1 }}>
+        {showLineNums && (
+          <div style={{ flexShrink: 0, userSelect: 'none', background: 'var(--bg-1)', borderRight: '1px solid var(--line)', padding: '10px 0', textAlign: 'right' }}>
+            {lines.map((_, i) => (
+              <div key={i} style={{ padding: '0 10px', lineHeight: '1.65em', fontSize: 11, color: matchSet?.has(i) ? 'var(--accent)' : 'var(--fg-3)', fontFamily: 'var(--font-mono)', minWidth: 48 }}>
+                {i + 1}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ flex: 1, padding: '10px 0', overflow: 'hidden' }}>
+          {lines.map((line, i) => (
+            <div key={i} style={{ padding: '0 18px', lineHeight: '1.65em', fontSize: isMono ? 12 : 13, fontFamily: isMono ? 'var(--font-mono)' : 'var(--font-ui)', color: 'var(--fg-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: matchSet?.has(i) ? 'rgba(255,200,50,0.07)' : 'transparent' }}>
+              <FtvHighlight line={line} query={search} />
+            </div>
+          ))}
         </div>
       </div>
     </div>
   )
 }
 
-const primaryBtn: React.CSSProperties = { background: 'var(--accent)', color: '#1a1410', border: 'none', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+const primaryBtn: React.CSSProperties = { background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 const ghostBtn: React.CSSProperties = { background: 'transparent', color: 'var(--fg-1)', border: '1px solid var(--line-strong)', padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+const ftBtn: React.CSSProperties = { background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, color: 'var(--fg-1)', fontSize: 10.5, padding: '2px 7px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }

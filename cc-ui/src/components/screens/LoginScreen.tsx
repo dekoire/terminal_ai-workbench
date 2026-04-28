@@ -31,7 +31,7 @@ export function LoginScreen() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <span style={{
             width: 28, height: 28, borderRadius: 6, background: 'var(--accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a1410',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-fg)',
           }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 5l3 3-3 3M9 11h4"/>
@@ -185,7 +185,7 @@ function ProviderButton({ tone, label, sub, icon, onClick }: { tone?: string; la
     }}>
       <span style={{ width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', color: isPrimary ? 'var(--accent)' : 'var(--fg-1)' }}>
         {icon || (
-          <span style={{ width: 14, height: 14, borderRadius: 3, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a1410' }}>
+          <span style={{ width: 14, height: 14, borderRadius: 3, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-fg)' }}>
             <svg width="9" height="9" viewBox="0 0 12 12" fill="currentColor"><path d="M6 1L7.5 4.5 11 6 7.5 7.5 6 11 4.5 7.5 1 6 4.5 4.5z"/></svg>
           </span>
         )}
@@ -218,4 +218,4 @@ const loginLink: React.CSSProperties = { color: 'var(--fg-1)', borderBottom: '1p
 const textLink: React.CSSProperties = { background: 'transparent', border: 'none', color: 'var(--fg-2)', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-ui)', textDecoration: 'underline' }
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }
 const fieldInput: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none' }
-const btnPrimary: React.CSSProperties = { background: 'var(--accent)', color: '#1a1410', border: 'none', padding: '9px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', width: '100%' }
+const btnPrimary: React.CSSProperties = { background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '9px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', width: '100%' }

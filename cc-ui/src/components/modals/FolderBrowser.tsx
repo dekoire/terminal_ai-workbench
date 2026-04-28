@@ -111,7 +111,7 @@ export function FolderBrowser({ currentPath, onSelect, onClose }: Props) {
         <div style={{ padding: '10px 12px', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, background: 'var(--bg-0)', flexShrink: 0 }}>
           <span style={{ flex: 1, fontSize: 10.5, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', alignSelf: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{path}</span>
           <button onClick={onClose} style={{ padding: '5px 12px', border: '1px solid var(--line-strong)', borderRadius: 4, background: 'transparent', color: 'var(--fg-1)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>Cancel</button>
-          <button onClick={() => onSelect(path)} style={{ padding: '5px 12px', border: 'none', borderRadius: 4, background: 'var(--accent)', color: '#1a1410', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>Select this folder</button>
+          <button onClick={() => onSelect(path)} style={{ padding: '5px 12px', border: 'none', borderRadius: 4, background: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>Select this folder</button>
         </div>
       </div>
     </div>

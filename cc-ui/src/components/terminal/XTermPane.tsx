@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '../../store/useAppStore'
+import { TERMINAL_THEMES } from '../../theme/presets'
 
 interface Props {
   sessionId: string
@@ -44,27 +45,58 @@ const LIGHT_THEME = {
   white:         '#4a443c', brightWhite:   '#1c1814',
 }
 
+function resolveTheme(terminalTheme: string, appTheme: string) {
+  // Named preset takes priority
+  const preset = TERMINAL_THEMES.find(t => t.id === terminalTheme)
+  if (preset) return preset.theme
+  // Fallback: use built-in dark/light
+  return appTheme === 'light' ? LIGHT_THEME : DARK_THEME
+}
+
+const TERMINAL_FONT_MAP: Record<string, string> = {
+  jetbrains: '"JetBrains Mono", "Cascadia Code", Menlo, monospace',
+  cascadia:  '"Cascadia Code", "JetBrains Mono", monospace',
+  fira:      '"Fira Code", "JetBrains Mono", monospace',
+  menlo:     'Menlo, Monaco, monospace',
+  sfmono:    '"SF Mono", Menlo, monospace',
+  monaco:    'Monaco, "Courier New", monospace',
+  courier:   '"Courier New", Courier, monospace',
+  system:    'monospace',
+}
+
 export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const theme = useAppStore(s => s.theme)
+  const containerRef      = useRef<HTMLDivElement>(null)
+  const appTheme          = useAppStore(s => s.theme)
+  const terminalTheme     = useAppStore(s => s.terminalTheme)
+  const terminalFontFamily = useAppStore(s => s.terminalFontFamily)
+  const terminalFontSize   = useAppStore(s => s.terminalFontSize)
+  const updateSession     = useAppStore(s => s.updateSession)
   const termRef = useRef<Terminal | null>(null)
 
-  // Update terminal colors live when theme switches
+  // Apply colour theme live
   useEffect(() => {
     if (termRef.current) {
-      termRef.current.options.theme = theme === 'light' ? LIGHT_THEME : DARK_THEME
+      termRef.current.options.theme = resolveTheme(terminalTheme, appTheme)
     }
-  }, [theme])
+  }, [terminalTheme, appTheme])
+
+  // Apply font family + size live
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.fontFamily = TERMINAL_FONT_MAP[terminalFontFamily] ?? TERMINAL_FONT_MAP.jetbrains
+      termRef.current.options.fontSize   = terminalFontSize
+    }
+  }, [terminalFontFamily, terminalFontSize])
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
     const term = new Terminal({
-      fontFamily: '"JetBrains Mono", "Cascadia Code", Menlo, monospace',
-      fontSize: 13,
+      fontFamily: TERMINAL_FONT_MAP[terminalFontFamily] ?? TERMINAL_FONT_MAP.jetbrains,
+      fontSize: terminalFontSize,
       lineHeight: 1.4,
-      theme: theme === 'light' ? LIGHT_THEME : DARK_THEME,
+      theme: resolveTheme(terminalTheme, appTheme),
       cursorBlink: true,
       scrollback: 10000,
       allowTransparency: false,
@@ -112,8 +144,10 @@ export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
           const code = Number(msg.exitCode)
           if (code === 0) {
             term.write(`\r\n\x1b[32m✓ exited cleanly\x1b[0m\r\n`)
+            updateSession(sessionId, { status: 'exited' })
           } else {
             term.write(`\r\n\x1b[31m✗ exited with code ${code}\x1b[0m\r\n`)
+            updateSession(sessionId, { status: 'error' })
           }
         }
       } catch { /* ignore malformed frames */ }
@@ -142,6 +176,29 @@ export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
     }
     window.addEventListener('cc:terminal-paste', onPaste)
 
+    // Raw input (e.g. Ctrl+C = '\x03') from InputArea
+    const onRaw = (e: Event) => {
+      const data = (e as CustomEvent<string>).detail
+      if (ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: 'input', data }))
+    }
+    window.addEventListener('cc:terminal-send-raw', onRaw)
+
+    // Export terminal buffer as plain text
+    const onExportRequest = (e: Event) => {
+      const sid = (e as CustomEvent<string>).detail
+      if (sid !== sessionId) return
+      const buf = term.buffer.active
+      const lines: string[] = []
+      for (let i = 0; i < buf.length; i++) {
+        lines.push(buf.getLine(i)?.translateToString(true) ?? '')
+      }
+      // Trim trailing blank lines
+      while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop()
+      window.dispatchEvent(new CustomEvent('cc:terminal-text', { detail: lines.join('\n') }))
+    }
+    window.addEventListener('cc:terminal-export', onExportRequest)
+
     // Refit whenever the panel resizes
     const ro = new ResizeObserver(() => {
       requestAnimationFrame(() => fit.fit())
@@ -152,6 +209,8 @@ export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
       termRef.current = null
       ro.disconnect()
       window.removeEventListener('cc:terminal-paste', onPaste)
+      window.removeEventListener('cc:terminal-send-raw', onRaw)
+      window.removeEventListener('cc:terminal-export', onExportRequest)
       ws.close()
       term.dispose()
     }
@@ -166,7 +225,7 @@ export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
         minHeight: 0,
         height: '100%',
         padding: '6px 4px',
-        background: theme === 'light' ? '#faf8f4' : '#0e0d0b',
+        background: resolveTheme(terminalTheme, appTheme).background,
         overflow: 'hidden',
         boxSizing: 'border-box',
       }}

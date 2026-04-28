@@ -12,7 +12,7 @@ export function Avatar({ kind = 'user', size = 22 }: { kind?: 'user' | 'agent'; 
     <div style={{
       width: size, height: size, borderRadius: 4, background: 'var(--accent)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      color: '#1a1410',
+      color: 'var(--accent-fg)',
     }}>
       <svg width={size * 0.55} height={size * 0.55} viewBox="0 0 12 12" fill="currentColor">
         <path d="M6 1L7.5 4.5 11 6 7.5 7.5 6 11 4.5 7.5 1 6 4.5 4.5z"/>

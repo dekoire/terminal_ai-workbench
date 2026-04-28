@@ -7,22 +7,31 @@ import { PromptTemplates } from './components/screens/PromptTemplates'
 import { HistoryBrowser } from './components/screens/HistoryBrowser'
 import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSessionModal } from './components/modals/NewSessionModal'
+import { DESIGN_PRESETS, applyPreset } from './theme/presets'
 
 export default function App() {
-  const { screen, theme, accent, newProjectOpen, newSessionOpen } = useAppStore()
+  const { screen, theme, accent, accentFg, preset, uiFont, uiFontSize, newProjectOpen, newSessionOpen } = useAppStore()
 
-  // Apply theme class + accent CSS var to root
+  // Apply preset + accent overrides whenever they change
   useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle('theme-light', theme === 'light')
-    root.style.setProperty('--accent', accent)
-    const m = accent.match(/#(..)(..)(..)/)
-    if (m) {
-      const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16))
-      root.style.setProperty('--accent-soft', `rgba(${r},${g},${b},0.14)`)
-      root.style.setProperty('--accent-line', `rgba(${r},${g},${b},0.45)`)
+    const p = DESIGN_PRESETS.find(d => d.id === preset) ?? DESIGN_PRESETS[0]
+    applyPreset(p, accent, accentFg)
+  }, [theme, accent, accentFg, preset])
+
+  // Apply UI font + size
+  useEffect(() => {
+    const FONT_MAP: Record<string, string> = {
+      system:    '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      inter:     '"Inter", "Segoe UI", sans-serif',
+      geist:     '"Geist", "Inter", sans-serif',
+      sf:        '"SF Pro Text", -apple-system, sans-serif',
+      jetbrains: '"JetBrains Mono", monospace',
     }
-  }, [theme, accent])
+    const family = FONT_MAP[uiFont] ?? FONT_MAP.system
+    document.documentElement.style.setProperty('--font-ui', family)
+    document.documentElement.style.setProperty('--ui-font-size', `${uiFontSize}px`)
+    document.documentElement.style.fontSize = `${uiFontSize}px`
+  }, [uiFont, uiFontSize])
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-0)' }}>

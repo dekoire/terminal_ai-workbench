@@ -9,7 +9,7 @@ export interface Session {
   id: string
   name: string
   alias: string
-  status: 'active' | 'idle' | 'error'
+  status: 'active' | 'idle' | 'error' | 'exited'
   permMode: PermMode
   startedAt: number
 }
@@ -39,6 +39,7 @@ export interface Template {
   body: string
   tag: string
   uses: number
+  favorite?: boolean
 }
 
 export interface TurnMessage {
@@ -59,10 +60,33 @@ export interface TurnMessage {
   diff?: boolean
 }
 
+export interface RepoToken {
+  id: string
+  label: string      // e.g. "GitHub Personal"
+  host: string       // e.g. "github.com"
+  token: string      // the actual token value
+}
+
+export interface AIProvider {
+  id: string
+  name: string
+  provider: 'openai' | 'anthropic' | 'deepseek'
+  apiKey: string
+  model: string
+}
+
 export interface AppState {
   screen: Screen
   theme: Theme
   accent: string
+  accentFg: string       // text colour on accent buttons/pills
+  preset: string         // design preset id
+  terminalTheme: string      // terminal colour scheme id
+  terminalFontFamily: string // terminal font family
+  terminalFontSize: number   // terminal font size (px)
+  uiFont: string             // UI font family
+  uiFontSize: number         // UI base font size (px)
+  tokens: RepoToken[]    // repo/git tokens
   dangerMode: boolean
   activeProjectId: string
   activeSessionId: string
@@ -76,10 +100,22 @@ export interface AppState {
   notes: Record<string, string>        // sessionId → note text
   playwrightCheck: boolean
   localhostCheck: boolean
+  aiProviders: AIProvider[]
+  activeAiProvider: string
 
   setScreen: (s: Screen) => void
   setTheme: (t: Theme) => void
   setAccent: (a: string) => void
+  setAccentFg: (a: string) => void
+  setPreset: (p: string) => void
+  setTerminalTheme: (t: string) => void
+  setTerminalFontFamily: (f: string) => void
+  setTerminalFontSize: (s: number) => void
+  setUiFont: (f: string) => void
+  setUiFontSize: (s: number) => void
+  addToken: (t: RepoToken) => void
+  updateToken: (id: string, patch: Partial<Omit<RepoToken, 'id'>>) => void
+  removeToken: (id: string) => void
   setDangerMode: (d: boolean) => void
   setActiveProject: (id: string) => void
   setActiveSession: (id: string) => void
@@ -89,13 +125,20 @@ export interface AppState {
   setNote: (sessionId: string, text: string) => void
   setPlaywrightCheck: (v: boolean) => void
   setLocalhostCheck: (v: boolean) => void
+  addAiProvider: (p: AIProvider) => void
+  updateAiProvider: (id: string, patch: Partial<Omit<AIProvider, 'id'>>) => void
+  removeAiProvider: (id: string) => void
+  setActiveAiProvider: (id: string) => void
   addProject: (p: Project) => void
+  updateProject: (id: string, patch: Partial<Omit<Project, 'id'>>) => void
   removeProject: (id: string) => void
   addSession: (projectId: string, s: Session) => void
   removeSession: (projectId: string, sessionId: string) => void
+  updateSession: (sessionId: string, patch: Partial<Omit<Session, 'id'>>) => void
   addAlias: (a: Alias) => void
   updateAlias: (id: string, patch: Partial<Omit<Alias, 'id'>>) => void
   removeAlias: (id: string) => void
+  reorderAliases: (ids: string[]) => void
   addTemplate: (t: Template) => void
   updateTemplate: (id: string, patch: Partial<Omit<Template, 'id'>>) => void
   removeTemplate: (id: string) => void
@@ -160,8 +203,8 @@ const DEMO_ALIASES: Alias[] = [
 ]
 
 const DEMO_TEMPLATES: Template[] = [
-  { id: 'tp1', name: 'Analyze first', hint: '⌘1', body: 'Before making any changes, analyze the relevant files and explain your plan. Wait for approval.', tag: 'planning', uses: 124 },
-  { id: 'tp2', name: 'Minimal invasive changes', hint: '⌘2', body: 'Make the smallest possible diff. Do not rename, refactor, or move code unless explicitly asked.', tag: 'safety', uses: 89 },
+  { id: 'tp1', name: 'Analyze first', hint: '⌘1', body: 'Before making any changes, analyze the relevant files and explain your plan. Wait for approval.', tag: 'planning', uses: 124, favorite: true },
+  { id: 'tp2', name: 'Minimal invasive changes', hint: '⌘2', body: 'Make the smallest possible diff. Do not rename, refactor, or move code unless explicitly asked.', tag: 'safety', uses: 89, favorite: true },
   { id: 'tp3', name: 'Follow README rules', hint: '⌘3', body: 'Read README.md and CONTRIBUTING.md first. Comply strictly with conventions, scripts, and gotchas listed.', tag: 'context', uses: 71 },
   { id: 'tp4', name: 'Write tests for diff', hint: '⌘4', body: 'For every change you make, add or update tests. Run them before reporting done.', tag: 'quality', uses: 56 },
   { id: 'tp5', name: 'Explain like reviewer', hint: '⌘5', body: 'Walk through the change as if reviewing a PR — what, why, risk, alternatives considered.', tag: 'review', uses: 33 },
@@ -206,6 +249,14 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   screen: 'workspace',
   theme: 'dark',
   accent: '#ff8a5b',
+  accentFg: '#1a1410',
+  preset: 'ember',
+  terminalTheme: 'default',
+  terminalFontFamily: 'jetbrains',
+  terminalFontSize: 13,
+  uiFont: 'system',
+  uiFontSize: 13,
+  tokens: [],
   dangerMode: false,
   activeProjectId: 'p1',
   activeSessionId: 's1',
@@ -219,10 +270,22 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   notes: {},
   playwrightCheck: false,
   localhostCheck: false,
+  aiProviders: [],
+  activeAiProvider: '',
 
   setScreen: (screen) => set({ screen }),
   setTheme: (theme) => set({ theme }),
   setAccent: (accent) => set({ accent }),
+  setAccentFg: (accentFg) => set({ accentFg }),
+  setPreset: (preset) => set({ preset }),
+  setTerminalTheme: (terminalTheme) => set({ terminalTheme }),
+  setTerminalFontFamily: (terminalFontFamily) => set({ terminalFontFamily }),
+  setTerminalFontSize: (terminalFontSize) => set({ terminalFontSize }),
+  setUiFont: (uiFont) => set({ uiFont }),
+  setUiFontSize: (uiFontSize) => set({ uiFontSize }),
+  addToken: (t) => set((s) => ({ tokens: [...s.tokens, t] })),
+  updateToken: (id, patch) => set((s) => ({ tokens: s.tokens.map(t => t.id === id ? { ...t, ...patch } : t) })),
+  removeToken: (id) => set((s) => ({ tokens: s.tokens.filter(t => t.id !== id) })),
   setDangerMode: (dangerMode) => set({ dangerMode }),
   setActiveProject: (activeProjectId) => set({ activeProjectId }),
   setActiveSession: (activeSessionId) => set({ activeSessionId }),
@@ -232,8 +295,16 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setNote: (sessionId, text) => set((s) => ({ notes: { ...s.notes, [sessionId]: text } })),
   setPlaywrightCheck: (v) => set({ playwrightCheck: v }),
   setLocalhostCheck: (v) => set({ localhostCheck: v }),
+  addAiProvider: (p) => set((s) => ({ aiProviders: [...s.aiProviders, p], activeAiProvider: s.activeAiProvider || p.id })),
+  updateAiProvider: (id, patch) => set((s) => ({ aiProviders: s.aiProviders.map(p => p.id === id ? { ...p, ...patch } : p) })),
+  removeAiProvider: (id) => set((s) => {
+    const remaining = s.aiProviders.filter(p => p.id !== id)
+    return { aiProviders: remaining, activeAiProvider: s.activeAiProvider === id ? (remaining[0]?.id ?? '') : s.activeAiProvider }
+  }),
+  setActiveAiProvider: (activeAiProvider) => set({ activeAiProvider }),
 
   addProject: (p) => set((s) => ({ projects: [...s.projects, p] })),
+  updateProject: (id, patch) => set((s) => ({ projects: s.projects.map(p => p.id === id ? { ...p, ...patch } : p) })),
   removeProject: (id) => set((s) => {
     const remaining = s.projects.filter((p) => p.id !== id)
     return {
@@ -247,6 +318,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   updateAlias: (id, patch) =>
     set((s) => ({ aliases: s.aliases.map((a) => a.id === id ? { ...a, ...patch } : a) })),
   removeAlias: (id) => set((s) => ({ aliases: s.aliases.filter((a) => a.id !== id) })),
+  reorderAliases: (ids) => set((s) => ({
+    aliases: ids.map(id => s.aliases.find(a => a.id === id)!).filter(Boolean),
+  })),
 
   addTemplate: (t) => set((s) => ({ templates: [...s.templates, t] })),
   updateTemplate: (id, patch) =>
@@ -258,6 +332,15 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       projects: s.projects.map((p) =>
         p.id === projectId ? { ...p, sessions: [...p.sessions, session] } : p
       ),
+    })),
+  updateSession: (sessionId, patch) =>
+    set((s) => ({
+      projects: s.projects.map((p) => ({
+        ...p,
+        sessions: p.sessions.map((sess) =>
+          sess.id === sessionId ? { ...sess, ...patch } : sess
+        ),
+      })),
     })),
   removeSession: (projectId, sessionId) => set((s) => {
     const project = s.projects.find((p) => p.id === projectId)
@@ -295,10 +378,20 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     templates:       s.templates,
     theme:           s.theme,
     accent:          s.accent,
+    accentFg:        s.accentFg,
+    preset:          s.preset,
+    terminalTheme:      s.terminalTheme,
+    terminalFontFamily: s.terminalFontFamily,
+    terminalFontSize:   s.terminalFontSize,
+    uiFont:             s.uiFont,
+    uiFontSize:      s.uiFontSize,
+    tokens:          s.tokens,
     activeProjectId: s.activeProjectId,
     activeSessionId: s.activeSessionId,
     notes:           s.notes,
     playwrightCheck: s.playwrightCheck,
     localhostCheck:  s.localhostCheck,
+    aiProviders:     s.aiProviders,
+    activeAiProvider: s.activeAiProvider,
   }),
 }))

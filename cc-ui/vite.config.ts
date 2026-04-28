@@ -70,20 +70,26 @@ function apiPlugin() {
           exec(cmd, { cwd }, (_, out, err) => resolve((out || err || '').trim()))
         })
 
-        Promise.all([
-          run('git status --short'),
-          run('git log --oneline -20 --pretty=format:"%h|%s|%an|%ar|%ai"'),
-          run('git branch -v --format="%(refname:short)|%(objectname:short)|%(subject)|%(HEAD)"'),
-          run('git diff --stat HEAD 2>/dev/null | tail -1'),
-          run('git remote -v | head -2'),
-          run('git log -1 --format="%ar"'),
-        ]).then(([status, log, branches, diffStat, remotes, lastCommit]) => {
+        // First check if this is actually a git repo
+        run('git rev-parse --is-inside-work-tree').then(async (check) => {
+          if (check !== 'true') {
+            res.end(JSON.stringify({ hasGit: false, status: [], log: [], branches: [], remotes: [], diffStat: '', lastCommit: '' }))
+            return
+          }
+          const [status, log, branches, diffStat, remotes, lastCommit] = await Promise.all([
+            run('git status --short'),
+            run('git log --oneline -20 --pretty=format:"%h|%s|%an|%ar|%ai"'),
+            run('git branch -v --format="%(refname:short)|%(objectname:short)|%(subject)|%(HEAD)"'),
+            run('git diff --stat HEAD 2>/dev/null | tail -1'),
+            run('git remote -v | head -2'),
+            run('git log -1 --format="%ar"'),
+          ])
           const statusLines = status.split('\n').filter(Boolean).map(l => ({ flag: l.slice(0,2).trim(), file: l.slice(3) }))
           const logLines = log.split('\n').filter(Boolean).map(l => { const p = l.split('|'); return { hash: p[0], msg: p[1], author: p[2], when: p[3], date: p[4] } })
           const branchLines = branches.split('\n').filter(Boolean).map(l => { const p = l.split('|'); return { name: p[0], hash: p[1], msg: p[2], current: p[3] === '*' } })
           const remoteList = [...new Set(remotes.split('\n').filter(Boolean).map(l => l.split('\t')[0]))]
-          res.end(JSON.stringify({ status: statusLines, log: logLines, branches: branchLines, diffStat, remotes: remoteList, lastCommit }))
-        }).catch(e => res.end(JSON.stringify({ error: String(e), status: [], log: [], branches: [] })))
+          res.end(JSON.stringify({ hasGit: true, status: statusLines, log: logLines, branches: branchLines, diffStat, remotes: remoteList, lastCommit }))
+        }).catch(e => res.end(JSON.stringify({ hasGit: false, error: String(e), status: [], log: [], branches: [], remotes: [], diffStat: '', lastCommit: '' })))
       }) as Connect.NextHandleFunction)
 
       // Native folder picker via osascript (macOS)
@@ -101,6 +107,43 @@ function apiPlugin() {
             res.end(JSON.stringify({ ok: false, path: null, error: err.message }))
           } else {
             res.end(JSON.stringify({ ok: true, path: out.trim().replace(/\/$/, '') }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Native file picker via osascript (macOS)
+      server.middlewares.use('/api/pick-file', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const startPath = (url.searchParams.get('path') ?? process.env.HOME ?? '~')
+          .replace(/^~/, process.env.HOME ?? '/')
+        const safeStart = startPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        const script = `POSIX path of (choose file with prompt "Datei auswählen:" default location POSIX file "${safeStart}")`
+        exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 60000 }, (err, out) => {
+          if (err) {
+            res.end(JSON.stringify({ ok: false, path: null, error: err.message }))
+          } else {
+            res.end(JSON.stringify({ ok: true, path: out.trim() }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Check if a command exists (GET /api/which?cmd=claude)
+      server.middlewares.use('/api/which', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const cmd = url.searchParams.get('cmd') ?? ''
+        if (!cmd) { res.end(JSON.stringify({ ok: false, path: null })); return }
+        const safePath = [
+          '/opt/homebrew/bin', '/opt/homebrew/sbin',
+          '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin',
+          process.env.PATH ?? '',
+        ].filter(Boolean).join(':')
+        exec(`which ${JSON.stringify(cmd)}`, { env: { ...process.env, PATH: safePath } }, (err, out) => {
+          if (err || !out.trim()) {
+            res.end(JSON.stringify({ ok: false, path: null }))
+          } else {
+            res.end(JSON.stringify({ ok: true, path: out.trim() }))
           }
         })
       }) as Connect.NextHandleFunction)
@@ -167,6 +210,147 @@ function apiPlugin() {
           res.end(JSON.stringify({ items: [], currentPath: dirPath, error: String(e) }))
         }
       }) as Connect.NextHandleFunction)
+
+      // File write (POST /api/file-write)
+      server.middlewares.use('/api/file-write', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{"ok":false}'); return }
+        let body = ''
+        req.on('data', (d: Buffer) => { body += d.toString() })
+        req.on('end', () => {
+          try {
+            const { path: filePath, content } = JSON.parse(body) as { path: string; content: string }
+            const resolved = (filePath ?? '').replace(/^~/, process.env.HOME ?? '/')
+            fs.writeFileSync(resolved, content, 'utf-8')
+            res.end('{"ok":true}')
+          } catch (e) {
+            res.end(JSON.stringify({ ok: false, error: String(e) }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Create file or directory (POST /api/fs-create)
+      server.middlewares.use('/api/fs-create', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{"ok":false}'); return }
+        let body = ''
+        req.on('data', (d: Buffer) => { body += d.toString() })
+        req.on('end', () => {
+          try {
+            const { path: target, type } = JSON.parse(body) as { path: string; type: 'file' | 'dir' }
+            const resolved = target.replace(/^~/, process.env.HOME ?? '/')
+            if (type === 'dir') {
+              fs.mkdirSync(resolved, { recursive: true })
+            } else {
+              // Ensure parent exists, then touch file
+              fs.mkdirSync(path.dirname(resolved), { recursive: true })
+              if (!fs.existsSync(resolved)) fs.writeFileSync(resolved, '', 'utf-8')
+            }
+            res.end('{"ok":true}')
+          } catch (e) {
+            res.end(JSON.stringify({ ok: false, error: String(e) }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // AI text refinement proxy (POST /api/ai-refine)
+      server.middlewares.use('/api/ai-refine', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{"ok":false}'); return }
+        let body = ''
+        req.on('data', (d: Buffer) => { body += d.toString() })
+        req.on('end', async () => {
+          try {
+            const { provider, apiKey, model, text, systemPrompt } =
+              JSON.parse(body) as { provider: string; apiKey: string; model: string; text: string; systemPrompt?: string }
+            const sysMsg = systemPrompt ?? 'Verbessere den folgenden Text sprachlich und inhaltlich. Mache ihn klarer, präziser und professioneller. Gib nur den verbesserten Text zurück, ohne Erklärungen oder zusätzliche Kommentare.'
+
+            if (provider === 'anthropic') {
+              const r = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+                body: JSON.stringify({ model, max_tokens: 2048, system: sysMsg, messages: [{ role: 'user', content: text }] }),
+              })
+              const d = await r.json() as { content?: { text: string }[]; error?: { message: string } }
+              if (!r.ok) { res.end(JSON.stringify({ ok: false, error: d?.error?.message ?? 'API error' })); return }
+              res.end(JSON.stringify({ ok: true, text: d.content?.[0]?.text ?? text }))
+            } else {
+              // OpenAI-compatible (openai + deepseek)
+              const baseUrl = provider === 'deepseek' ? 'https://api.deepseek.com/v1' : 'https://api.openai.com/v1'
+              const r = await fetch(`${baseUrl}/chat/completions`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model, messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: text }] }),
+              })
+              const d = await r.json() as { choices?: { message: { content: string } }[]; error?: { message: string } }
+              if (!r.ok) { res.end(JSON.stringify({ ok: false, error: d?.error?.message ?? 'API error' })); return }
+              res.end(JSON.stringify({ ok: true, text: d.choices?.[0]?.message?.content ?? text }))
+            }
+          } catch (e) {
+            res.end(JSON.stringify({ ok: false, error: String(e) }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Delete file or directory (POST /api/fs-delete)
+      server.middlewares.use('/api/fs-delete', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{"ok":false}'); return }
+        let body = ''
+        req.on('data', (d: Buffer) => { body += d.toString() })
+        req.on('end', () => {
+          try {
+            const { path: target } = JSON.parse(body) as { path: string }
+            const resolved = target.replace(/^~/, process.env.HOME ?? '/')
+            fs.rmSync(resolved, { recursive: true, force: true })
+            res.end('{"ok":true}')
+          } catch (e) {
+            res.end(JSON.stringify({ ok: false, error: String(e) }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Git remote URL (GET /api/git-remote?path=…)
+      server.middlewares.use('/api/git-remote', ((req, res) => {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const cwd = (url.searchParams.get('path') ?? '').replace(/^~/, process.env.HOME ?? '/')
+        res.setHeader('Content-Type', 'application/json')
+        exec('git remote get-url origin', { cwd }, (err, out) => {
+          if (err) { res.end(JSON.stringify({ ok: false, url: null })); return }
+          res.end(JSON.stringify({ ok: true, url: out.trim() }))
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Open with specific app (GET /api/open-with?path=…&app=…)
+      server.middlewares.use('/api/open-with', ((req, res) => {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const filePath = (url.searchParams.get('path') ?? '').replace(/^~/, process.env.HOME ?? '/')
+        const app = url.searchParams.get('app') ?? ''
+        res.setHeader('Content-Type', 'application/json')
+        if (!app) { res.end('{"ok":false}'); return }
+        exec(`open -a ${JSON.stringify(app)} ${JSON.stringify(filePath)}`, (err) => {
+          res.end(JSON.stringify({ ok: !err, error: err?.message }))
+        })
+      }) as Connect.NextHandleFunction)
+
+      // File read (GET /api/file-read?path=…) — returns plain text content
+      server.middlewares.use('/api/file-read', ((req, res) => {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const filePath = (url.searchParams.get('path') ?? '')
+          .replace(/^~/, process.env.HOME ?? '/')
+        res.setHeader('Content-Type', 'application/json')
+        try {
+          const stat = fs.statSync(filePath)
+          if (stat.size > 2 * 1024 * 1024) {
+            res.end(JSON.stringify({ ok: false, error: 'File too large (> 2 MB)' }))
+            return
+          }
+          const content = fs.readFileSync(filePath, 'utf-8')
+          res.end(JSON.stringify({ ok: true, content, size: stat.size, mtime: stat.mtimeMs }))
+        } catch (e: unknown) {
+          res.end(JSON.stringify({ ok: false, error: String(e) }))
+        }
+      }) as Connect.NextHandleFunction)
     },
   }
 }
@@ -180,6 +364,7 @@ interface PtySession {
 
 const sessions = new Map<string, PtySession>()
 let wss: WebSocketServer | null = null
+
 
 function terminalPlugin() {
   return {
@@ -238,12 +423,12 @@ function terminalPlugin() {
               if (cmd === 'zsh' && !args) {
                 // Plain interactive login shell
                 spawnCmd = ZSH
-                spawnArgs = ['-l']
+                spawnArgs = ['-li']
               } else {
-                // Alias command (claude, aider, codex, …) — run via login shell
+                // Alias/command — run via interactive login shell so .zshrc aliases are available
                 const fullCmd = args ? `${cmd} ${args}` : cmd
                 spawnCmd = ZSH
-                spawnArgs = ['-lc', fullCmd]
+                spawnArgs = ['-lic', fullCmd]
               }
 
               const ptyEnv: Record<string, string> = {
