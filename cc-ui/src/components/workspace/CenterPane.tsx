@@ -1,7 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import type { TurnMessage, Template } from '../../store/useAppStore'
+import type { TurnMessage, Template, TerminalShortcut } from '../../store/useAppStore'
 import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand } from '../primitives/Icons'
+import { updateDocsWithAI } from '../../utils/updateDocs'
+import { aiDetectStartCmd } from '../../utils/aiDetect'
 import { Pill } from '../primitives/Pill'
 import { Kbd } from '../primitives/Kbd'
 import { Avatar } from '../primitives/Avatar'
@@ -109,10 +111,11 @@ export function CenterPane() {
     return () => window.removeEventListener('keydown', handler)
   }, [sessions, fileTabs, activeFilePath, selectSession, closeFileTab, setNewSessionOpen])
 
-  // Resolve alias cmd+args from the session's alias name
-  const alias = aliases.find(a => a.name === activeSession?.alias)
-  const aliasCmd  = alias?.cmd  ?? 'zsh'
-  const aliasArgs = alias?.args ?? ''
+  // Use cmd/args baked into the session at creation time — no stale alias lookup.
+  // Fall back to alias lookup for sessions created before this field existed.
+  const _fallbackAlias = aliases.find(a => a.name === activeSession?.alias)
+  const aliasCmd  = activeSession?.cmd  || _fallbackAlias?.cmd  || 'zsh'
+  const aliasArgs = activeSession?.args != null ? activeSession.args : (_fallbackAlias?.args ?? '')
 
   return (
     <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg-0)' }}>
@@ -128,6 +131,18 @@ export function CenterPane() {
         onCloseFileTab={closeFileTab}
       />
       {dangerMode && <DangerBanner />}
+      {/* Active command indicator */}
+      {activeSession && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 14px', background: 'var(--bg-2)', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+          <ITerminal style={{ color: 'var(--fg-3)', width: 10, height: 10, flexShrink: 0 }} />
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-3)' }}>
+            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{aliasCmd}</span>
+            {aliasArgs && <span style={{ color: 'var(--fg-2)' }}> {aliasArgs}</span>}
+          </span>
+          <span style={{ flex: 1 }} />
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-3)', opacity: 0.6 }}>{project?.path ?? '~'}</span>
+        </div>
+      )}
       {/* flex:1 + minHeight:0 ensures xterm fills remaining space */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {showFileViewer ? (
@@ -224,24 +239,182 @@ function useGitInfo(projectPath: string | undefined): GitInfo | null {
   return info
 }
 
+interface DevConfig { port?: number; startCmd?: string; appUrl?: string }
+
+function useProjectConfig(projectPath: string | undefined): DevConfig | null {
+  const [cfg, setCfg] = useState<DevConfig | null>(null)
+  useEffect(() => {
+    if (!projectPath) { setCfg(null); return }
+    const load = async () => {
+      // 1. Try project.config.json first
+      try {
+        const r = await fetch(`/api/file-read?path=${encodeURIComponent(projectPath + '/project.config.json')}`)
+        const d = await r.json() as { ok: boolean; content?: string }
+        if (d.ok && d.content) { setCfg(JSON.parse(d.content) as DevConfig); return }
+      } catch { /* fall through */ }
+      // 2. Fallback: detect from package.json
+      try {
+        const r = await fetch(`/api/file-read?path=${encodeURIComponent(projectPath + '/package.json')}`)
+        const d = await r.json() as { ok: boolean; content?: string }
+        if (d.ok && d.content) {
+          const pkg = JSON.parse(d.content) as { scripts?: Record<string, string> }
+          const key = ['dev', 'start', 'serve', 'preview'].find(k => pkg.scripts?.[k])
+          if (key) { setCfg({ startCmd: `npm run ${key}` }); return }
+        }
+      } catch { /* ignore */ }
+      setCfg(null)
+    }
+    load()
+  }, [projectPath])
+  return cfg
+}
+
 function ProjectHeader() {
-  const { projects, activeProjectId } = useAppStore()
+  const { projects, activeProjectId, activeSessionId, docApplying, updateProject, aiProviders, aiFunctionMap } = useAppStore()
   const project = projects.find(p => p.id === activeProjectId)
   const git = useGitInfo(project?.path)
+  const [launching, setLaunching] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
+  const [cfgPort, setCfgPort] = useState('')
+  const [cfgCmd, setCfgCmd] = useState('')
+  const [detecting, setDetecting] = useState(false)
+  const fileCfg = useProjectConfig(project?.path)
 
   const noGit  = git !== null && !git?.hasGit
   const branch = git?.branch    ?? project?.branch ?? '…'
   const dirty  = git?.dirty     ?? 0
   const lastCommit = git?.lastCommit ?? ''
+  const isDocApplying = project ? (docApplying[project.id] ?? false) : false
+
+  const devPort = project?.appPort    ?? fileCfg?.port    ?? undefined
+  const devCmd  = project?.appStartCmd ?? fileCfg?.startCmd ?? undefined
+  const hasDevServer = !!devCmd
+
+  // Sync file config back to store once
+  useEffect(() => {
+    if (!project || !fileCfg) return
+    if (!project.appPort && fileCfg.port) updateProject(project.id, { appPort: fileCfg.port })
+    if (!project.appStartCmd && fileCfg.startCmd) updateProject(project.id, { appStartCmd: fileCfg.startCmd })
+  }, [project?.id, fileCfg?.port, fileCfg?.startCmd]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const detectWithAI = async () => {
+    if (!project?.path || detecting) return
+    const provId = aiFunctionMap['devDetect']
+    const provider = aiProviders.find(p => p.id === provId) ?? aiProviders[0]
+    if (!provider) return
+    setDetecting(true)
+    try {
+      const port = parseInt(cfgPort, 10) || project.appPort
+      const cmd = await aiDetectStartCmd(project.path, port, provider)
+      if (cmd) setCfgCmd(cmd)
+    } finally { setDetecting(false) }
+  }
+
+  const launchDevServer = async () => {
+    if (!devCmd || launching) return
+    setLaunching(true)
+    try {
+      const r = await fetch('/api/start-app', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: project?.path, port: devPort, startCmd: devCmd }),
+      })
+      const d = await r.json() as { ok: boolean; pid?: number; logFile?: string }
+      if (d.ok) {
+        console.log(`[launch] PID ${d.pid} | log: ${d.logFile}`)
+        if (devPort) setTimeout(() => window.open(`http://localhost:${devPort}`, '_blank'), 2200)
+      }
+    } finally {
+      setLaunching(false)
+    }
+  }
+
+  const openConfig = () => {
+    setCfgPort(String(devPort ?? ''))
+    setCfgCmd(devCmd ?? '')
+    setConfigOpen(true)
+  }
+
+  const saveConfig = async () => {
+    if (!project) return
+    const port = parseInt(cfgPort, 10) || undefined
+    const cmd  = cfgCmd.trim() || undefined
+    updateProject(project.id, { appPort: port, appStartCmd: cmd })
+    if (port || cmd) {
+      const cfg = { port: port ?? null, startCmd: cmd ?? null, appUrl: port ? `http://localhost:${port}` : null }
+      await fetch('/api/file-write', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: `${project.path}/project.config.json`, content: JSON.stringify(cfg, null, 2) }) })
+    }
+    setConfigOpen(false)
+  }
+
+  void activeSessionId
 
   return (
-    <div style={{ height: 38, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)' }}>
+    <div style={{ height: 38, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', position: 'relative' }}>
       {noGit
         ? <IFolder style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
         : <IGit style={{ color: 'var(--fg-2)', flexShrink: 0 }} />
       }
 
       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', whiteSpace: 'nowrap' }}>{project?.name ?? '—'}</span>
+
+      {/* Play button — always visible when project is active */}
+      {project && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <button
+            onClick={hasDevServer ? launchDevServer : openConfig}
+            disabled={launching}
+            title={hasDevServer ? `${devCmd} → http://localhost:${devPort}` : devPort ? `Befehl fehlt — klicken zum Konfigurieren` : devCmd ? `Port fehlt — klicken zum Konfigurieren` : 'Dev Server konfigurieren'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: launching ? 'var(--bg-3)' : hasDevServer ? 'var(--ok)' : 'var(--bg-3)',
+              border: hasDevServer ? 'none' : '1px solid var(--line-strong)',
+              borderRadius: 5, padding: '3px 9px',
+              color: launching ? 'var(--fg-3)' : hasDevServer ? '#fff' : (devPort || devCmd) ? 'var(--fg-1)' : 'var(--fg-2)',
+              fontSize: 11, fontWeight: 600, cursor: launching ? 'wait' : 'pointer',
+              fontFamily: 'var(--font-ui)', transition: 'all 0.15s',
+              opacity: launching ? 0.7 : 1,
+            }}
+          >
+            {launching ? '…' : '▶'}&nbsp;
+            {launching ? 'Starting…' : hasDevServer ? `localhost:${devPort}` : devPort ? `localhost:${devPort}` : devCmd ? devCmd : 'Dev Server'}
+          </button>
+          <button onClick={openConfig} title="Port / Befehl konfigurieren" style={{ background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', fontSize: 10, padding: '2px 4px', fontFamily: 'inherit', lineHeight: 1 }}>⚙</button>
+        </div>
+      )}
+
+      {/* Inline config popover */}
+      {configOpen && (
+        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 42, left: 14, zIndex: 200, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, width: 320, boxShadow: '0 8px 28px rgba(0,0,0,0.4)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-1)' }}>Dev Server konfigurieren</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: 8, alignItems: 'center', fontSize: 11 }}>
+            <span style={{ color: 'var(--fg-3)' }}>Port</span>
+            <input value={cfgPort} onChange={e => setCfgPort(e.target.value.replace(/\D/g, ''))} placeholder="3000" style={{ padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none' }} />
+            <span style={{ color: 'var(--fg-3)' }}>Start-Befehl</span>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              <input value={cfgCmd} onChange={e => setCfgCmd(e.target.value)} disabled={detecting} placeholder="npm run dev" style={{ flex: 1, padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none', minWidth: 0 }} />
+              <button
+                onClick={detectWithAI}
+                disabled={detecting || aiProviders.length === 0}
+                title={aiProviders.length === 0 ? 'Kein AI-Anbieter konfiguriert' : 'Start-Befehl per AI ermitteln'}
+                style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 7px', border: '1px solid var(--line-strong)', borderRadius: 5, background: detecting ? 'var(--bg-3)' : 'var(--bg-2)', color: detecting ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || aiProviders.length === 0) ? 'not-allowed' : 'pointer', fontSize: 10, fontFamily: 'var(--font-ui)', opacity: aiProviders.length === 0 ? 0.4 : 1, whiteSpace: 'nowrap' }}
+              >
+                <IAiWand style={{ width: 11, height: 11 }} />
+                {detecting ? '…' : 'AI'}
+              </button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={() => setConfigOpen(false)} style={{ background: 'none', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-2)', padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Abbrechen</button>
+            <button onClick={saveConfig} style={{ background: 'var(--accent)', border: 'none', borderRadius: 5, color: 'var(--accent-fg)', padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Speichern</button>
+          </div>
+        </div>
+      )}
+
+      {/* Doc applying spinner */}
+      {isDocApplying && (
+        <span className="anim-spin" style={{ display: 'inline-block', fontSize: 10, color: 'var(--fg-3)' }} title="Docu wird angelegt…">⟳</span>
+      )}
 
       <span style={{ flex: 1 }} />
 
@@ -625,7 +798,8 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     projects, activeProjectId, activeSessionId,
     playwrightCheck, setPlaywrightCheck,
     localhostCheck, setLocalhostCheck,
-    aiProviders, activeAiProvider,
+    aiProviders, activeAiProvider, aiFunctionMap,
+    terminalShortcuts,
   } = useAppStore()
   const [attachments, setAttachments]   = useState<string[]>([])
   const [picking, setPicking]           = useState(false)
@@ -634,6 +808,9 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   const [tplMenu, setTplMenu]           = useState<{ x: number; y: number; tpl: Template } | null>(null)
   const [aiRefining, setAiRefining]     = useState(false)
   const [aiError, setAiError]           = useState('')
+  const [pathInput, setPathInput]       = useState<'file' | 'image' | null>(null)
+  const [pathInputVal, setPathInputVal] = useState('')
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const taRef      = useRef<HTMLTextAreaElement>(null)
   const recRef     = useRef<SpeechRecognition | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -657,24 +834,22 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     setAttachments(prev => prev.filter(a => a !== name))
   }
 
-  // Terminal mode: native macOS file picker → insert path into textarea so user sees & edits it
-  const pickFileForTerminal = async () => {
-    if (picking) return
-    setPicking(true)
-    try {
-      const startPath = project?.path ?? '~'
-      const r = await fetch(`/api/pick-file?path=${encodeURIComponent(startPath)}`)
-      const data = await r.json() as { ok: boolean; path: string | null }
-      if (data.ok && data.path) {
-        const p = data.path
-        // Quote path if it contains spaces
-        const quoted = p.includes(' ') ? `"${p}"` : p
-        // Insert into text input at end (with a leading space if there's already text)
-        setInputValue(prev => prev ? prev + ' ' + quoted : quoted)
-      }
-    } finally {
-      setPicking(false)
+  const insertFullPath = (fullPath: string, mode: 'file' | 'image') => {
+    const p = fullPath.trim()
+    if (!p) return
+    const quoted = p.includes(' ') ? `"${p}"` : p
+    const insert = mode === 'image' ? `--image ${quoted}` : quoted
+    setInputValue(prev => prev ? prev + ' ' + insert : insert)
+  }
+
+  const confirmPathInput = () => {
+    if (pathInput && pathInputVal.trim()) {
+      insertFullPath(pathInputVal.trim(), pathInput)
     }
+    setPathInput(null)
+    setPathInputVal('')
+    // DOM layout change can disrupt xterm canvas — force repaint after React flushes
+    setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
   }
 
   const send = () => {
@@ -697,7 +872,8 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
 
   const refineWithAI = async () => {
     if (!inputValue.trim()) return
-    const provider = aiProviders.find(p => p.id === activeAiProvider) ?? aiProviders[0]
+    const terminalProviderId = aiFunctionMap['terminal'] || activeAiProvider
+    const provider = aiProviders.find(p => p.id === terminalProviderId) ?? aiProviders[0]
     if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
     setAiRefining(true)
     setAiError('')
@@ -739,12 +915,52 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     }
   }
 
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
-    // Ctrl+C in terminal mode → send interrupt signal to process
-    if (e.ctrlKey && e.key === 'c' && isTerminal) {
+  const sendRaw = (signal: string) => {
+    window.dispatchEvent(new CustomEvent('cc:terminal-send-raw', { detail: signal }))
+  }
+
+  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter (no shift) → send command
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); return }
+
+    if (!isTerminal) return
+
+    const ta = e.currentTarget
+
+    // Tab → send completion signal
+    const tabSc = terminalShortcuts.find(s => s.id === 'tab' && s.enabled)
+    if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && tabSc) {
       e.preventDefault()
-      window.dispatchEvent(new CustomEvent('cc:terminal-send-raw', { detail: '\x03' }))
+      sendRaw(tabSc.signal)
+      return
+    }
+
+    // Arrow Up/Down → history navigation (only when textarea is single-line or cursor at edge)
+    if (e.key === 'ArrowUp' && !e.ctrlKey && !e.metaKey) {
+      const sc = terminalShortcuts.find(s => s.id === 'arrow-up' && s.enabled)
+      if (sc && (ta.value === '' || ta.selectionStart === 0)) {
+        e.preventDefault()
+        sendRaw(sc.signal)
+        return
+      }
+    }
+    if (e.key === 'ArrowDown' && !e.ctrlKey && !e.metaKey) {
+      const sc = terminalShortcuts.find(s => s.id === 'arrow-down' && s.enabled)
+      if (sc && (ta.value === '' || ta.selectionStart === ta.value.length)) {
+        e.preventDefault()
+        sendRaw(sc.signal)
+        return
+      }
+    }
+
+    // Ctrl+X shortcuts → send control characters
+    if (e.ctrlKey && !e.metaKey) {
+      const k = e.key.toLowerCase()
+      const sc = terminalShortcuts.find(s => s.ctrl && s.key.toLowerCase() === k && s.enabled)
+      if (sc) {
+        e.preventDefault()
+        sendRaw(sc.signal)
+      }
     }
   }
 
@@ -754,11 +970,36 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
 
       {/* Terminal-Modus Badge */}
       {isTerminal && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 10, color: 'var(--accent)', fontWeight: 500, letterSpacing: 0.3 }}>
-          <ITerminal style={{ color: 'var(--accent)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 10, color: 'var(--accent)', fontWeight: 500, letterSpacing: 0.3, flexWrap: 'wrap' }}>
+          <ITerminal style={{ color: 'var(--accent)', flexShrink: 0 }} />
           <span>Terminal-Eingabe → {activeSession.alias}</span>
-          <span style={{ color: 'var(--fg-3)', marginLeft: 2 }}>·</span>
-          <span style={{ color: 'var(--fg-3)' }}>⏎ sendet direkt ans Terminal</span>
+          <span style={{ color: 'var(--fg-3)' }}>·</span>
+          <span style={{ color: 'var(--fg-3)' }}>⏎ sendet direkt</span>
+          <span style={{ color: 'var(--fg-3)' }}>·</span>
+          <span style={{ color: 'var(--fg-3)' }}>Pfade werden als Text eingefügt — Claude liest Dateien selbst</span>
+        </div>
+      )}
+
+      {/* Inline path input — shown when Pfad/Bild button is active */}
+      {isTerminal && pathInput && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, padding: '5px 8px', background: 'var(--bg-3)', border: '1px solid var(--accent)', borderRadius: 7 }}>
+          <IFile style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} />
+          <input
+            autoFocus
+            value={pathInputVal}
+            onChange={e => setPathInputVal(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') confirmPathInput(); if (e.key === 'Escape') { setPathInput(null); setPathInputVal(''); setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50) } }}
+            onDrop={e => { e.preventDefault(); const txt = e.dataTransfer.getData('text/plain'); const file = Array.from(e.dataTransfer.files)[0] as (File & { path?: string }) | undefined; const p = txt || file?.path || file?.name || ''; if (p) setPathInputVal(p) }}
+            onDragOver={e => e.preventDefault()}
+            placeholder={pathInput === 'image' ? 'Pfad eintippen oder Bild aus Finder hier reinziehen…' : 'Pfad eintippen oder Datei aus Finder hier reinziehen…'}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 11.5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)' }}
+          />
+          <button onClick={confirmPathInput} disabled={!pathInputVal.trim()} style={{ background: 'var(--accent)', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, fontWeight: 600, color: 'var(--accent-fg, #1a1410)', cursor: pathInputVal.trim() ? 'pointer' : 'default', opacity: pathInputVal.trim() ? 1 : 0.4 }}>
+            Einfügen
+          </button>
+          <button onClick={() => { setPathInput(null); setPathInputVal(''); setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 2 }}>
+            <IClose style={{ width: 10, height: 10 }} />
+          </button>
         </div>
       )}
 
@@ -784,6 +1025,9 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
           onKeyDown={handleKey}
+          // Prevent binary file drops into the terminal — they cause xterm to go black
+          onDragOver={isTerminal ? e => e.preventDefault() : undefined}
+          onDrop={isTerminal ? e => e.preventDefault() : undefined}
           placeholder={isTerminal ? 'Befehl oder Text ans Terminal senden…' : 'Nachricht senden… (⏎ senden, ⇧⏎ neue Zeile)'}
           style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'none', width: '100%', flex: 1, minHeight: 0 }}
         />
@@ -846,14 +1090,46 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 5, borderTop: '1px solid var(--line)' }}>
-          <button
-            style={{ ...chip, opacity: picking ? 0.6 : 1, cursor: picking ? 'wait' : 'pointer' }}
-            onClick={isTerminal ? pickFileForTerminal : () => fileInputRef.current?.click()}
-            disabled={picking}
-          >
-            <IFile style={{ color: 'var(--accent)', flexShrink: 0 }} />
-            {picking ? 'Wähle…' : isTerminal ? 'Pfad einfügen' : 'Anhang'}
-          </button>
+          {isTerminal ? (
+            <>
+              <button
+                style={{ ...chip, background: pathInput === 'file' ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${pathInput === 'file' ? 'var(--accent)' : 'var(--line)'}`, color: pathInput === 'file' ? 'var(--accent)' : 'var(--fg-1)' }}
+                onClick={() => { setPathInput(p => p === 'file' ? null : 'file'); setPathInputVal('') }}
+                title="Pfad einfügen — Datei aus dem Finder hier reinziehen oder Pfad eintippen"
+              >
+                <IFile style={{ color: pathInput === 'file' ? 'var(--accent)' : 'var(--accent)', flexShrink: 0 }} />
+                Pfad einfügen
+              </button>
+              <button
+                style={{ ...chip, background: pathInput === 'image' ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${pathInput === 'image' ? 'var(--accent)' : 'var(--line)'}`, color: pathInput === 'image' ? 'var(--accent)' : 'var(--fg-1)' }}
+                onClick={() => { setPathInput(p => p === 'image' ? null : 'image'); setPathInputVal('') }}
+                title="Bild einfügen — fügt --image &quot;/pfad&quot; ein"
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke={pathInput === 'image' ? 'var(--accent)' : 'var(--accent)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <rect x="1" y="2" width="10" height="8" rx="1.5"/>
+                  <circle cx="4" cy="5" r="1"/>
+                  <path d="M1 9l3-3 2 2 2-2 3 3"/>
+                </svg>
+                Bild einfügen
+              </button>
+              {/* Shortcuts reference button */}
+              <button
+                style={{ ...chip, background: showShortcuts ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${showShortcuts ? 'var(--accent)' : 'var(--line)'}`, color: showShortcuts ? 'var(--accent)' : 'var(--fg-2)', padding: '3px 7px' }}
+                onClick={() => setShowShortcuts(v => !v)}
+                title="Terminal-Tastenkürzel anzeigen"
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <rect x="1" y="2.5" width="10" height="7" rx="1.5"/>
+                  <path d="M3 5h1M5.5 5h1M8 5h1M3 7.5h6"/>
+                </svg>
+              </button>
+            </>
+          ) : (
+            <button style={chip} onClick={() => fileInputRef.current?.click()}>
+              <IFile style={{ color: 'var(--accent)', flexShrink: 0 }} />
+              Anhang
+            </button>
+          )}
           <span style={{ flex: 1 }} />
           <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
             <Kbd>⏎</Kbd>{isTerminal ? ' Terminal' : ' senden'} · <Kbd>⇧⏎</Kbd> Zeile
@@ -870,12 +1146,13 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
             disabled={aiRefining || !inputValue.trim()}
             title={(() => {
               if (aiProviders.length === 0) return 'AI-Anbieter in Settings → AI einrichten'
-              const p = aiProviders.find(p => p.id === activeAiProvider) ?? aiProviders[0]
+              const tid = aiFunctionMap['terminal'] || activeAiProvider
+              const p = aiProviders.find(p => p.id === tid) ?? aiProviders[0]
               return `Text mit ${p.name} überarbeiten`
             })()}
             style={{ ...chip, padding: '4px 7px', color: 'var(--accent)', border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', opacity: (aiRefining || !inputValue.trim()) ? 0.5 : 1 }}
           >
-            <IAiWand style={{ flexShrink: 0, ...(aiRefining ? { animation: 'cc-pulse 0.7s ease-in-out infinite' } : {}) }} />
+            <ISpark style={{ flexShrink: 0, width: 13, height: 13, ...(aiRefining ? { animation: 'cc-pulse 0.5s ease-in-out infinite' } : {}) }} />
           </button>
           <button onClick={send} style={{ ...primaryBtn, display: 'flex', alignItems: 'center', gap: 5 }}>
             {isTerminal ? <ITerminal style={{ color: 'var(--accent-fg)' }} /> : <ISend style={{ color: 'var(--accent-fg)' }} />}
@@ -888,6 +1165,82 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
             <span onClick={() => setAiError('')} style={{ marginLeft: 'auto', cursor: 'pointer', opacity: 0.6 }}>×</span>
           </div>
         )}
+      </div>
+
+      {/* Terminal shortcuts reference modal */}
+      {showShortcuts && isTerminal && (
+        <TerminalShortcutsModal shortcuts={terminalShortcuts} onClose={() => setShowShortcuts(false)} />
+      )}
+
+    </div>
+  )
+}
+
+// ── Terminal Shortcuts Modal ──────────────────────────────────────────────────
+
+const CATEGORY_LABELS: Record<string, string> = {
+  control:    'Prozesssteuerung',
+  editing:    'Zeile bearbeiten',
+  navigation: 'Navigation & History',
+}
+
+function TerminalShortcutsModal({ shortcuts, onClose }: { shortcuts: TerminalShortcut[]; onClose: () => void }) {
+  const { setScreen } = useAppStore()
+  const categories = ['control', 'navigation', 'editing'] as const
+  return (
+    /* Full-screen backdrop — click outside closes */
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', width: 380, maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)', flexShrink: 0 }}>
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1" y="2.5" width="10" height="7" rx="1.5"/>
+            <path d="M3 5h1M5.5 5h1M8 5h1M3 7.5h6"/>
+          </svg>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', flex: 1 }}>Terminal-Tastenkürzel</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 4, fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Shortcut list */}
+        <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
+          {categories.map(cat => {
+            const items = shortcuts.filter(s => s.category === cat)
+            if (!items.length) return null
+            return (
+              <div key={cat}>
+                <div style={{ padding: '6px 16px 3px', fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--fg-3)' }}>
+                  {CATEGORY_LABELS[cat]}
+                </div>
+                {items.map(sc => (
+                  <div key={sc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 16px', opacity: sc.enabled ? 1 : 0.38 }}>
+                    <span style={{ minWidth: 64, fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: sc.enabled ? 'var(--accent)' : 'var(--fg-3)', background: sc.enabled ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${sc.enabled ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 4, padding: '2px 7px', textAlign: 'center', flexShrink: 0 }}>
+                      {sc.label}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: 'var(--fg-1)', flex: 1 }}>{sc.description}</span>
+                    {!sc.enabled && <span style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0 }}>aus</span>}
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer with settings link */}
+        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--line)', background: 'var(--bg-2)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Aktivieren / deaktivieren unter:</span>
+          <button
+            onClick={() => { onClose(); setScreen('settings') }}
+            style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', borderRadius: 5, padding: '3px 10px', fontSize: 11, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
+          >
+            Einstellungen →
+          </button>
+        </div>
       </div>
     </div>
   )

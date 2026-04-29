@@ -22,6 +22,7 @@ export const IBookmark = (p: P) => <svg width="11" height="11" viewBox="0 0 12 1
 export const IWarn = (p: P) => <svg width="12" height="12" viewBox="0 0 12 12" strokeWidth="1.5" {...base} {...p}><path d="M6 2L1 10.5h10z"/><path d="M6 5v2.5M6 9v.01"/></svg>
 export const ICheck = (p: P) => <svg width="11" height="11" viewBox="0 0 12 12" strokeWidth="1.6" {...base} {...p}><path d="M2.5 6.5l2.5 2.5L10 3.5"/></svg>
 export const IX = (p: P) => <svg width="11" height="11" viewBox="0 0 12 12" strokeWidth="1.6" {...base} {...p}><path d="M3 3l6 6M9 3l-6 6"/></svg>
+export const ISpinner = (p: P) => <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" {...p}><path d="M6 1v2M6 9v2M1 6h2M9 6h2M2.5 2.5l1.4 1.4M8.1 8.1l1.4 1.4M9.5 2.5L8.1 3.9M3.9 8.1L2.5 9.5" strokeOpacity="0.35"/><path d="M6 1v2"/></svg>
 export const ICopy = (p: P) => <svg width="12" height="12" viewBox="0 0 14 14" strokeWidth="1.4" {...base} {...p}><rect x="4" y="4" width="8" height="8" rx="1.5"/><path d="M2 9V3a1 1 0 0 1 1-1h6"/></svg>
 export const ISend = (p: P) => <svg width="13" height="13" viewBox="0 0 14 14" strokeWidth="1.5" {...base} {...p}><path d="M2 7l10-5-3.5 11L7 8 2 7z"/></svg>
 export const IMore = (p: P) => <svg width="13" height="3" viewBox="0 0 13 3" fill="currentColor" {...p}><circle cx="1.5" cy="1.5" r="1.2"/><circle cx="6.5" cy="1.5" r="1.2"/><circle cx="11.5" cy="1.5" r="1.2"/></svg>
@@ -35,6 +36,7 @@ export const IMoon = (p: P) => <svg width="13" height="13" viewBox="0 0 14 14" s
 export const ISun  = (p: P) => <svg width="13" height="13" viewBox="0 0 14 14" strokeWidth="1.4" {...base} {...p}><circle cx="7" cy="7" r="2.5"/><path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.9 2.9l1 1M10.1 10.1l1 1M11.1 2.9l-1 1M3.9 10.1l-1 1"/></svg>
 export const IMic  = (p: P) => <svg width="13" height="13" viewBox="0 0 14 14" strokeWidth="1.4" {...base} {...p}><rect x="4.5" y="1" width="5" height="8" rx="2.5"/><path d="M2 7a5 5 0 0 0 10 0M7 12v1.5M4.5 13.5h5"/></svg>
 export const ILogout = (p: P) => <svg width="13" height="13" viewBox="0 0 14 14" strokeWidth="1.4" {...base} {...p}><path d="M9 10l3-3-3-3M12 7H5M5 2H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2"/></svg>
+export const IKanban = (p: P) => <svg width="12" height="12" viewBox="0 0 14 14" strokeWidth="1.4" {...base} {...p}><rect x="1.5" y="1.5" width="3" height="9" rx="1"/><rect x="5.5" y="1.5" width="3" height="6" rx="1"/><rect x="9.5" y="1.5" width="3" height="7.5" rx="1"/></svg>
 // ── AI wand icon ──────────────────────────────────────────────────────────────
 
 export const IAiWand = (p: P) => (

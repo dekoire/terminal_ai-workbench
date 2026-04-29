@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { Project, Session } from '../../store/useAppStore'
-import { IChev, IFolder, IFolderOpen, IBranch, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit } from '../primitives/Icons'
+import { IChev, IFolder, IFolderOpen, IBranch, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ISpinner } from '../primitives/Icons'
+import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
 import { Kbd } from '../primitives/Kbd'
+import { updateDocsWithAI } from '../../utils/updateDocs'
 
 // ── ContextMenu ───────────────────────────────────────────────────────────────
 type CtxItem = { label: string; icon?: React.ReactNode; danger?: boolean; action: () => void } | null
@@ -72,7 +74,7 @@ export function ProjectSidebar() {
           </svg>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', lineHeight: 1.2 }}>Claude Code UI</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', lineHeight: 1.2 }}>Codera AI</div>
           <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>{projects.length} projects</div>
         </div>
       </div>
@@ -104,12 +106,8 @@ export function ProjectSidebar() {
           onPick={(body) => setInputValue(inputValue ? inputValue + '\n' + body : body)}
         />
 
-        {/* Recent sessions */}
-        <CollapsibleSection label="Recent sessions" count={0} defaultOpen={false} action={
-          <button onClick={() => setScreen('history')} style={iconBtn}><IHistory /></button>
-        }>
-          <div style={{ padding: '8px 14px', fontSize: 11, color: 'var(--fg-3)' }}>Keine Einträge</div>
-        </CollapsibleSection>
+        {/* User Stories */}
+        <UserStoriesSection />
       </div>
 
       <div style={{
@@ -175,8 +173,16 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
 }) {
   const [open, setOpen] = useState(active)
   const [hovered, setHovered] = useState(false)
+  const [kanbanOpen, setKanbanOpen] = useState(false)
+  const [docUpdating, setDocUpdating] = useState(false)
+  const isDocApplying = useAppStore(s => s.docApplying[project.id] ?? false)
   const hasGit = useHasGit(project.path)
   const remoteUrl = useGitRemote(project.path)
+
+  const handleDocUpdate = async () => {
+    setDocUpdating(true)
+    try { await updateDocsWithAI(project.path) } finally { setDocUpdating(false) }
+  }
   const githubUrl = remoteUrl ? toRepoUrl(remoteUrl) : null
   const { open: openCtx, menu: ctxMenu } = useCtxMenu()
 
@@ -194,12 +200,22 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
       { label: 'Zum Git-Repository ↗', icon: <IGit />, action: () => window.open(githubUrl, '_blank') },
     ] : []),
     null,
+    { label: docUpdating ? 'Docu wird aktualisiert…' : 'Docu aktualisieren', icon: <IEdit />, action: () => { if (!docUpdating) handleDocUpdate() } },
+    null,
     { label: 'Projekt löschen', icon: <ITrash />, danger: true, action: onDeleteProject },
   ])
 
   return (
     <div>
       {ctxMenu}
+      {kanbanOpen && (
+        <KanbanBoard
+          projectId={project.id}
+          projectName={project.name}
+          projectPath={project.path}
+          onClose={() => setKanbanOpen(false)}
+        />
+      )}
       <div
         onClick={() => { setOpen(o => !o); onSelectProject(project.id) }}
         onContextMenu={handleContextMenu}
@@ -219,35 +235,43 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
         <span style={{ flex: 1, fontSize: 12, fontWeight: active ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {project.name}
         </span>
-        {hovered ? (
-          hasGit && githubUrl ? (
-            <span
-              onClick={(e: React.MouseEvent) => { e.stopPropagation(); window.open(githubUrl, '_blank') }}
-              title="Zum Git-Repository ↗"
-              style={{ fontSize: 9.5, color: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}
-            >↗</span>
-          ) : null
-        ) : (
-          <>
-            {hasGit && (
-              <IBranch
-                style={{ color: 'var(--fg-3)', flexShrink: 0, width: 10, height: 10, cursor: 'pointer' }}
-                onClick={(e: React.MouseEvent) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('cc:goto-git-tab')) }}
-              />
-            )}
-            {!hasGit && (
-              <IFolder
-                style={{ color: 'var(--fg-3)', flexShrink: 0, width: 10, height: 10, cursor: 'pointer' }}
-                onClick={(e: React.MouseEvent) => { e.stopPropagation(); openFolder() }}
-              />
-            )}
-            {project.dirty != null && hasGit && (
-              <span className="mono" style={{ fontSize: 9.5, color: 'var(--warn)', background: 'rgba(244,195,101,0.10)', padding: '1px 5px', borderRadius: 3 }}>
-                {project.dirty}
-              </span>
-            )}
-          </>
+        {isDocApplying && (
+          <ISpinner className="anim-spin" style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} title="Docu wird angelegt…" />
         )}
+        <>
+          {hasGit && (
+            <IGit
+              style={{
+                color: githubUrl ? 'var(--accent)' : 'var(--fg-3)',
+                flexShrink: 0, width: 12, height: 12, cursor: 'pointer',
+                opacity: hovered ? 1 : 0.7,
+                transition: 'opacity 0.12s',
+              }}
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                if (githubUrl) window.open(githubUrl, '_blank')
+                else window.dispatchEvent(new CustomEvent('cc:goto-git-tab'))
+              }}
+              title={githubUrl ? `Zum Repository ↗ ${githubUrl}` : 'Git-Details'}
+            />
+          )}
+          {!hasGit && (
+            <IFolder
+              style={{ color: 'var(--fg-3)', flexShrink: 0, width: 10, height: 10, cursor: 'pointer' }}
+              onClick={(e: React.MouseEvent) => { e.stopPropagation(); openFolder() }}
+            />
+          )}
+          <IKanban
+            style={{ color: 'var(--fg-3)', flexShrink: 0, width: 11, height: 11, cursor: 'pointer' }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); setKanbanOpen(true) }}
+            title="Kanban Board"
+          />
+          {project.dirty != null && hasGit && (
+            <span className="mono" style={{ fontSize: 9.5, color: 'var(--warn)', background: 'rgba(244,195,101,0.10)', padding: '1px 5px', borderRadius: 3 }}>
+              {project.dirty}
+            </span>
+          )}
+        </>
       </div>
 
       {open && (
@@ -271,9 +295,31 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
 }
 
 function SessionRow({ session, active, project, onSelect, onClose }: { session: Session; active: boolean; project: Project; onSelect: () => void; onClose: () => void }) {
-  const { aliases, updateSession } = useAppStore()
+  const { aliases, updateSession, setActiveSession } = useAppStore()
   const [hovered, setHovered] = useState(false)
+  const [launching, setLaunching] = useState(false)
   const { open: openCtx, menu: ctxMenu } = useCtxMenu()
+  const hasDevServer = !!(project.appPort && project.appStartCmd)
+
+  const launchDevServer = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (launching) return
+    setLaunching(true)
+    setActiveSession(session.id)
+    onSelect()
+    try {
+      if (project.appPort) {
+        await fetch('/api/kill-port', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: project.appPort }) })
+      }
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('cc:terminal-send-raw', { detail: { data: (project.appStartCmd ?? '') + '\r' } }))
+        if (project.appPort) {
+          setTimeout(() => window.open(`http://localhost:${project.appPort}`, '_blank'), 2000)
+        }
+        setLaunching(false)
+      }, 300)
+    } catch { setLaunching(false) }
+  }
 
   const alias = aliases.find(a => a.name === session.alias)
   const isDangerous = session.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous'
@@ -316,6 +362,16 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
       {/* Badges */}
       {isDangerous && (
         <span title="--dangerously-skip-permissions" style={{ fontSize: 8.5, color: 'var(--err)', background: 'rgba(239,122,122,0.15)', border: '1px solid rgba(239,122,122,0.35)', borderRadius: 3, padding: '1px 4px', letterSpacing: 0.2, flexShrink: 0 }}>YOLO</span>
+      )}
+      {/* Play button for dev server */}
+      {hovered && hasDevServer && (
+        <span
+          onClick={launchDevServer}
+          title={`${project.appStartCmd} → http://localhost:${project.appPort}`}
+          style={{ fontSize: 9, color: launching ? 'var(--fg-3)' : 'var(--ok)', cursor: launching ? 'wait' : 'pointer', flexShrink: 0, lineHeight: 1, userSelect: 'none' }}
+        >
+          {launching ? '…' : '▶'}
+        </span>
       )}
       {hovered
         ? <IClose style={{ width: 9, height: 9, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.8 }} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onClose() }} />
@@ -405,6 +461,197 @@ function TemplatesSection({
     </div>
   )
 }
+
+// ── User Stories Section ───────────────────────────────────────────────────────
+
+const STORIES_COLLAPSED = 3
+
+// Inline type icons (mirrors KanbanBoard TypeIcon)
+function SidebarTypeIcon({ type }: { type?: string }) {
+  const s: React.CSSProperties = { width: 10, height: 10, flexShrink: 0 }
+  if (type === 'bug') return (
+    <svg viewBox="0 0 12 12" fill="none" stroke="var(--err)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M6 9a3 3 0 0 1-3-3V5a3 3 0 0 1 6 0v1a3 3 0 0 1-3 3z"/>
+      <path d="M3 5H1M9 5h2M3 7.5H1M9 7.5h2M4.5 3L3.5 2M7.5 3L8.5 2M6 9v2.5"/>
+    </svg>
+  )
+  if (type === 'nfc') return (
+    <svg viewBox="0 0 12 12" fill="none" stroke="#be95ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M6 1l1.5 3h3L8 6.5l1 3.5L6 8.5 3 10l1-3.5L1.5 4h3z"/>
+    </svg>
+  )
+  return (
+    <svg viewBox="0 0 12 12" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <circle cx="6" cy="3.5" r="2"/>
+      <path d="M2 11c0-2.2 1.8-4 4-4s4 1.8 4 4"/>
+    </svg>
+  )
+}
+
+function UserStoriesSection() {
+  const { kanban, projects } = useAppStore()
+  const [globalOpen, setGlobalOpen]   = useState(false)
+  const [sectionOpen, setSectionOpen] = useState(true)
+  const [expanded, setExpanded]       = useState(false)
+  // open a specific ticket directly in its project's KanbanBoard
+  const [openTicket, setOpenTicket]   = useState<{
+    projectId: string; projectName: string; projectPath: string; ticketId: string
+  } | null>(null)
+
+  // Flatten all tickets across projects, newest first
+  const allTickets = projects.flatMap(p =>
+    (kanban[p.id] ?? []).map(t => ({ ticket: t, project: p }))
+  ).sort((a, b) => {
+    const da = a.ticket.createdAt ? new Date(a.ticket.createdAt).getTime() : 0
+    const db = b.ticket.createdAt ? new Date(b.ticket.createdAt).getTime() : 0
+    return db - da
+  })
+
+  const totalCount = allTickets.length
+  const visible = expanded ? allTickets : allTickets.slice(0, STORIES_COLLAPSED)
+  const hidden = totalCount - STORIES_COLLAPSED
+
+  return (
+    <>
+      {globalOpen && <GlobalKanbanBoard onClose={() => setGlobalOpen(false)} />}
+      {openTicket && (
+        <KanbanBoard
+          projectId={openTicket.projectId}
+          projectName={openTicket.projectName}
+          projectPath={openTicket.projectPath}
+          initialDetailId={openTicket.ticketId}
+          onClose={() => setOpenTicket(null)}
+        />
+      )}
+
+      <div style={{ marginBottom: 14 }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 10px 6px 14px',
+        }}>
+          <span
+            onClick={() => setSectionOpen(o => !o)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', userSelect: 'none' }}
+          >
+            <IChev style={{ transform: sectionOpen ? 'rotate(90deg)' : 'none', width: 8, height: 8, transition: 'transform 0.1s', flexShrink: 0, color: 'var(--fg-3)' }} />
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)' }}>
+              User Stories
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 16, height: 16, padding: '0 5px', borderRadius: 99, background: 'var(--bg-3)', border: '1px solid var(--line)', color: 'var(--fg-3)', fontSize: 9.5, fontWeight: 600, letterSpacing: 0, lineHeight: 1 }}>
+              {totalCount}
+            </span>
+          </span>
+          <button
+            onClick={e => { e.stopPropagation(); setGlobalOpen(true) }}
+            style={iconBtn}
+            title="Alle User Stories öffnen"
+          >
+            <IKanban style={{ width: 11, height: 11 }} />
+          </button>
+        </div>
+
+        {/* Story rows */}
+        {sectionOpen && (
+          <>
+            {visible.map(({ ticket, project }) => (
+              <StoryRow
+                key={ticket.id}
+                ticket={ticket}
+                projectName={project.name}
+                onOpen={() => setOpenTicket({
+                  projectId: project.id,
+                  projectName: project.name,
+                  projectPath: project.path,
+                  ticketId: ticket.id,
+                })}
+              />
+            ))}
+
+            {totalCount === 0 && (
+              <div style={{ padding: '3px 10px 3px 14px', fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>
+                Keine User Stories
+              </div>
+            )}
+
+            {/* Show more / less toggle */}
+            {totalCount > STORIES_COLLAPSED && (
+              <div
+                onClick={() => setExpanded(e => !e)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '3px 10px',
+                  margin: '1px 6px 0', borderRadius: 5, cursor: 'pointer',
+                  color: 'var(--fg-3)', fontSize: 10.5,
+                }}
+              >
+                <IChev style={{ transform: expanded ? 'rotate(90deg)' : 'none', width: 8, height: 8 }} />
+                {expanded ? 'Weniger anzeigen' : `${hidden} weitere`}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
+function StoryRow({ ticket, projectName, onOpen }: {
+  ticket: { id: string; ticketNumber?: number; title: string; text?: string; createdAt?: string; type?: string }
+  projectName: string
+  onOpen: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+
+  const dateStr = ticket.createdAt
+    ? new Date(ticket.createdAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+    : ''
+
+  return (
+    <div
+      onClick={onOpen}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '5px 10px',
+        margin: '0 6px 1px', borderRadius: 5, cursor: 'pointer',
+        background: hovered ? 'var(--bg-3)' : 'transparent',
+        color: 'var(--fg-1)',
+      }}
+    >
+      {/* Type icon */}
+      <SidebarTypeIcon type={ticket.type} />
+
+      {/* ID badge */}
+      {ticket.ticketNumber != null && (
+        <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--accent)', flexShrink: 0, letterSpacing: 0.2 }}>
+          #{ticket.ticketNumber}
+        </span>
+      )}
+
+      {/* Title */}
+      <span style={{ flex: 1, fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {ticket.title}
+      </span>
+
+      {/* Project name + date on hover */}
+      {hovered ? (
+        <span style={{ fontSize: 9.5, color: 'var(--accent)', flexShrink: 0, opacity: 0.85 }}>→</span>
+      ) : (
+        <>
+          <span style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 60, whiteSpace: 'nowrap' }}>
+            {projectName}
+          </span>
+          {dateStr && (
+            <span style={{ fontSize: 9, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.6 }}>{dateStr}</span>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Collapsible section ───────────────────────────────────────────────────────
 
 function CollapsibleSection({ label, count, action, children, defaultOpen = true }: { label: string; count?: number; action?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)

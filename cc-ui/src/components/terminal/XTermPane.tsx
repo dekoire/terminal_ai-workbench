@@ -109,10 +109,11 @@ export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
     term.loadAddon(webLinks)
     term.open(el)
 
-    // Fit after layout is resolved; also retry 150 ms later for safety
+    // Fit after layout is resolved; auto-focus so keyboard input works immediately
     requestAnimationFrame(() => {
       fit.fit()
-      setTimeout(() => fit.fit(), 150)
+      term.focus()
+      setTimeout(() => { fit.fit(); term.focus() }, 150)
     })
 
     // ── WebSocket ─────────────────────────────────────────────────────────────
@@ -205,9 +206,29 @@ export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
     })
     ro.observe(el)
 
+    // Re-render xterm when window regains focus (e.g. after native OS dialogs)
+    const onWindowFocus = () => {
+      requestAnimationFrame(() => {
+        fit.fit()
+        term.refresh(0, term.rows - 1)
+      })
+    }
+    window.addEventListener('focus', onWindowFocus)
+
+    // Force repaint after any in-app overlay closes (modals, pickers, etc.)
+    const onRefresh = () => {
+      requestAnimationFrame(() => {
+        fit.fit()
+        term.refresh(0, term.rows - 1)
+      })
+    }
+    window.addEventListener('cc:terminal-refresh', onRefresh)
+
     return () => {
       termRef.current = null
       ro.disconnect()
+      window.removeEventListener('focus', onWindowFocus)
+      window.removeEventListener('cc:terminal-refresh', onRefresh)
       window.removeEventListener('cc:terminal-paste', onPaste)
       window.removeEventListener('cc:terminal-send-raw', onRaw)
       window.removeEventListener('cc:terminal-export', onExportRequest)
@@ -220,6 +241,7 @@ export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
   return (
     <div
       ref={containerRef}
+      onClick={() => termRef.current?.focus()}
       style={{
         flex: 1,
         minHeight: 0,
@@ -228,6 +250,7 @@ export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
         background: resolveTheme(terminalTheme, appTheme).background,
         overflow: 'hidden',
         boxSizing: 'border-box',
+        cursor: 'text',
       }}
     />
   )

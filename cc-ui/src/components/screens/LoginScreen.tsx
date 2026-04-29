@@ -37,7 +37,7 @@ export function LoginScreen() {
               <path d="M3 5l3 3-3 3M9 11h4"/>
             </svg>
           </span>
-          <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--fg-0)', letterSpacing: -0.2 }}>Claude Code UI</span>
+          <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--fg-0)', letterSpacing: -0.2 }}>Codera AI</span>
         </div>
         <span style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 40, marginLeft: 38 }}>v0.1.0 · macOS · arm64</span>
 
@@ -58,7 +58,7 @@ export function LoginScreen() {
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 10.5, color: 'var(--fg-3)' }}>
-          <span>© Claude Code UI</span>
+          <span>© Codera AI</span>
           <span>·</span>
           <a style={loginLink} href="#">Docs</a>
           <a style={loginLink} href="#">GitHub</a>

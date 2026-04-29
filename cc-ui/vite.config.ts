@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { createRequire } from 'module'
@@ -129,22 +129,24 @@ function apiPlugin() {
       }) as Connect.NextHandleFunction)
 
       // Check if a command exists (GET /api/which?cmd=claude)
+      // Uses zsh -i so shell aliases from .zshrc are visible too
       server.middlewares.use('/api/which', ((req, res) => {
         res.setHeader('Content-Type', 'application/json')
         const url = new URL(req.url ?? '/', 'http://localhost')
         const cmd = url.searchParams.get('cmd') ?? ''
         if (!cmd) { res.end(JSON.stringify({ ok: false, path: null })); return }
-        const safePath = [
-          '/opt/homebrew/bin', '/opt/homebrew/sbin',
-          '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin',
-          process.env.PATH ?? '',
-        ].filter(Boolean).join(':')
-        exec(`which ${JSON.stringify(cmd)}`, { env: { ...process.env, PATH: safePath } }, (err, out) => {
-          if (err || !out.trim()) {
+        const safe = cmd.replace(/['"\\;|&$`]/g, '')   // sanitise
+        // -i loads .zshrc so shell aliases like cc-mini are visible
+        exec(`zsh -i -c "type -a '${safe}' 2>/dev/null"`, { timeout: 4000 }, (err, out) => {
+          const text = out?.trim() ?? ''
+          if (err || !text) {
             res.end(JSON.stringify({ ok: false, path: null }))
-          } else {
-            res.end(JSON.stringify({ ok: true, path: out.trim() }))
+            return
           }
+          // Extract binary path if available, otherwise use the type description
+          const pathMatch = text.match(/is (\/[^\s]+)/)
+          const display = pathMatch ? pathMatch[1] : text.split('\n')[0]
+          res.end(JSON.stringify({ ok: true, path: display }))
         })
       }) as Connect.NextHandleFunction)
 
@@ -221,6 +223,7 @@ function apiPlugin() {
           try {
             const { path: filePath, content } = JSON.parse(body) as { path: string; content: string }
             const resolved = (filePath ?? '').replace(/^~/, process.env.HOME ?? '/')
+            fs.mkdirSync(path.dirname(resolved), { recursive: true })
             fs.writeFileSync(resolved, content, 'utf-8')
             res.end('{"ok":true}')
           } catch (e) {
@@ -264,6 +267,9 @@ function apiPlugin() {
             const { provider, apiKey, model, text, systemPrompt } =
               JSON.parse(body) as { provider: string; apiKey: string; model: string; text: string; systemPrompt?: string }
             const sysMsg = systemPrompt ?? 'Verbessere den folgenden Text sprachlich und inhaltlich. Mache ihn klarer, präziser und professioneller. Gib nur den verbesserten Text zurück, ohne Erklärungen oder zusätzliche Kommentare.'
+            console.log('\n[ai-refine] ▶ provider:', provider, '| model:', model)
+            console.log('[ai-refine] systemPrompt:\n', sysMsg)
+            console.log('[ai-refine] text (files sent):\n', text.slice(0, 800), text.length > 800 ? `\n...(${text.length} chars total)` : '')
 
             if (provider === 'anthropic') {
               const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -283,9 +289,83 @@ function apiPlugin() {
                 body: JSON.stringify({ model, messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: text }] }),
               })
               const d = await r.json() as { choices?: { message: { content: string } }[]; error?: { message: string } }
-              if (!r.ok) { res.end(JSON.stringify({ ok: false, error: d?.error?.message ?? 'API error' })); return }
-              res.end(JSON.stringify({ ok: true, text: d.choices?.[0]?.message?.content ?? text }))
+              if (!r.ok) { console.log('[ai-refine] ✗ error:', d?.error?.message); res.end(JSON.stringify({ ok: false, error: d?.error?.message ?? 'API error' })); return }
+              const result = d.choices?.[0]?.message?.content ?? text
+              console.log('[ai-refine] ✓ response:\n', result)
+              res.end(JSON.stringify({ ok: true, text: result }))
             }
+          } catch (e) {
+            res.end(JSON.stringify({ ok: false, error: String(e) }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Check if a port is in use (GET /api/check-port?port=N)
+      server.middlewares.use('/api/check-port', ((req, res) => {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const port = parseInt(url.searchParams.get('port') ?? '0', 10)
+        res.setHeader('Content-Type', 'application/json')
+        if (!port) { res.end(JSON.stringify({ ok: false, inUse: false })); return }
+        exec(`lsof -ti tcp:${port}`, (err, stdout) => {
+          if (err || !stdout.trim()) {
+            res.end(JSON.stringify({ ok: true, inUse: false }))
+          } else {
+            const pids = stdout.trim().split('\n').map(p => parseInt(p, 10)).filter(Boolean)
+            res.end(JSON.stringify({ ok: true, inUse: true, pids }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Kill process on a port (POST /api/kill-port)
+      server.middlewares.use('/api/kill-port', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{"ok":false}'); return }
+        let body = ''
+        req.on('data', (d: Buffer) => { body += d.toString() })
+        req.on('end', () => {
+          try {
+            const { port } = JSON.parse(body) as { port: number }
+            exec(`lsof -ti tcp:${port} | xargs kill -9 2>/dev/null; true`, () => {
+              res.end('{"ok":true}')
+            })
+          } catch (e) {
+            res.end(JSON.stringify({ ok: false, error: String(e) }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
+      // Start app in background (POST /api/start-app)
+      server.middlewares.use('/api/start-app', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{"ok":false}'); return }
+        let body = ''
+        req.on('data', (d: Buffer) => { body += d.toString() })
+        req.on('end', () => {
+          try {
+            const { projectPath, port, startCmd } = JSON.parse(body) as { projectPath: string; port?: number; startCmd: string }
+            const logFile = `/tmp/cc-app-${port ?? 'unknown'}.log`
+
+            // Step 1: kill port if given
+            const killCmd = port ? `lsof -ti tcp:${port} | xargs kill -9 2>/dev/null; true` : 'true'
+            exec(killCmd, () => {
+              // Step 2: spawn app detached from terminal
+              const child = spawn('bash', ['-c', `cd ${JSON.stringify(projectPath)} && ${startCmd}`], {
+                detached: true,
+                stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
+              })
+              child.unref()
+              const pid = child.pid ?? 0
+              console.log(`[start-app] started PID ${pid} | ${startCmd} | log → ${logFile}`)
+
+              // Step 3: open browser after 2s
+              if (port) {
+                setTimeout(() => {
+                  exec(`open http://localhost:${port}`)
+                }, 2000)
+              }
+
+              res.end(JSON.stringify({ ok: true, pid, logFile }))
+            })
           } catch (e) {
             res.end(JSON.stringify({ ok: false, error: String(e) }))
           }
@@ -308,6 +388,47 @@ function apiPlugin() {
             res.end(JSON.stringify({ ok: false, error: String(e) }))
           }
         })
+      }) as Connect.NextHandleFunction)
+
+      // Read all .md files from docs/ directory (GET /api/read-docs?path=…)
+      server.middlewares.use('/api/read-docs', ((req, res) => {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const projectPath = (url.searchParams.get('path') ?? '').replace(/^~/, process.env.HOME ?? '/')
+        res.setHeader('Content-Type', 'application/json')
+
+        if (!projectPath) { res.end(JSON.stringify({ ok: false, error: 'missing path', files: [] })); return }
+
+        const docsDir = path.join(projectPath, 'docs')
+        const MAX_TOTAL = 80_000 // ~80 KB total to stay within AI context
+
+        const readMdRecursive = (dir: string, collected: { filename: string; content: string }[], totalRef: { n: number }) => {
+          let entries: fs.Dirent[]
+          try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+          for (const e of entries) {
+            if (totalRef.n >= MAX_TOTAL) break
+            const full = path.join(dir, e.name)
+            if (e.isDirectory()) {
+              readMdRecursive(full, collected, totalRef)
+            } else if (e.isFile() && /\.(md|txt)$/i.test(e.name)) {
+              try {
+                const content = fs.readFileSync(full, 'utf-8').slice(0, 20_000)
+                const relative = full.replace(projectPath + '/', '')
+                collected.push({ filename: relative, content })
+                totalRef.n += content.length
+              } catch { /* skip unreadable files */ }
+            }
+          }
+        }
+
+        const files: { filename: string; content: string }[] = []
+        const totalRef = { n: 0 }
+        readMdRecursive(docsDir, files, totalRef)
+
+        if (files.length === 0) {
+          res.end(JSON.stringify({ ok: false, error: 'Keine Dokumentationsdateien unter docs/ gefunden', files: [] }))
+        } else {
+          res.end(JSON.stringify({ ok: true, files }))
+        }
       }) as Connect.NextHandleFunction)
 
       // Git remote URL (GET /api/git-remote?path=…)
@@ -418,18 +539,14 @@ function terminalPlugin() {
                 process.env.PATH ?? '',
               ].filter(Boolean).join(':')
 
-              let spawnCmd: string
-              let spawnArgs: string[]
-              if (cmd === 'zsh' && !args) {
-                // Plain interactive login shell
-                spawnCmd = ZSH
-                spawnArgs = ['-li']
-              } else {
-                // Alias/command — run via interactive login shell so .zshrc aliases are available
-                const fullCmd = args ? `${cmd} ${args}` : cmd
-                spawnCmd = ZSH
-                spawnArgs = ['-lic', fullCmd]
-              }
+              // Always spawn a fully-interactive login shell (-l -i).
+              // This guarantees .zshrc aliases (like cc-mini, cc-ds4pro) are loaded.
+              // For alias sessions we auto-type the command after the shell is ready,
+              // exactly as if the user typed it — the most reliable way to invoke
+              // shell aliases including those with spaces in arguments.
+              const spawnCmd = ZSH
+              const spawnArgs = ['-li']
+              const isPlainShell = (cmd === 'zsh' && !args)
 
               const ptyEnv: Record<string, string> = {
                 ...(process.env as Record<string, string>),
@@ -450,6 +567,16 @@ function terminalPlugin() {
 
               const session: PtySession = { pty: ptyProc, clients: new Set([ws]) }
               sessions.set(sessionId, session)
+
+              // Auto-type the alias command once the shell has initialised.
+              // Using a real interactive shell + write() is the only way to
+              // reliably expand .zshrc aliases like cc-mini or cc-ds4pro.
+              if (!isPlainShell) {
+                const fullCmd = args ? `${cmd} ${args}` : cmd
+                setTimeout(() => {
+                  try { ptyProc.write(fullCmd + '\r') } catch {}
+                }, 600)
+              }
 
               const broadcast = (data: string) => {
                 const payload = JSON.stringify({ type: 'data', data })
@@ -503,5 +630,5 @@ function terminalPlugin() {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), apiPlugin(), terminalPlugin()],
-  server: { port: 5174 },
+  server: { port: 2002 },
 })

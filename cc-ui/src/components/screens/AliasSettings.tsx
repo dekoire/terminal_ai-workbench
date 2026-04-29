@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import type { Alias, RepoToken } from '../../store/useAppStore'
+import type { Alias, RepoToken, DocTemplate } from '../../store/useAppStore'
 import { IPlus, IDrag, IEdit, ITrash } from '../primitives/Icons'
 import { Pill } from '../primitives/Pill'
 import { ACCENT_PRESETS, TERMINAL_THEMES, applyPreset } from '../../theme/presets'
-import type { AIProvider } from '../../store/useAppStore'
+import type { AIProvider, TerminalShortcut } from '../../store/useAppStore'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const fieldLabel: React.CSSProperties = {
@@ -26,7 +26,7 @@ const btnGhost: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)',
 }
 
-const NAV = ['Aliases', 'Tokens', 'Prompt templates', 'Appearance', 'Terminal', 'AI']
+const NAV = ['Aliases', 'Tokens', 'Prompt templates', 'Appearance', 'Terminal', 'Terminal-Befehle', 'AI', 'Doc Templates']
 
 type EditMode = { kind: 'new' } | { kind: 'edit'; id: string } | null
 const emptyAlias = () => ({ name: '', cmd: 'claude', args: '--model sonnet-4.6' })
@@ -112,7 +112,7 @@ export function AliasSettings() {
             <path d="M3 5l3 3-3 3M9 11h4"/>
           </svg>
         </span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Claude Code UI</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Codera AI</span>
         <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>· Settings</span>
       </div>
 
@@ -147,7 +147,9 @@ export function AliasSettings() {
           {activeNav === 'Prompt templates' && <TemplatesPanel />}
           {activeNav === 'Appearance'       && <AppearancePanel />}
           {activeNav === 'Terminal'         && <TerminalFontPanel />}
+          {activeNav === 'Terminal-Befehle' && <TerminalCommandsPanel />}
           {activeNav === 'AI'               && <AIPanel />}
+          {activeNav === 'Doc Templates'    && <DocTemplatesPanel />}
         </div>
       </div>
     </div>
@@ -163,20 +165,8 @@ function AliasesPanel({ aliases, cmdChecks, activeId, editMode, form, setForm, o
   setEditMode: (m: EditMode) => void; removeAlias: (id: string) => void
   reorderAliases: (ids: string[]) => void
 }) {
-  const dragId = useRef<string | null>(null)
+  const [dragging, setDragging] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
-
-  const onDragStart = (id: string) => { dragId.current = id }
-  const onDragOver  = (e: React.DragEvent, id: string) => { e.preventDefault(); setDragOver(id) }
-  const onDrop      = (targetId: string) => {
-    const from = dragId.current
-    if (!from || from === targetId) { setDragOver(null); return }
-    const ids = aliases.map(a => a.id)
-    const fi = ids.indexOf(from); const ti = ids.indexOf(targetId)
-    ids.splice(fi, 1); ids.splice(ti, 0, from)
-    reorderAliases(ids)
-    setDragOver(null); dragId.current = null
-  }
 
   return (
     <div style={{ padding: '20px 24px' }}>
@@ -199,36 +189,56 @@ function AliasesPanel({ aliases, cmdChecks, activeId, editMode, form, setForm, o
         {aliases.map((a, i) => (
           <div
             key={a.id}
-            draggable
-            onDragStart={() => onDragStart(a.id)}
-            onDragOver={e => onDragOver(e, a.id)}
-            onDrop={() => onDrop(a.id)}
-            onDragEnd={() => setDragOver(null)}
+            draggable={true}
+            onDragStart={e => {
+              e.dataTransfer.effectAllowed = 'move'
+              e.dataTransfer.setData('text/plain', a.id)
+              setTimeout(() => setDragging(a.id), 0)
+            }}
+            onDragEnd={() => { setDragging(null); setDragOver(null) }}
+            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOver !== a.id) setDragOver(a.id) }}
+            onDragLeave={() => setDragOver(v => v === a.id ? null : v)}
+            onDrop={e => {
+              e.preventDefault()
+              const from = e.dataTransfer.getData('text/plain')
+              setDragging(null); setDragOver(null)
+              if (!from || from === a.id) return
+              const ids = aliases.map(x => x.id)
+              const fi = ids.indexOf(from); const ti = ids.indexOf(a.id)
+              if (fi === -1 || ti === -1) return
+              ids.splice(fi, 1); ids.splice(ti, 0, from)
+              reorderAliases(ids)
+            }}
             onClick={() => openEdit(a)}
             style={{
-              display: 'grid', gridTemplateColumns: '28px 150px 110px 1fr 100px 44px',
+              display: 'grid', gridTemplateColumns: '42px 150px 110px 1fr 100px 44px',
               padding: '8px 12px', alignItems: 'center', fontSize: 11.5,
               borderBottom: i < aliases.length - 1 ? '1px solid var(--line)' : 'none',
               background: dragOver === a.id ? 'var(--accent-soft)' : a.id === activeId ? 'var(--bg-2)' : 'transparent',
               borderLeft: dragOver === a.id ? '2px solid var(--accent)' : '2px solid transparent',
               gap: 10, cursor: 'pointer', transition: 'background 0.1s',
+              opacity: dragging === a.id ? 0.4 : 1,
             }}
           >
-            {/* Drag handle + position badge */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {/* Drag handle + position number (all aliases) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <IDrag style={{ color: 'var(--fg-3)', cursor: 'grab', flexShrink: 0 }} />
-              {i < 4 && (
-                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-soft)', borderRadius: 3, padding: '0 3px', lineHeight: '14px' }}>
-                  {i + 1}
-                </span>
-              )}
+              <span style={{
+                fontSize: 9.5, fontWeight: 700, minWidth: 16, textAlign: 'center',
+                color: i < 4 ? 'var(--accent)' : 'var(--fg-3)',
+                background: i < 4 ? 'var(--accent-soft)' : 'var(--bg-3)',
+                border: `1px solid ${i < 4 ? 'var(--accent-line)' : 'var(--line)'}`,
+                borderRadius: 3, padding: '0 4px', lineHeight: '16px',
+              }}>
+                {i + 1}
+              </span>
             </div>
             <span className="mono" style={{ color: a.id === activeId ? 'var(--accent)' : 'var(--fg-0)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
             <span className="mono" style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.cmd}</span>
             <span className="mono" style={{ color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.args || '—'}</span>
             {cmdChecks[a.id] === undefined
               ? <Pill tone="neutral">…</Pill>
-              : cmdChecks[a.id] ? <Pill tone="ok" dot>ready</Pill> : <Pill tone="danger" dot>not found</Pill>
+              : cmdChecks[a.id] ? <Pill tone="ok" dot>ready</Pill> : <Pill tone="warn" dot>shell alias</Pill>
             }
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={(e: React.MouseEvent) => { e.stopPropagation(); openEdit(a) }} />
@@ -254,7 +264,14 @@ function AliasesPanel({ aliases, cmdChecks, activeId, editMode, form, setForm, o
             <CmdField cmd={form.cmd} onChange={cmd => setForm(f => ({ ...f, cmd }))} />
             <div style={{ gridColumn: '1 / span 2' }}>
               <label style={fieldLabel}>Arguments</label>
-              <input style={fieldInput} value={form.args} onChange={e => setForm(f => ({ ...f, args: e.target.value }))} placeholder="--model sonnet-4.6" />
+              <input style={fieldInput} value={form.args} onChange={e => setForm(f => ({ ...f, args: e.target.value }))} placeholder="--model claude-sonnet-4-5" />
+              {/* Warn if old dot-format model name is used */}
+              {/--model\s+\S*\d+\.\d+/.test(form.args) && (
+                <div style={{ marginTop: 5, padding: '5px 10px', background: 'rgba(244,195,101,0.12)', border: '1px solid rgba(244,195,101,0.4)', borderRadius: 5, fontSize: 11, color: 'var(--warn)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>⚠</span>
+                  <span>Altes Modell-Format erkannt. Seit Claude 2.x: <code style={{ fontFamily: 'var(--font-mono)' }}>--model claude-sonnet-4-5</code> oder kurz <code style={{ fontFamily: 'var(--font-mono)' }}>--model sonnet</code></span>
+                </div>
+              )}
             </div>
             <div style={{ gridColumn: '1 / span 2', display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
               <button style={btnGhost} onClick={() => setEditMode(null)}>Cancel</button>
@@ -512,6 +529,119 @@ function TerminalFontPanel() {
   )
 }
 
+// ── Terminal Commands Panel ───────────────────────────────────────────────────
+
+const SHORTCUT_CATEGORY_LABELS: Record<string, string> = {
+  control:    'Prozesssteuerung',
+  editing:    'Zeile bearbeiten',
+  navigation: 'Navigation & History',
+}
+
+function TerminalCommandsPanel() {
+  const { terminalShortcuts, updateTerminalShortcut, resetTerminalShortcuts } = useAppStore()
+
+  const categories = ['control', 'navigation', 'editing'] as const
+  const enabledCount = terminalShortcuts.filter(s => s.enabled).length
+
+  return (
+    <div style={{ padding: '20px 24px' }}>
+      {/* Title row */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16 }}>
+        <div>
+          <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600, color: 'var(--fg-0)' }}>Terminal-Befehle</h2>
+          <p style={{ margin: 0, color: 'var(--fg-3)', fontSize: 11.5 }}>
+            Tastenkürzel im Eingabefeld unterhalb des Terminals. &nbsp;
+            <span style={{ color: 'var(--accent)' }}>{enabledCount} / {terminalShortcuts.length} aktiv</span>
+          </p>
+        </div>
+        <button
+          onClick={resetTerminalShortcuts}
+          style={{ ...btnGhost, fontSize: 11, padding: '5px 12px', flexShrink: 0 }}
+          title="Alle Kürzel auf Standard zurücksetzen"
+        >
+          Zurücksetzen
+        </button>
+      </div>
+
+      {/* Shortcut groups */}
+      {categories.map(cat => {
+        const items = terminalShortcuts.filter(s => s.category === cat)
+        if (!items.length) return null
+        return (
+          <section key={cat} style={{ marginBottom: 28 }}>
+            <SectionLabel>{SHORTCUT_CATEGORY_LABELS[cat]}</SectionLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {items.map(sc => (
+                <ShortcutRow key={sc.id} sc={sc} onToggle={() => updateTerminalShortcut(sc.id, { enabled: !sc.enabled })} />
+              ))}
+            </div>
+          </section>
+        )
+      })}
+
+      {/* Info box */}
+      <div style={{ padding: '12px 16px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 11.5, color: 'var(--fg-3)', lineHeight: 1.7 }}>
+        <div style={{ fontWeight: 600, color: 'var(--fg-2)', marginBottom: 6 }}>Hinweise</div>
+        <div>• <b>Tab</b> sendet das Autovervollständigungs-Signal — nützlich für Shell-Completion</div>
+        <div>• <b>↑ / ↓</b> navigiert in der History, wenn das Eingabefeld leer ist oder der Cursor am Anfang/Ende steht</div>
+        <div>• Alle <b>Ctrl-Kürzel</b> werden direkt als Steuerzeichen ans Terminal geschickt</div>
+        <div>• <b>Shift+Enter</b> erzeugt immer eine neue Zeile im Eingabefeld</div>
+        <div>• <b>Enter</b> sendet den aktuellen Inhalt ans Terminal</div>
+      </div>
+    </div>
+  )
+}
+
+function ShortcutRow({ sc, onToggle }: { sc: TerminalShortcut; onToggle: () => void }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '7px 10px', borderRadius: 7,
+        background: hov ? 'var(--bg-3)' : 'transparent',
+        border: '1px solid transparent',
+        transition: 'background 0.12s',
+      }}
+    >
+      {/* Key badge */}
+      <span style={{
+        minWidth: 68, fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 700,
+        color: sc.enabled ? 'var(--accent)' : 'var(--fg-3)',
+        background: sc.enabled ? 'var(--accent-soft)' : 'var(--bg-3)',
+        border: `1px solid ${sc.enabled ? 'var(--accent-line)' : 'var(--line)'}`,
+        borderRadius: 5, padding: '3px 8px', textAlign: 'center', flexShrink: 0,
+        transition: 'all 0.15s',
+      }}>
+        {sc.label}
+      </span>
+      {/* Description */}
+      <span style={{ flex: 1, fontSize: 12, color: sc.enabled ? 'var(--fg-1)' : 'var(--fg-3)' }}>
+        {sc.description}
+      </span>
+      {/* Toggle */}
+      <button
+        onClick={onToggle}
+        style={{
+          width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer',
+          background: sc.enabled ? 'var(--accent)' : 'var(--bg-3)',
+          position: 'relative', flexShrink: 0, transition: 'background 0.2s',
+          boxShadow: sc.enabled ? '0 0 0 1px var(--accent)' : '0 0 0 1px var(--line)',
+        }}
+        title={sc.enabled ? 'Deaktivieren' : 'Aktivieren'}
+      >
+        <span style={{
+          position: 'absolute', top: 3, left: sc.enabled ? 18 : 3,
+          width: 14, height: 14, borderRadius: '50%',
+          background: sc.enabled ? 'var(--accent-fg, #fff)' : 'var(--fg-3)',
+          transition: 'left 0.2s',
+        }} />
+      </button>
+    </div>
+  )
+}
+
 const UI_FONTS = [
   { id: 'system',    label: 'System default' },
   { id: 'inter',     label: 'Inter' },
@@ -734,8 +864,15 @@ const PROVIDER_DEFAULTS: Record<string, { label: string; model: string; placehol
   deepseek:  { label: 'DeepSeek',          model: 'deepseek-chat',  placeholder: 'sk-…',         docUrl: 'https://platform.deepseek.com/api_keys' },
 }
 
+const AI_FUNCTIONS: { key: string; label: string; description: string }[] = [
+  { key: 'terminal',   label: 'Terminal Textbox',       description: 'KI-Überarbeitung im Eingabefeld der Terminalsitzung' },
+  { key: 'kanban',     label: 'Kanban User Story',      description: 'User Story generieren & überarbeiten im Kanban-Board' },
+  { key: 'devDetect',  label: 'Dev Server Erkennung',   description: 'Start-Befehl automatisch aus Projektdateien ableiten (▶ AI-Button im Dev-Server-Dialog)' },
+  { key: 'docUpdate',  label: 'Docu Update',            description: 'Dokumentation mit AI aktualisieren (Rechtsklick → Docu aktualisieren)' },
+]
+
 function AIPanel() {
-  const { aiProviders, activeAiProvider, addAiProvider, updateAiProvider, removeAiProvider, setActiveAiProvider } = useAppStore()
+  const { aiProviders, activeAiProvider, addAiProvider, updateAiProvider, removeAiProvider, setActiveAiProvider, aiFunctionMap, setAiFunctionMap } = useAppStore()
   const [editId, setEditId]   = useState<string | null>(null)
   const [adding, setAdding]   = useState(false)
   const [showKeys, setShowKeys] = useState<Set<string>>(new Set())
@@ -845,8 +982,159 @@ function AIPanel() {
         </div>
       )}
 
+      {/* Function assignment */}
+      {aiProviders.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 4 }}>Funktionszuweisung</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 12 }}>Welcher Anbieter soll für welche Funktion verwendet werden?</div>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
+            {AI_FUNCTIONS.map((fn, i) => {
+              const selected = aiFunctionMap[fn.key] || activeAiProvider || aiProviders[0]?.id || ''
+              return (
+                <div key={fn.key} style={{
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
+                  padding: '12px 16px', alignItems: 'center',
+                  borderBottom: i < AI_FUNCTIONS.length - 1 ? '1px solid var(--line)' : 'none',
+                }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{fn.label}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>{fn.description}</div>
+                  </div>
+                  <select
+                    value={selected}
+                    onChange={e => setAiFunctionMap(fn.key, e.target.value)}
+                    style={{ ...fieldInput, cursor: 'pointer', fontSize: 12 }}
+                  >
+                    {aiProviders.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.model})</option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div style={{ marginTop: 20, padding: 14, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)', fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
         <strong style={{ color: 'var(--fg-1)' }}>Verwendung:</strong> Klicke im Eingabefeld auf den <span style={{ fontWeight: 600, color: 'var(--accent)' }}>✦ KI</span>-Button, um deinen Text vor dem Senden automatisch sprachlich und inhaltlich zu verbessern. API-Keys werden lokal in <span className="mono">~/.cc-ui-data.json</span> gespeichert.
+      </div>
+    </div>
+  )
+}
+
+// ── Doc Templates Panel ───────────────────────────────────────────────────────
+
+function DocTemplatesPanel() {
+  const { docTemplates, addDocTemplate, updateDocTemplate, removeDocTemplate } = useAppStore()
+  const [editId, setEditId] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const emptyForm = (): Omit<DocTemplate, 'id'> => ({ name: '', relativePath: '', content: '', enabled: true })
+  const [form, setForm] = useState<Omit<DocTemplate, 'id'>>(emptyForm)
+
+  const openAdd  = () => { setAdding(true); setEditId(null); setForm(emptyForm()) }
+  const openEdit = (t: DocTemplate) => { setEditId(t.id); setAdding(false); setForm({ name: t.name, relativePath: t.relativePath, content: t.content, enabled: t.enabled }) }
+  const cancel   = () => { setAdding(false); setEditId(null) }
+
+  const save = () => {
+    if (!form.name.trim() || !form.relativePath.trim()) return
+    if (adding) {
+      addDocTemplate({ id: `dt${Date.now()}`, ...form, name: form.name.trim(), relativePath: form.relativePath.trim() })
+    } else if (editId) {
+      updateDocTemplate(editId, { ...form, name: form.name.trim(), relativePath: form.relativePath.trim() })
+    }
+    cancel()
+  }
+
+  return (
+    <div style={{ padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <div>
+          <h2 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 600, color: 'var(--fg-0)' }}>Doc Templates</h2>
+          <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>Werden beim Erstellen neuer Projekte automatisch angelegt. Per Rechtsklick auf ein Projekt aktualisierbar.</div>
+        </div>
+        <span style={{ flex: 1 }} />
+        <button style={btnPrimary} onClick={openAdd}><IPlus />Neue Vorlage</button>
+      </div>
+
+      {docTemplates.length === 0 && !adding && (
+        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6, marginTop: 12 }}>
+          Keine Vorlagen vorhanden.
+        </div>
+      )}
+
+      {docTemplates.length > 0 && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginTop: 12, marginBottom: 16 }}>
+          {docTemplates.map((t, i) => (
+            <div key={t.id} style={{
+              display: 'grid', gridTemplateColumns: '36px 1fr 160px 44px',
+              padding: '9px 14px', alignItems: 'center', gap: 12, fontSize: 12,
+              borderBottom: i < docTemplates.length - 1 ? '1px solid var(--line)' : 'none',
+              background: t.id === editId ? 'var(--accent-soft)' : 'transparent',
+            }}>
+              {/* Toggle */}
+              <button
+                onClick={() => updateDocTemplate(t.id, { enabled: !t.enabled })}
+                style={{ width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', background: t.enabled ? 'var(--accent)' : 'var(--bg-3)', position: 'relative', flexShrink: 0, transition: 'background 0.2s', boxShadow: t.enabled ? '0 0 0 1px var(--accent)' : '0 0 0 1px var(--line)' }}
+              >
+                <span style={{ position: 'absolute', top: 3, left: t.enabled ? 18 : 3, width: 14, height: 14, borderRadius: '50%', background: t.enabled ? 'var(--accent-fg, #fff)' : 'var(--fg-3)', transition: 'left 0.2s' }} />
+              </button>
+              {/* Name */}
+              <div>
+                <span style={{ fontWeight: 600, color: t.enabled ? 'var(--fg-0)' : 'var(--fg-3)' }}>{t.name}</span>
+              </div>
+              {/* Path */}
+              <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.relativePath}</span>
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => openEdit(t)} />
+                <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`"${t.name}" löschen?`)) removeDocTemplate(t.id) }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add / Edit form */}
+      {(adding || editId) && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 6, padding: 16, background: 'var(--bg-1)', marginTop: 4 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 14 }}>
+            {adding ? 'Neue Vorlage anlegen' : 'Vorlage bearbeiten'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={fieldLabel}>Name</label>
+              <input style={fieldInput} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="z.B. CLAUDE.md" autoFocus />
+            </div>
+            <div>
+              <label style={fieldLabel}>Relativer Pfad im Projekt</label>
+              <input style={fieldInput} value={form.relativePath} onChange={e => setForm(f => ({ ...f, relativePath: e.target.value }))} placeholder="z.B. Docs/RULES.md" />
+            </div>
+            <div style={{ gridColumn: '1 / span 2' }}>
+              <label style={fieldLabel}>Inhalt (Markdown)</label>
+              <textarea
+                style={{ ...fieldInput, minHeight: 280, resize: 'vertical', lineHeight: 1.5 }}
+                value={form.content}
+                onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+                spellCheck={false}
+              />
+            </div>
+            <div style={{ gridColumn: '1 / span 2', display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button style={btnGhost} onClick={cancel}>Abbrechen</button>
+              <button
+                style={{ ...btnPrimary, opacity: (!form.name.trim() || !form.relativePath.trim()) ? 0.5 : 1 }}
+                disabled={!form.name.trim() || !form.relativePath.trim()}
+                onClick={save}
+              >
+                {adding ? 'Speichern' : 'Aktualisieren'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 16, padding: 14, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)', fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
+        <strong style={{ color: 'var(--fg-1)' }}>Hinweis:</strong> Aktivierte Vorlagen werden beim Anlegen eines neuen Projekts automatisch in den Projektordner geschrieben — nur wenn die Datei noch nicht existiert. Per Rechtsklick auf ein Projekt kann die Doku mit einem AI-Anbieter (<span className="mono">Initial Docu Check</span>) aktualisiert werden.
       </div>
     </div>
   )

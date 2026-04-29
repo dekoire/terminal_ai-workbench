@@ -16,7 +16,25 @@ export function NewSessionModal() {
 
   const start = () => {
     const id = `s${Date.now()}`
-    addSession(activeProjectId, { id, name: title || 'New session', alias: aliasName, status: 'active', permMode, startedAt: Date.now() })
+    const selectedAlias = aliases.find(a => a.name === aliasName)
+    // Resolve cmd+args at creation time so XTermPane never uses a stale lookup
+    const baseCmd  = selectedAlias?.cmd  ?? 'zsh'
+    let   baseArgs = selectedAlias?.args ?? ''
+    // Bake in --dangerously-skip-permissions if session or alias is dangerous
+    const isDangerous = permMode === 'dangerous' || selectedAlias?.permMode === 'dangerous'
+    if (isDangerous && !baseArgs.includes('--dangerously-skip-permissions')) {
+      baseArgs = baseArgs ? baseArgs + ' --dangerously-skip-permissions' : '--dangerously-skip-permissions'
+    }
+    addSession(activeProjectId, {
+      id,
+      name: title || aliasName || 'New session',
+      alias: aliasName,
+      cmd: baseCmd,
+      args: baseArgs,
+      status: 'active',
+      permMode: isDangerous ? 'dangerous' : permMode,
+      startedAt: Date.now(),
+    })
     setActiveSession(id)
     setNewSessionOpen(false)
   }
@@ -61,18 +79,29 @@ export function NewSessionModal() {
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {aliases.map(a => (
-                  <div key={a.name} onClick={() => setAliasName(a.name)} style={{ padding: '10px 12px', borderRadius: 6, border: `1px solid ${aliasName === a.name ? 'var(--accent)' : 'var(--line-strong)'}`, background: aliasName === a.name ? 'var(--accent-soft)' : 'var(--bg-2)', cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                      <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: aliasName === a.name ? 'var(--accent)' : 'var(--fg-0)' }}>{a.name}</span>
-                      {aliasName === a.name && <ICheck style={{ color: 'var(--accent)', marginLeft: 'auto' }} />}
+                {aliases.map((a, idx) => {
+                  const pos = idx + 1
+                  const isSelected = aliasName === a.name
+                  const isShellAlias = a.cmd ? !a.cmd.startsWith('/') : false
+                  return (
+                    <div key={a.name} onClick={() => setAliasName(a.name)} style={{ padding: '10px 12px', borderRadius: 6, border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--line-strong)'}`, background: isSelected ? 'var(--accent-soft)' : 'var(--bg-2)', cursor: 'pointer', position: 'relative' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: pos <= 4 ? 'var(--accent)' : 'var(--fg-3)', background: pos <= 4 ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${pos <= 4 ? 'var(--accent)' : 'var(--line-strong)'}`, borderRadius: 3, padding: '0 4px', lineHeight: '14px', flexShrink: 0 }}>{pos}</span>
+                        <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                        {isSelected && <ICheck style={{ color: 'var(--accent)', marginLeft: 'auto', flexShrink: 0 }} />}
+                      </div>
+                      <div className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.cmd} {a.args}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <span style={{ fontSize: 10.5, color: a.permMode === 'dangerous' ? 'var(--danger)' : 'var(--fg-3)' }}>
+                          {a.permMode === 'dangerous' ? '⚠ dangerous' : 'ask each time'}
+                        </span>
+                        {isShellAlias && (
+                          <span style={{ fontSize: 9, color: 'var(--warn, #e6a817)', background: 'rgba(230,168,23,0.1)', border: '1px solid rgba(230,168,23,0.3)', borderRadius: 3, padding: '0 4px', lineHeight: '14px' }}>shell alias</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)' }}>{a.cmd} {a.args}</div>
-                    <div style={{ fontSize: 10.5, color: a.permMode === 'dangerous' ? 'var(--danger)' : 'var(--fg-3)', marginTop: 4 }}>
-                      {a.permMode === 'dangerous' ? '⚠ dangerous' : 'ask each time'}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

@@ -1,17 +1,80 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { IClose, IFolderOpen, IDrive } from '../primitives/Icons'
+import { IClose, IFolderOpen, IDrive, ITerminal, IAiWand } from '../primitives/Icons'
+import { aiDetectStartCmd } from '../../utils/aiDetect'
 
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }
-const fieldInput: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none' }
+const fieldInput: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' as const }
 const btnPrimary: React.CSSProperties = { background: 'var(--accent)', color: 'var(--accent-fg, #1a1410)', border: 'none', padding: '7px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 const btnGhost: React.CSSProperties = { background: 'transparent', color: 'var(--fg-1)', border: '1px solid var(--line-strong)', padding: '7px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 
+async function applyDocTemplates(projectId: string, projectPath: string, appPort: number | undefined, appStartCmd: string) {
+  const store = useAppStore.getState()
+  const { docTemplates, aiProviders } = store
+  store.setDocApplying(projectId, true)
+  const enabled = docTemplates.filter(t => t.enabled)
+  if (enabled.length === 0) { store.setDocApplying(projectId, false); return }
+
+  for (const tpl of enabled) {
+    const fullPath = `${projectPath}/${tpl.relativePath}`
+    // Check if file exists
+    const checkRes = await fetch(`/api/file-read?path=${encodeURIComponent(fullPath)}`)
+    const checkData = await checkRes.json() as { ok: boolean }
+    if (checkData.ok) continue  // file already exists — skip on creation
+
+    // Inject port/cmd placeholders
+    let content = tpl.content
+    if (appPort) content = content.replaceAll('[port]', String(appPort))
+    if (appStartCmd) content = content.replaceAll('[startCmd]', appStartCmd).replaceAll('[start command]', appStartCmd)
+
+    await fetch('/api/file-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: fullPath, content }),
+    })
+  }
+
+  // Write project.config.json
+  if (appPort || appStartCmd) {
+    const config = { port: appPort ?? null, startCmd: appStartCmd || null, appUrl: appPort ? `http://localhost:${appPort}` : null }
+    await fetch('/api/file-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: `${projectPath}/project.config.json`, content: JSON.stringify(config, null, 2) }),
+    })
+  }
+
+  // Find "Initial Docu Check" provider — not used on creation, only on right-click update
+  const _provider = aiProviders.find(p => p.name === 'Initial Docu Check')
+  void _provider
+  useAppStore.getState().setDocApplying(projectId, false)
+}
+
 export function NewProjectModal() {
-  const { setNewProjectOpen, addProject, setScreen, setActiveProject, setNewSessionOpen } = useAppStore()
-  const [name, setName]     = useState('')
-  const [path, setPath]     = useState('')
-  const [picking, setPicking] = useState(false)
+  const { setNewProjectOpen, addProject, setScreen, setActiveProject, setNewSessionOpen, aiProviders, aiFunctionMap } = useAppStore()
+  const [name, setName]       = useState('')
+  const [path, setPath]       = useState('')
+  const [appPort, setAppPort] = useState('')
+  const [startCmd, setStartCmd] = useState('')
+  const [portStatus, setPortStatus] = useState<'idle' | 'checking' | 'free' | 'busy'>('idle')
+  const [applying, setApplying] = useState(false)
+  const [picking, setPicking]   = useState(false)
+  const [detecting, setDetecting] = useState(false)
+
+  // Check port availability when port changes
+  useEffect(() => {
+    const n = parseInt(appPort, 10)
+    if (!n || n < 1 || n > 65535) { setPortStatus('idle'); return }
+    setPortStatus('checking')
+    const timer = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/check-port?port=${n}`)
+        const d = await r.json() as { ok: boolean; inUse: boolean }
+        setPortStatus(d.inUse ? 'busy' : 'free')
+      } catch { setPortStatus('idle') }
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [appPort])
 
   const pickFolder = async () => {
     setPicking(true)
@@ -21,42 +84,74 @@ export function NewProjectModal() {
       if (data.ok && data.path) {
         setPath(data.path)
         if (!name.trim()) setName(data.path.split('/').pop() ?? '')
+        // Auto-detect start command from package.json
+        tryDetectStartCmd(data.path)
       }
-    } finally {
-      setPicking(false)
-    }
+    } finally { setPicking(false) }
   }
 
-  const create = () => {
+  const tryDetectStartCmd = async (folderPath: string) => {
+    try {
+      const r = await fetch(`/api/file-read?path=${encodeURIComponent(folderPath + '/package.json')}`)
+      const d = await r.json() as { ok: boolean; content?: string }
+      if (d.ok && d.content) {
+        const pkg = JSON.parse(d.content) as { scripts?: Record<string, string> }
+        const devScript = pkg.scripts?.dev ?? pkg.scripts?.start ?? pkg.scripts?.serve
+        if (devScript && !startCmd) setStartCmd('npm run ' + (Object.keys(pkg.scripts ?? {}).find(k => pkg.scripts?.[k] === devScript) ?? 'dev'))
+      }
+    } catch { /* no package.json — ignore */ }
+  }
+
+  const detectWithAI = async () => {
+    if (!path.trim()) return
+    const provId = aiFunctionMap['devDetect']
+    const provider = aiProviders.find(p => p.id === provId) ?? aiProviders[0]
+    if (!provider) return
+    setDetecting(true)
+    try {
+      const port = parseInt(appPort, 10) || undefined
+      const cmd = await aiDetectStartCmd(path.trim(), port, provider)
+      if (cmd) setStartCmd(cmd)
+    } finally { setDetecting(false) }
+  }
+
+  const create = async () => {
     if (!name.trim() || !path.trim()) return
-    const id = `p${Date.now()}`
-    addProject({ id, name: name.trim(), path: path.trim(), branch: '', sessions: [] })
-    setActiveProject(id)
-    setNewProjectOpen(false)
-    setScreen('workspace')
-    setNewSessionOpen(true)
+    setApplying(true)
+    try {
+      const id = `p${Date.now()}`
+      const port = parseInt(appPort, 10) || undefined
+      addProject({ id, name: name.trim(), path: path.trim(), branch: '', sessions: [], appPort: port, appStartCmd: startCmd.trim() || undefined })
+      setActiveProject(id)
+      await applyDocTemplates(id, path.trim(), port, startCmd.trim())
+      setNewProjectOpen(false)
+      setScreen('workspace')
+      setNewSessionOpen(true)
+    } finally { setApplying(false) }
   }
 
-  const canCreate = name.trim() && path.trim()
+  const canCreate = name.trim() && path.trim() && !applying
+
+  const portBorderColor = portStatus === 'free' ? 'var(--ok)' : portStatus === 'busy' ? 'var(--warn)' : 'var(--line-strong)'
 
   return (
     <Backdrop onClick={() => setNewProjectOpen(false)}>
       <div
         onClick={e => e.stopPropagation()}
-        style={{ width: 540, maxWidth: '92vw', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, boxShadow: '0 24px 64px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        style={{ width: 560, maxWidth: '92vw', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, boxShadow: '0 24px 64px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
         {/* Header */}
         <div style={{ height: 44, padding: '0 16px', display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--line)' }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>Projektordner auswählen</div>
-            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 1 }}>Wähle einen lokalen Ordner und vergib einen Namen</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>Neues Projekt anlegen</div>
+            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 1 }}>Ordner wählen, Name und Dev-Server konfigurieren</div>
           </div>
           <IClose onClick={() => setNewProjectOpen(false)} style={{ color: 'var(--fg-2)', cursor: 'pointer' }} />
         </div>
 
         {/* Body */}
         <div style={{ padding: '20px 20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Path picker — primary action */}
+          {/* Path picker */}
           <div>
             <label style={fieldLabel}>Lokaler Pfad</label>
             <div style={{ display: 'flex', alignItems: 'stretch', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', overflow: 'hidden' }}>
@@ -96,6 +191,73 @@ export function NewProjectModal() {
               placeholder="z.B. payments-api"
             />
           </div>
+
+          {/* Dev Server section */}
+          <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-2)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ITerminal style={{ color: 'var(--accent)' }} />
+              Dev Server (optional)
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {/* Port */}
+              <div>
+                <label style={fieldLabel}>Port</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...fieldInput, border: `1px solid ${portBorderColor}`, transition: 'border-color 0.2s', paddingRight: portStatus !== 'idle' ? 68 : undefined }}
+                    value={appPort}
+                    onChange={e => setAppPort(e.target.value.replace(/\D/g, ''))}
+                    placeholder="z.B. 3000"
+                    maxLength={5}
+                  />
+                  {portStatus === 'checking' && (
+                    <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: 'var(--fg-3)' }}>prüfe…</span>
+                  )}
+                  {portStatus === 'free' && (
+                    <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: 'var(--ok)', fontWeight: 600 }}>frei ✓</span>
+                  )}
+                  {portStatus === 'busy' && (
+                    <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: 'var(--warn)', fontWeight: 600 }}>belegt</span>
+                  )}
+                </div>
+              </div>
+              {/* Start Command */}
+              <div>
+                <label style={fieldLabel}>Start-Befehl</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    style={{ ...fieldInput, flex: 1 }}
+                    value={startCmd}
+                    onChange={e => setStartCmd(e.target.value)}
+                    placeholder="z.B. npm run dev"
+                    disabled={detecting}
+                  />
+                  <button
+                    type="button"
+                    onClick={detectWithAI}
+                    disabled={detecting || !path.trim() || aiProviders.length === 0}
+                    title={aiProviders.length === 0 ? 'Kein AI-Anbieter konfiguriert' : 'Start-Befehl per AI ermitteln'}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: detecting ? 'var(--bg-3)' : 'var(--bg-2)', color: detecting ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || !path.trim() || aiProviders.length === 0) ? 'not-allowed' : 'pointer', fontSize: 11, fontFamily: 'var(--font-ui)', opacity: (!path.trim() || aiProviders.length === 0) ? 0.4 : 1, transition: 'all 0.15s', whiteSpace: 'nowrap' }}
+                  >
+                    <IAiWand style={{ width: 13, height: 13 }} />
+                    {detecting ? 'Erkenne…' : 'AI'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            {appPort && startCmd && (
+              <div style={{ marginTop: 8, fontSize: 10.5, color: 'var(--fg-3)' }}>
+                App-URL: <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>http://localhost:{appPort}</span>
+              </div>
+            )}
+          </div>
+
+          {applying && (
+            <div style={{ fontSize: 11, color: 'var(--fg-3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 1s infinite' }} />
+              Docu-Templates werden angelegt…
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -106,7 +268,7 @@ export function NewProjectModal() {
             disabled={!canCreate}
             onClick={create}
           >
-            Projekt anlegen
+            {applying ? 'Wird angelegt…' : 'Projekt anlegen'}
           </button>
         </div>
       </div>
