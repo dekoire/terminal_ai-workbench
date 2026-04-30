@@ -26,7 +26,7 @@ const btnGhost: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)',
 }
 
-const NAV = ['Aliases', 'Tokens', 'Prompt templates', 'Appearance', 'Terminal', 'Terminal-Befehle', 'AI', 'Doc Templates']
+const NAV = ['Aliases', 'GitHub Integration', 'Prompt templates', 'Darstellung', 'Terminal', 'Terminal-Befehle', 'LLMs', 'Vorlagen']
 
 type EditMode = { kind: 'new' } | { kind: 'edit'; id: string } | null
 const emptyAlias = () => ({ name: '', cmd: 'claude', args: '--model sonnet-4.6' })
@@ -143,13 +143,13 @@ export function AliasSettings() {
               reorderAliases={reorderAliases}
             />
           )}
-          {activeNav === 'Tokens'           && <TokensPanel />}
-          {activeNav === 'Prompt templates' && <TemplatesPanel />}
-          {activeNav === 'Appearance'       && <AppearancePanel />}
-          {activeNav === 'Terminal'         && <TerminalFontPanel />}
-          {activeNav === 'Terminal-Befehle' && <TerminalCommandsPanel />}
-          {activeNav === 'AI'               && <AIPanel />}
-          {activeNav === 'Doc Templates'    && <DocTemplatesPanel />}
+          {activeNav === 'GitHub Integration' && <TokensPanel />}
+          {activeNav === 'Prompt templates'  && <TemplatesPanel />}
+          {activeNav === 'Darstellung'        && <AppearancePanel />}
+          {activeNav === 'Terminal'           && <TerminalFontPanel />}
+          {activeNav === 'Terminal-Befehle'   && <TerminalCommandsPanel />}
+          {activeNav === 'LLMs'              && <AIPanel />}
+          {activeNav === 'Vorlagen'           && <DocTemplatesPanel />}
         </div>
       </div>
     </div>
@@ -469,7 +469,8 @@ const TERMINAL_FONT_MAP_UI: Record<string, string> = {
 }
 
 function TerminalFontPanel() {
-  const { terminalFontFamily: _tff, terminalFontSize: _tfs, setTerminalFontFamily, setTerminalFontSize } = useAppStore()
+  const { terminalFontFamily: _tff, terminalFontSize: _tfs, terminalTheme: _tt, setTerminalFontFamily, setTerminalFontSize, setTerminalTheme } = useAppStore()
+  const terminalTheme = _tt ?? 'default'
   const terminalFontFamily = _tff ?? 'jetbrains'
   const terminalFontSize   = _tfs ?? 13
 
@@ -509,7 +510,7 @@ function TerminalFontPanel() {
       </section>
 
       {/* Font family */}
-      <section>
+      <section style={{ marginBottom: 28 }}>
         <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 10 }}>Schriftart</div>
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
           {TERMINAL_FONTS.map(f => (
@@ -524,6 +525,17 @@ function TerminalFontPanel() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Terminal colour scheme — moved here from Darstellung */}
+      <section>
+        <div style={{ fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 10 }}>Farbschema</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          {TERMINAL_THEMES.map(t => (
+            <TerminalCard key={t.id} theme={t} active={terminalTheme === t.id} onApply={() => setTerminalTheme(t.id)} />
+          ))}
+        </div>
+        <p style={{ marginTop: 8, fontSize: 10.5, color: 'var(--fg-3)' }}>Gilt für neue Terminal-Sessions.</p>
       </section>
     </div>
   )
@@ -672,9 +684,9 @@ function AppearancePanel() {
 
   return (
     <div style={{ padding: '20px 24px' }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600, color: 'var(--fg-0)' }}>Appearance</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600, color: 'var(--fg-0)' }}>Darstellung</h2>
       <p style={{ margin: '0 0 24px', color: 'var(--fg-3)', fontSize: 11.5 }}>
-        Presets change the sidebar and accent colour only — the workspace background stays neutral.
+        Presets ändern Farben und Akzent. Individuelle Farben überschreiben das aktive Preset.
       </p>
 
       {/* Dark presets */}
@@ -683,14 +695,35 @@ function AppearancePanel() {
       {/* Light presets */}
       <PresetGroup label="Light" presets={lightPresets} activeId={preset} onApply={applyFull} />
 
-      {/* Custom accent */}
+      {/* Custom colours — compact grid */}
       <section style={{ marginBottom: 28 }}>
-        <SectionLabel>Custom colours</SectionLabel>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <ColorRow label="Accent colour" hint="buttons, highlights, active states"
+        <SectionLabel>Individuelle Farben</SectionLabel>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <ColorRow label="Akzent" hint="Buttons, aktive Elemente"
             value={accent} onChange={v => { setAccent(v); document.documentElement.style.setProperty('--accent', v) }} />
-          <ColorRow label="Text on accent" hint="text inside accent buttons"
+          <ColorRow label="Text auf Akzent" hint="Text in Akzent-Buttons"
             value={accentFg} onChange={v => { setAccentFg(v); document.documentElement.style.setProperty('--accent-fg', v) }} />
+          <ColorRow label="Hintergrund" hint="Hauptbereich (--bg-0)"
+            value={getComputedStyle(document.documentElement).getPropertyValue('--bg-0').trim() || '#0e0d0b'}
+            onChange={v => document.documentElement.style.setProperty('--bg-0', v)} />
+          <ColorRow label="Sidebar" hint="Sidebar-Hintergrund (--bg-1)"
+            value={getComputedStyle(document.documentElement).getPropertyValue('--bg-1').trim() || '#15130f'}
+            onChange={v => document.documentElement.style.setProperty('--bg-1', v)} />
+          <ColorRow label="Karten / Felder" hint="Eingabefelder, Cards (--bg-2)"
+            value={getComputedStyle(document.documentElement).getPropertyValue('--bg-2').trim() || '#1c1a16'}
+            onChange={v => document.documentElement.style.setProperty('--bg-2', v)} />
+          <ColorRow label="Trennlinien" hint="Borders (--line-strong)"
+            value={getComputedStyle(document.documentElement).getPropertyValue('--line-strong').trim() || '#3a3631'}
+            onChange={v => document.documentElement.style.setProperty('--line-strong', v)} />
+          <ColorRow label="Text primär" hint="Überschriften (--fg-0)"
+            value={getComputedStyle(document.documentElement).getPropertyValue('--fg-0').trim() || '#f3ece2'}
+            onChange={v => document.documentElement.style.setProperty('--fg-0', v)} />
+          <ColorRow label="Text sekundär" hint="Labels, Beschreibungen (--fg-2)"
+            value={getComputedStyle(document.documentElement).getPropertyValue('--fg-2').trim() || '#8a8478'}
+            onChange={v => document.documentElement.style.setProperty('--fg-2', v)} />
+          <ColorRow label="Erfolg / OK" hint="Grüne Status-Farbe (--ok)"
+            value={getComputedStyle(document.documentElement).getPropertyValue('--ok').trim() || '#7cd9a8'}
+            onChange={v => document.documentElement.style.setProperty('--ok', v)} />
         </div>
       </section>
 
@@ -734,16 +767,6 @@ function AppearancePanel() {
         </div>
       </section>
 
-      {/* Terminal themes */}
-      <section>
-        <SectionLabel>Terminal colour scheme</SectionLabel>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-          {TERMINAL_THEMES.map(t => (
-            <TerminalCard key={t.id} theme={t} active={terminalTheme === t.id} onApply={() => setTerminalTheme(t.id)} />
-          ))}
-        </div>
-        <p style={{ marginTop: 8, fontSize: 10.5, color: 'var(--fg-3)' }}>Applies to new terminal sessions.</p>
-      </section>
     </div>
   )
 }
@@ -1023,75 +1046,125 @@ function AIPanel() {
   )
 }
 
-// ── Doc Templates Panel ───────────────────────────────────────────────────────
+// ── Vorlagen Panel (Doc Templates + AI Prompts + User Stories) ───────────────
+
+type VorlagenTab = 'doc' | 'ai-prompt' | 'user-story'
+
+// Where each built-in template is actively used — shown in the list as a usage badge
+const TEMPLATE_USAGE: Record<string, { screen: string; element: string }> = {
+  'ai-prompt-doc-update':        { screen: 'Workspace',  element: 'Docs-Button (neben Play ▶)' },
+  'ai-prompt-text-refine':       { screen: 'Workspace',  element: 'AI ✦ im Eingabefeld (Terminal)' },
+  'ai-prompt-user-story-format': { screen: 'Kanban',     element: 'AI-Button „Als User Story"' },
+  'ai-prompt-start-detect':      { screen: 'Workspace',  element: 'Play ▶ → AI erkennt Start-Befehl' },
+  'user-story-analyse':          { screen: 'Kanban',     element: 'AI-Button „Mit Docs analysieren" ⚡' },
+}
+
+const VORLAGEN_TABS: { key: VorlagenTab; label: string; hint: string; pathLabel: string; contentLabel: string; pathPlaceholder: string; contentPlaceholder: string; needsPath: boolean }[] = [
+  { key: 'doc',        label: 'Dok-Vorlagen',  hint: 'Dateien die beim Erstellen eines Projekts angelegt werden.',          pathLabel: 'Pfad im Projekt', contentLabel: 'Inhalt (Markdown)', pathPlaceholder: 'z.B. Docs/RULES.md', contentPlaceholder: '# Regeln\n…', needsPath: true },
+  { key: 'ai-prompt',  label: 'AI Prompts',    hint: 'System-Prompts für AI-Textverarbeitung (Schreiben, Verfassen etc.).',  pathLabel: 'Kürzel / Label',  contentLabel: 'System-Prompt',    pathPlaceholder: 'z.B. formal-de',    contentPlaceholder: 'Du bist ein professioneller Texter…', needsPath: false },
+  { key: 'user-story', label: 'User Stories',  hint: 'Vorlagen für schnelles Anlegen von User Stories im Kanban.',          pathLabel: 'Kategorie',       contentLabel: 'Story-Vorlage',    pathPlaceholder: 'z.B. Feature',      contentPlaceholder: 'Als [Rolle] möchte ich…', needsPath: false },
+]
 
 function DocTemplatesPanel() {
   const { docTemplates, addDocTemplate, updateDocTemplate, removeDocTemplate } = useAppStore()
+  const [activeTab, setActiveTab] = useState<VorlagenTab>('doc')
   const [editId, setEditId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
-  const emptyForm = (): Omit<DocTemplate, 'id'> => ({ name: '', relativePath: '', content: '', enabled: true })
-  const [form, setForm] = useState<Omit<DocTemplate, 'id'>>(emptyForm)
 
+  const tabCfg = VORLAGEN_TABS.find(t => t.key === activeTab)!
+  const emptyForm = (): Omit<DocTemplate, 'id'> => ({ name: '', relativePath: '', content: '', enabled: true, category: activeTab })
+  const [form, setForm] = useState<Omit<DocTemplate, 'id'>>(emptyForm())
+
+  const filtered = docTemplates.filter(t => (t.category ?? 'doc') === activeTab)
+
+  const switchTab = (tab: VorlagenTab) => { setActiveTab(tab); cancel() }
   const openAdd  = () => { setAdding(true); setEditId(null); setForm(emptyForm()) }
-  const openEdit = (t: DocTemplate) => { setEditId(t.id); setAdding(false); setForm({ name: t.name, relativePath: t.relativePath, content: t.content, enabled: t.enabled }) }
+  const openEdit = (t: DocTemplate) => { setEditId(t.id); setAdding(false); setForm({ name: t.name, relativePath: t.relativePath, content: t.content, enabled: t.enabled, category: t.category ?? 'doc' }) }
   const cancel   = () => { setAdding(false); setEditId(null) }
 
+  const canSave = form.name.trim() && (tabCfg.needsPath ? form.relativePath.trim() : true) && form.content.trim()
+
   const save = () => {
-    if (!form.name.trim() || !form.relativePath.trim()) return
-    if (adding) {
-      addDocTemplate({ id: `dt${Date.now()}`, ...form, name: form.name.trim(), relativePath: form.relativePath.trim() })
-    } else if (editId) {
-      updateDocTemplate(editId, { ...form, name: form.name.trim(), relativePath: form.relativePath.trim() })
-    }
+    if (!canSave) return
+    const entry = { ...form, name: form.name.trim(), relativePath: form.relativePath.trim(), category: activeTab }
+    if (adding) addDocTemplate({ id: `dt${Date.now()}`, ...entry })
+    else if (editId) updateDocTemplate(editId, entry)
     cancel()
   }
 
   return (
     <div style={{ padding: '20px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 600, color: 'var(--fg-0)' }}>Doc Templates</h2>
-          <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>Werden beim Erstellen neuer Projekte automatisch angelegt. Per Rechtsklick auf ein Projekt aktualisierbar.</div>
+          <h2 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 600, color: 'var(--fg-0)' }}>Vorlagen</h2>
+          <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>{tabCfg.hint}</div>
         </div>
         <span style={{ flex: 1 }} />
-        <button style={btnPrimary} onClick={openAdd}><IPlus />Neue Vorlage</button>
+        <button style={btnPrimary} onClick={openAdd}><IPlus />Neu</button>
       </div>
 
-      {docTemplates.length === 0 && !adding && (
-        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6, marginTop: 12 }}>
-          Keine Vorlagen vorhanden.
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-2)', borderRadius: 7, padding: 3, border: '1px solid var(--line)' }}>
+        {VORLAGEN_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => switchTab(tab.key)}
+            style={{ flex: 1, padding: '5px 0', border: 'none', borderRadius: 5, fontSize: 11.5, fontWeight: activeTab === tab.key ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit', background: activeTab === tab.key ? 'var(--bg-0)' : 'transparent', color: activeTab === tab.key ? 'var(--fg-0)' : 'var(--fg-3)', boxShadow: activeTab === tab.key ? '0 1px 4px rgba(0,0,0,0.3)' : 'none', transition: 'all 0.15s' }}
+          >
+            {tab.label}
+            {docTemplates.filter(t => (t.category ?? 'doc') === tab.key).length > 0 && (
+              <span style={{ marginLeft: 5, fontSize: 10, background: activeTab === tab.key ? 'var(--accent-soft)' : 'var(--bg-3)', color: activeTab === tab.key ? 'var(--accent)' : 'var(--fg-3)', borderRadius: 8, padding: '1px 5px' }}>
+                {docTemplates.filter(t => (t.category ?? 'doc') === tab.key).length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      {filtered.length === 0 && !adding && (
+        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6 }}>
+          Keine {tabCfg.label} vorhanden.
         </div>
       )}
 
-      {docTemplates.length > 0 && (
-        <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginTop: 12, marginBottom: 16 }}>
-          {docTemplates.map((t, i) => (
-            <div key={t.id} style={{
-              display: 'grid', gridTemplateColumns: '36px 1fr 160px 44px',
-              padding: '9px 14px', alignItems: 'center', gap: 12, fontSize: 12,
-              borderBottom: i < docTemplates.length - 1 ? '1px solid var(--line)' : 'none',
-              background: t.id === editId ? 'var(--accent-soft)' : 'transparent',
-            }}>
-              {/* Toggle */}
-              <button
-                onClick={() => updateDocTemplate(t.id, { enabled: !t.enabled })}
-                style={{ width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', background: t.enabled ? 'var(--accent)' : 'var(--bg-3)', position: 'relative', flexShrink: 0, transition: 'background 0.2s', boxShadow: t.enabled ? '0 0 0 1px var(--accent)' : '0 0 0 1px var(--line)' }}
-              >
-                <span style={{ position: 'absolute', top: 3, left: t.enabled ? 18 : 3, width: 14, height: 14, borderRadius: '50%', background: t.enabled ? 'var(--accent-fg, #fff)' : 'var(--fg-3)', transition: 'left 0.2s' }} />
-              </button>
-              {/* Name */}
-              <div>
-                <span style={{ fontWeight: 600, color: t.enabled ? 'var(--fg-0)' : 'var(--fg-3)' }}>{t.name}</span>
+      {filtered.length > 0 && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: 16 }}>
+          {filtered.map((t, i) => {
+            const usage = TEMPLATE_USAGE[t.id]
+            const isBuiltin = !!usage
+            return (
+              <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '36px 1fr auto 44px', padding: '9px 14px', alignItems: 'center', gap: 12, fontSize: 12, borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none', background: t.id === editId ? 'var(--accent-soft)' : 'transparent' }}>
+                <button onClick={() => updateDocTemplate(t.id, { enabled: !t.enabled })} style={{ width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', background: t.enabled ? 'var(--accent)' : 'var(--bg-3)', position: 'relative', flexShrink: 0, transition: 'background 0.2s', boxShadow: t.enabled ? '0 0 0 1px var(--accent)' : '0 0 0 1px var(--line)' }}>
+                  <span style={{ position: 'absolute', top: 3, left: t.enabled ? 18 : 3, width: 14, height: 14, borderRadius: '50%', background: t.enabled ? 'var(--accent-fg, #fff)' : 'var(--fg-3)', transition: 'left 0.2s' }} />
+                </button>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ fontWeight: 600, color: t.enabled ? 'var(--fg-0)' : 'var(--fg-3)' }}>{t.name}</span>
+                  {activeTab !== 'doc' && usage && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, whiteSpace: 'nowrap' }}>{usage.screen}</span>
+                      <span style={{ fontSize: 10, color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{usage.element}</span>
+                    </div>
+                  )}
+                  {activeTab !== 'doc' && !usage && t.relativePath && (
+                    <div style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>{t.relativePath}</div>
+                  )}
+                  {activeTab === 'doc' && (
+                    <div className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{t.relativePath}</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {isBuiltin && (
+                    <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, border: '1px solid var(--line)', color: 'var(--fg-3)', whiteSpace: 'nowrap' }}>built-in</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => openEdit(t)} />
+                  <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`"${t.name}" löschen?`)) removeDocTemplate(t.id) }} />
+                </div>
               </div>
-              {/* Path */}
-              <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.relativePath}</span>
-              {/* Actions */}
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => openEdit(t)} />
-                <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`"${t.name}" löschen?`)) removeDocTemplate(t.id) }} />
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -1099,33 +1172,26 @@ function DocTemplatesPanel() {
       {(adding || editId) && (
         <div style={{ border: '1px solid var(--line)', borderRadius: 6, padding: 16, background: 'var(--bg-1)', marginTop: 4 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 14 }}>
-            {adding ? 'Neue Vorlage anlegen' : 'Vorlage bearbeiten'}
+            {adding ? `Neue ${tabCfg.label.replace(/en$/, '')}` : 'Bearbeiten'}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: tabCfg.needsPath ? '1fr 1fr' : '1fr', gap: 12 }}>
             <div>
               <label style={fieldLabel}>Name</label>
-              <input style={fieldInput} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="z.B. CLAUDE.md" autoFocus />
+              <input style={fieldInput} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="z.B. API-Dokumentation" autoFocus />
             </div>
-            <div>
-              <label style={fieldLabel}>Relativer Pfad im Projekt</label>
-              <input style={fieldInput} value={form.relativePath} onChange={e => setForm(f => ({ ...f, relativePath: e.target.value }))} placeholder="z.B. Docs/RULES.md" />
+            {tabCfg.needsPath && (
+              <div>
+                <label style={fieldLabel}>{tabCfg.pathLabel}</label>
+                <input style={fieldInput} value={form.relativePath} onChange={e => setForm(f => ({ ...f, relativePath: e.target.value }))} placeholder={tabCfg.pathPlaceholder} />
+              </div>
+            )}
+            <div style={{ gridColumn: tabCfg.needsPath ? '1 / span 2' : '1' }}>
+              <label style={fieldLabel}>{tabCfg.contentLabel}</label>
+              <textarea style={{ ...fieldInput, minHeight: 260, resize: 'vertical', lineHeight: 1.5 }} value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} placeholder={tabCfg.contentPlaceholder} spellCheck={false} />
             </div>
-            <div style={{ gridColumn: '1 / span 2' }}>
-              <label style={fieldLabel}>Inhalt (Markdown)</label>
-              <textarea
-                style={{ ...fieldInput, minHeight: 280, resize: 'vertical', lineHeight: 1.5 }}
-                value={form.content}
-                onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                spellCheck={false}
-              />
-            </div>
-            <div style={{ gridColumn: '1 / span 2', display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+            <div style={{ gridColumn: tabCfg.needsPath ? '1 / span 2' : '1', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button style={btnGhost} onClick={cancel}>Abbrechen</button>
-              <button
-                style={{ ...btnPrimary, opacity: (!form.name.trim() || !form.relativePath.trim()) ? 0.5 : 1 }}
-                disabled={!form.name.trim() || !form.relativePath.trim()}
-                onClick={save}
-              >
+              <button style={{ ...btnPrimary, opacity: canSave ? 1 : 0.5 }} disabled={!canSave} onClick={save}>
                 {adding ? 'Speichern' : 'Aktualisieren'}
               </button>
             </div>
@@ -1133,9 +1199,11 @@ function DocTemplatesPanel() {
         </div>
       )}
 
-      <div style={{ marginTop: 16, padding: 14, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)', fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
-        <strong style={{ color: 'var(--fg-1)' }}>Hinweis:</strong> Aktivierte Vorlagen werden beim Anlegen eines neuen Projekts automatisch in den Projektordner geschrieben — nur wenn die Datei noch nicht existiert. Per Rechtsklick auf ein Projekt kann die Doku mit einem AI-Anbieter (<span className="mono">Initial Docu Check</span>) aktualisiert werden.
-      </div>
+      {activeTab === 'doc' && (
+        <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)', fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
+          <strong style={{ color: 'var(--fg-1)' }}>Hinweis:</strong> Aktivierte Vorlagen werden beim Anlegen neuer Projekte automatisch erstellt. Der Docs-Refresh-Button (↑) im Projekt-Header aktualisiert bestehende Dateien mit AI.
+        </div>
+      )}
     </div>
   )
 }

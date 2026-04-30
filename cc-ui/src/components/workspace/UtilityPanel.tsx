@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { IMore, IEdit, IChev, IFolder, IFolderOpen, IFile, IClose } from '../primitives/Icons'
+import { IMore, IEdit, IChev, IFolder, IFolderOpen, IFile, IClose, IBranch } from '../primitives/Icons'
 import { Pill } from '../primitives/Pill'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -398,6 +398,33 @@ function LiveTreeNode({ node, depth }: { node: LiveNode; depth: number }) {
 
 // ── Delete confirm modal ──────────────────────────────────────────────────────
 
+function GitInfoBar({ projectPath }: { projectPath?: string }) {
+  const [branch, setBranch] = useState('')
+  const [lastCommit, setLastCommit] = useState('')
+  useEffect(() => {
+    if (!projectPath) return
+    fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
+      .then(r => r.json())
+      .then((d: { ok?: boolean; hasGit?: boolean; status?: { branch?: string }[]; lastCommit?: string }) => {
+        if (!d.ok && !d.hasGit) return
+        setBranch(d.status?.[0]?.branch ?? '')
+        setLastCommit(d.lastCommit ?? '')
+      })
+      .catch(() => {})
+  }, [projectPath])
+
+  if (!branch) return null
+  return (
+    <div style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, justifyContent: 'flex-end' }}>
+      {lastCommit && <span style={{ fontSize: 10, color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{lastCommit}</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 5, background: 'var(--bg-2)', border: '1px solid var(--line)', flexShrink: 0 }}>
+        <IBranch style={{ color: 'var(--accent)', flexShrink: 0 }} />
+        <span className="mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>{branch}</span>
+      </div>
+    </div>
+  )
+}
+
 function DeleteModal({ path, onCancel, onDeleted }: { path: string; onCancel: () => void; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr]   = useState('')
@@ -747,7 +774,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6, marginTop: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
       {children}
     </div>
   )
@@ -919,12 +946,24 @@ export function UtilityPanel() {
     return () => window.removeEventListener('cc:goto-git-tab', handler)
   }, [])
 
+  // Dirty file count for Git tab badge
+  const [gitDirty, setGitDirty] = useState(0)
+  useEffect(() => {
+    if (!project?.path) { setGitDirty(0); return }
+    fetch(`/api/git?path=${encodeURIComponent(project.path)}`)
+      .then(r => r.json())
+      .then((d: { ok?: boolean; status?: { flag: string }[] }) => {
+        setGitDirty(d.ok ? (d.status ?? []).filter(s => s.flag !== '??').length : 0)
+      })
+      .catch(() => setGitDirty(0))
+  }, [project?.path])
+
   // Tab order: Session | Git | Files | Data
   const tabs = ['Session', 'Git', 'Files', 'Data']
   const noPadding = [1, 2, 3]
 
   return (
-    <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-1)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>
+    <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-1)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
         {tabs.map((t, i) => (
           <div key={t} onClick={() => setTab(i)} style={{
@@ -934,7 +973,12 @@ export function UtilityPanel() {
             cursor: 'pointer', fontWeight: i === tab ? 600 : 400, marginBottom: -1,
             position: 'relative',
           }}>
-            {t}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {t}
+              {t === 'Git' && gitDirty > 0 && (
+                <span title={`${gitDirty} geänderte Dateien`} style={{ fontSize: 9, fontWeight: 700, minWidth: 14, height: 14, borderRadius: 99, background: 'rgba(244,195,101,0.18)', border: '1px solid rgba(244,195,101,0.4)', color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', lineHeight: 1 }}>{gitDirty}</span>
+              )}
+            </span>
             {t === 'Data' && dataFiles.length > 0 && (
               <span style={{ position: 'absolute', top: 6, right: 6, width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)' }} />
             )}
@@ -991,8 +1035,11 @@ export function UtilityPanel() {
         )}
       </div>
 
+      {/* ── Git info bar ── */}
+      <GitInfoBar projectPath={project?.path} />
+
       {/* ── Export bottom bar ── */}
-      <div style={{ borderTop: '1px solid var(--line)', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+      <div style={{ padding: '8px 12px 16px', display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
         {/* Export icon */}
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--fg-3)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M8 2v8M5 7l3 3 3-3M3 12h10" />
@@ -1437,7 +1484,7 @@ function TextViewer({ content, search, showLineNums, ext }: { content: string; s
 
 function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 14, paddingTop: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500 }}>
         <span>{title}</span>
         {action && <span style={{ color: 'var(--fg-2)', cursor: 'pointer' }}>{action}</span>}

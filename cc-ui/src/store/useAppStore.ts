@@ -95,12 +95,15 @@ export interface AIProvider {
   model: string
 }
 
+export type DocTemplateCategory = 'doc' | 'ai-prompt' | 'user-story'
+
 export interface DocTemplate {
   id: string
   name: string
-  relativePath: string
-  content: string
+  relativePath: string   // for 'doc': file path; for 'ai-prompt'/'user-story': empty or label
+  content: string        // for 'doc': file content; for 'ai-prompt': system prompt; for 'user-story': story template
   enabled: boolean
+  category?: DocTemplateCategory  // defaults to 'doc' if absent
 }
 
 export type ShortcutCategory = 'control' | 'navigation' | 'editing'
@@ -318,6 +321,122 @@ No output = all good.
 - [ ] No regressions in existing features
 `,
   },
+  // ── AI Prompts ────────────────────────────────────────────────────────────
+  {
+    id: 'ai-prompt-doc-update',
+    name: 'Dok-Update Prompt',
+    relativePath: 'doc-update',
+    enabled: true,
+    category: 'ai-prompt' as const,
+    content: `Du bist ein präziser Dokumentations-Updater. Du aktualisierst nur auf Basis der gegebenen Projektdateien — du erfindest NICHTS.
+
+STRIKTE REGELN:
+1. Schreibe NUR was aus den Quelldateien direkt belegbar ist.
+2. Wenn etwas NICHT im Code vorkommt (z.B. keine Datenbank, kein Auth-System, keine Tests): schreibe explizit "nicht vorhanden" oder lasse das Feld leer — erfinde keine Platzhalter.
+3. Verweise immer auf die konkrete Quelldatei, z.B. "(siehe package.json)" oder "(aus server.py)".
+4. Versions- und Abhängigkeitsinformationen direkt aus package.json / requirements.txt / pyproject.toml übernehmen — nicht raten.
+5. API-Endpunkte, Datenbankschemas, Umgebungsvariablen: nur dokumentieren wenn sie explizit im Code stehen.
+6. Behalte die bestehende Markdown-Struktur der Datei bei. Ändere nur Inhalte, nicht Überschriften.
+7. Gib NUR den aktualisierten Dateiinhalt zurück — kein Kommentar, kein Markdown-Wrapper, kein Präambel.`,
+  },
+  {
+    id: 'ai-prompt-text-refine',
+    name: 'Text Überarbeiten',
+    relativePath: 'text-refine',
+    enabled: true,
+    category: 'ai-prompt' as const,
+    content: `Du bist ein präziser Textverbesserer. Überarbeite den gegebenen Text — verbessere Klarheit, Struktur und Präzision, ohne den inhaltlichen Sinn zu verändern. Gib NUR den überarbeiteten Text zurück, ohne Kommentar oder Erklärung.`,
+  },
+  {
+    id: 'ai-prompt-user-story-format',
+    name: 'User Story Formatierung',
+    relativePath: 'user-story-format',
+    enabled: true,
+    category: 'ai-prompt' as const,
+    content: `Du bist ein erfahrener Product Owner. Forme den folgenden Text in eine vollständige User Story um.
+
+Antworte exakt in diesem Format (ohne zusätzlichen Text davor oder danach):
+
+**Titel:** [prägnanter Titel]
+
+**User Story:**
+Als [Rolle] möchte ich [Funktion], damit [Nutzen].
+
+**Akzeptanzkriterien:**
+- [ ] ...
+- [ ] ...
+
+**Testfälle:**
+1. **[Testfall-Name]:** [Schritte und erwartetes Ergebnis]`,
+  },
+  {
+    id: 'ai-prompt-start-detect',
+    name: 'App-Start erkennen (Play)',
+    relativePath: 'start-detect',
+    enabled: true,
+    category: 'ai-prompt' as const,
+    content: `Du analysierst ein Software-Projekt und ermittelst den exakten Befehl zum Starten des Dev-Servers.{{portHint}}
+
+Verfügbare Binaries auf diesem System: {{availableList}}
+Python-Binary auf diesem System: {{pythonBin}}
+Node-Binary auf diesem System: {{nodeBin}}
+
+Antworte NUR mit einem JSON-Objekt (kein Markdown):
+{"startCmd": "{{pythonBin}} server.py"}
+
+Regeln:
+- Verwende IMMER die oben genannten verfügbaren Binaries — niemals andere
+- Lies den Code GENAU — unterscheide besonders bei Python:
+  • Hat die Datei "if __name__ == '__main__': app.run(...)" → Befehl ist "{{pythonBin}} dateiname.py" (NICHT flask run)
+  • Hat die Datei KEINE main-Block-app.run → dann "flask run --port PORT"
+- Schließe den Port IMMER ein:
+  • python direkt:   PORT=5001 {{pythonBin}} server.py
+  • flask run:       flask run --port 5001
+  • node direkt:     PORT=3000 {{nodeBin}} index.js
+  • npm script:      PORT=3000 npm start
+  • vite (WICHTIG):  npm run dev -- --port 3000  ← NIEMALS PORT=... npm run dev bei Vite!
+  • next.js:         npm run dev -- --port 3000
+  • react-scripts:   PORT=3000 npm start
+- Vite erkennen: package.json enthält "vite" in devDependencies oder scripts → IMMER -- --port nutzen
+- PORT=... npm run dev funktioniert bei Vite NICHT — nur -- --port
+- Port wird vor dem Start automatisch freigegeben — kein kill nötig
+- Nur JSON zurückgeben, keine Erklärung`,
+  },
+  // ── User Stories ──────────────────────────────────────────────────────────
+  {
+    id: 'user-story-analyse',
+    name: 'Implementierungsauftrag',
+    relativePath: 'analyse',
+    enabled: true,
+    category: 'user-story' as const,
+    content: `Du bist ein erfahrener Software-Architekt. Du formulierst Implementierungsaufträge für Claude Code — direkt, technisch und präzise.
+
+WICHTIG:
+- Kein klassisches User-Story-Format ("Als Nutzer möchte ich...").
+- Direkte Sprache, wie ein Senior Developer an Claude Code spricht.
+- Orientiere dich an den bestehenden Patterns und Architektur aus der Dokumentation.
+- Erkenne Abhängigkeiten zu anderen Komponenten.
+- Beachte UI-Konsistenz: neue Bereiche sollen so aussehen wie bestehende.
+
+ANTWORT-FORMAT (exakt so, kein Prolog/Epilog):
+
+**Titel:** [prägnanter Titel]
+
+## Aufgabe
+[Was genau implementiert werden soll — klar, direkt]
+
+## Betroffene Dateien & Komponenten
+[Basierend auf der Dokumentation: welche Dateien werden geändert/erstellt]
+
+## Implementierungsdetails
+[Technische Anforderungen, Patterns, Constraints — basierend auf der Doku-Architektur]
+
+## Abhängigkeiten
+[Andere Komponenten/Features/State die berücksichtigt werden müssen]
+
+## Akzeptanzkriterien
+- [ ] ...`,
+  },
 ]
 
 export interface AppState {
@@ -331,6 +450,7 @@ export interface AppState {
   terminalFontSize: number   // terminal font size (px)
   uiFont: string             // UI font family
   uiFontSize: number         // UI base font size (px)
+  showTitleBar: boolean      // show/hide top window chrome bar
   tokens: RepoToken[]    // repo/git tokens
   dangerMode: boolean
   activeProjectId: string
@@ -363,6 +483,7 @@ export interface AppState {
   setTerminalFontSize: (s: number) => void
   setUiFont: (f: string) => void
   setUiFontSize: (s: number) => void
+  setShowTitleBar: (v: boolean) => void
   addToken: (t: RepoToken) => void
   updateToken: (id: string, patch: Partial<Omit<RepoToken, 'id'>>) => void
   removeToken: (id: string) => void
@@ -518,6 +639,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   terminalFontSize: 13,
   uiFont: 'system',
   uiFontSize: 13,
+  showTitleBar: true,
   tokens: [],
   dangerMode: false,
   activeProjectId: 'p1',
@@ -550,6 +672,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setTerminalFontSize: (terminalFontSize) => set({ terminalFontSize }),
   setUiFont: (uiFont) => set({ uiFont }),
   setUiFontSize: (uiFontSize) => set({ uiFontSize }),
+  setShowTitleBar: (showTitleBar) => set({ showTitleBar }),
   addToken: (t) => set((s) => ({ tokens: [...s.tokens, t] })),
   updateToken: (id, patch) => set((s) => ({ tokens: s.tokens.map(t => t.id === id ? { ...t, ...patch } : t) })),
   removeToken: (id) => set((s) => ({ tokens: s.tokens.filter(t => t.id !== id) })),
@@ -720,6 +843,12 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (!state.docTemplates || state.docTemplates.length === 0) {
       state.docTemplates = DEFAULT_DOC_TEMPLATES
     }
+    // Inject missing default AI prompts and user-story templates (idempotent — checks by id)
+    for (const def of DEFAULT_DOC_TEMPLATES.filter(t => t.category === 'ai-prompt' || t.category === 'user-story')) {
+      if (!state.docTemplates.find(t => t.id === def.id)) {
+        state.docTemplates = [...state.docTemplates, def]
+      }
+    }
   },
   partialize: (s) => ({
     projects:        s.projects,
@@ -734,6 +863,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     terminalFontSize:   s.terminalFontSize,
     uiFont:             s.uiFont,
     uiFontSize:      s.uiFontSize,
+    showTitleBar:    s.showTitleBar,
     tokens:          s.tokens,
     activeProjectId: s.activeProjectId,
     activeSessionId: s.activeSessionId,

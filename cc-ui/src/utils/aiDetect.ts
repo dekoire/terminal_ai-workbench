@@ -1,3 +1,4 @@
+import { useAppStore } from '../store/useAppStore'
 import type { AIProvider } from '../store/useAppStore'
 
 const PROBE_FILES = [
@@ -37,31 +38,43 @@ async function detectAvailableBinaries(): Promise<Record<string, string>> {
   return result
 }
 
+async function probeFiles(basePath: string, label: string): Promise<string[]> {
+  const acc: string[] = []
+  for (const f of PROBE_FILES) {
+    try {
+      const r = await fetch(`/api/file-read?path=${encodeURIComponent(`${basePath}/${f}`)}`)
+      const d = await r.json() as { ok: boolean; content?: string }
+      if (d.ok && d.content) {
+        const c = d.content
+        const chunk = c.length > 2400 ? c.slice(0, 1200) + '\n…\n' + c.slice(-800) : c
+        acc.push(`=== ${label}${f} ===\n${chunk}`)
+      }
+    } catch { /* ignore */ }
+  }
+  return acc
+}
+
 export async function aiDetectStartCmd(
   projectPath: string,
   port: number | undefined,
   provider: AIProvider,
 ): Promise<string | null> {
-  const [parts, binaries] = await Promise.all([
-    (async () => {
-      const acc: string[] = []
-      for (const f of PROBE_FILES) {
-        try {
-          const r = await fetch(`/api/file-read?path=${encodeURIComponent(`${projectPath}/${f}`)}`)
-          const d = await r.json() as { ok: boolean; content?: string }
-          if (d.ok && d.content) {
-            const c = d.content
-            const chunk = c.length > 2400
-              ? c.slice(0, 1200) + '\n…\n' + c.slice(-800)
-              : c
-            acc.push(`=== ${f} ===\n${chunk}`)
-          }
-        } catch { /* ignore */ }
-      }
-      return acc
-    })(),
+  const [rootParts, binaries] = await Promise.all([
+    probeFiles(projectPath, ''),
     detectAvailableBinaries(),
   ])
+
+  // If root package.json has no scripts, check common subdirectories too
+  const rootHasScripts = rootParts.some(p => p.includes('"scripts"') && p.match(/"dev"|"start"|"serve"/))
+  let subParts: string[] = []
+  if (!rootHasScripts) {
+    const SUB_DIRS = ['src', 'app', 'frontend', 'client', 'web', 'ui', 'backend', 'server',
+      'cc-ui', 'packages/app', 'packages/web', 'apps/web', 'apps/app']
+    const results = await Promise.all(SUB_DIRS.map(sub => probeFiles(`${projectPath}/${sub}`, `${sub}/`)))
+    subParts = results.flat()
+  }
+
+  const parts = [...rootParts, ...subParts]
 
   const text = parts.join('\n\n') || '(keine Projektdateien gefunden)'
   const portHint = port ? ` Der Dev-Server soll auf Port ${port} laufen.` : ''
@@ -70,6 +83,15 @@ export async function aiDetectStartCmd(
   const pythonBin = binaries['python3'] ?? binaries['python'] ?? 'python3'
   const nodeBin = binaries['node'] ? 'node' : 'node'
   const availableList = Object.keys(binaries).join(', ') || 'unbekannt'
+
+  // Read prompt template from store (configurable in Settings → Vorlagen → AI Prompts)
+  const promptTemplate = useAppStore.getState().docTemplates.find(t => t.id === 'ai-prompt-start-detect')?.content
+    ?? `Du analysierst ein Software-Projekt und ermittelst den exakten Befehl zum Starten des Dev-Servers.{{portHint}}\n\nVerfügbare Binaries: {{availableList}}\nPython: {{pythonBin}}\nNode: {{nodeBin}}\n\nNur JSON zurückgeben: {"startCmd": "{{pythonBin}} server.py"}`
+  const systemPrompt = promptTemplate
+    .replace(/\{\{portHint\}\}/g, portHint)
+    .replace(/\{\{availableList\}\}/g, availableList)
+    .replace(/\{\{pythonBin\}\}/g, pythonBin)
+    .replace(/\{\{nodeBin\}\}/g, nodeBin)
 
   try {
     const r = await fetch('/api/ai-refine', {
@@ -80,28 +102,7 @@ export async function aiDetectStartCmd(
         apiKey: provider.apiKey,
         model: provider.model,
         text,
-        systemPrompt: `Du analysierst ein Software-Projekt und ermittelst den exakten Befehl zum Starten des Dev-Servers.${portHint}
-
-Verfügbare Binaries auf diesem System: ${availableList}
-Python-Binary auf diesem System: ${pythonBin}
-Node-Binary auf diesem System: ${nodeBin}
-
-Antworte NUR mit einem JSON-Objekt (kein Markdown):
-{"startCmd": "${pythonBin} server.py"}
-
-Regeln:
-- Verwende IMMER die oben genannten verfügbaren Binaries — niemals andere
-- Lies den Code GENAU — unterscheide besonders bei Python:
-  • Hat die Datei "if __name__ == '__main__': app.run(...)" → Befehl ist "${pythonBin} dateiname.py" (NICHT flask run)
-  • Hat die Datei KEINE main-Block-app.run → dann "flask run --port PORT"
-- Schließe den Port IMMER ein:
-  • python direkt:   PORT=5001 ${pythonBin} server.py
-  • flask run:       flask run --port 5001
-  • node direkt:     PORT=3000 ${nodeBin} index.js
-  • npm script:      PORT=3000 npm start
-  • vite/next/etc.:  npm run dev -- --port 3000
-- Port wird vor dem Start automatisch freigegeben — kein kill nötig
-- Nur JSON zurückgeben, keine Erklärung`,
+        systemPrompt,
       }),
     })
     const d = await r.json() as { ok: boolean; text?: string }

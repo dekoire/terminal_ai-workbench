@@ -94,6 +94,8 @@ a { text-decoration: none; color: inherit; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
+.hide-scrollbar { scrollbar-width: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
 
 /* ─── Animations ─────────────────────────────────────────── */
 @keyframes cc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }

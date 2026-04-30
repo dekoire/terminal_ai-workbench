@@ -46,21 +46,17 @@ function useResizeDrag(
 function VDivider({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
   const [hover, setHover] = useState(false)
   return (
-    /* 8 px hit area, 1 px visible line centred inside */
+    /* 1px visible line, wider invisible hit area via absolute overlay */
     <div
-      onMouseDown={onMouseDown}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        width: 8, flexShrink: 0, cursor: 'col-resize',
-        display: 'flex', alignItems: 'stretch', justifyContent: 'center',
-        position: 'relative', zIndex: 10,
-      }}
+      style={{ width: 1, flexShrink: 0, position: 'relative', zIndex: 10,
+        background: hover ? 'var(--accent)' : 'var(--line)', transition: 'background 0.15s' }}
     >
-      <div style={{
-        width: 1, background: hover ? 'var(--accent)' : 'var(--line)',
-        transition: 'background 0.15s',
-      }} />
+      <div
+        onMouseDown={onMouseDown}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{ position: 'absolute', inset: '0 -5px', cursor: 'col-resize' }}
+      />
     </div>
   )
 }
@@ -69,7 +65,7 @@ export function Workspace() {
   const {
     theme, setTheme, setScreen, preset, setPreset, setAccent, setAccentFg,
     terminalTheme, setTerminalTheme,
-    projects, activeProjectId, setActiveSession, setNewSessionOpen,
+    projects, activeProjectId, setActiveSession, setNewSessionOpen, showTitleBar,
   } = useAppStore()
 
   const toggleTheme = () => {
@@ -118,11 +114,11 @@ export function Workspace() {
   const [utilityW, setUtilityW] = useState(280)
 
   const dragLeft  = useResizeDrag(useCallback((dx: number) => {
-    setSidebarW(w => Math.min(400, Math.max(160, w + dx)))
+    setSidebarW(w => Math.min(480, Math.max(0, w + dx)))
   }, []))
 
   const dragRight = useResizeDrag(useCallback((dx: number) => {
-    setUtilityW(w => Math.min(440, Math.max(180, w - dx)))
+    setUtilityW(w => Math.min(600, Math.max(0, w - dx)))
   }, []))
 
   return (
@@ -130,29 +126,19 @@ export function Workspace() {
       style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-0)' }}
     >
       {/* Window chrome */}
-      <div style={{ height: 36, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none' }}>
-        <div style={{ display: 'flex', gap: 7 }}>
-          <span style={{ width: 11, height: 11, borderRadius: '50%', background: '#ff5f57', cursor: 'pointer' }} title="Close" />
-          <span style={{ width: 11, height: 11, borderRadius: '50%', background: '#ffbd2e', cursor: 'pointer' }} title="Minimize" />
-          <span style={{ width: 11, height: 11, borderRadius: '50%', background: '#28c941', cursor: 'pointer' }} title="Fullscreen" />
+      {(showTitleBar ?? true) && (
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '16px 12px 16px 20px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-fg, #1a1410)', flexShrink: 0 }}>
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 5l3 3-3 3M9 11h4"/>
+              </svg>
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', letterSpacing: -0.2 }}>Codera AI</span>
+          </div>
+          <div style={{ flex: 1 }} />
         </div>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'var(--fg-2)', letterSpacing: 0.2 }}>
-          claude code ui
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {theme === 'dark'
-            ? <IMoon style={{ color: 'var(--fg-2)', cursor: 'pointer' }} onClick={toggleTheme} title="Switch to light mode" />
-            : <ISun  style={{ color: 'var(--fg-2)', cursor: 'pointer' }} onClick={toggleTheme} title="Switch to dark mode"  />
-          }
-          <button
-            onClick={() => setScreen('login')}
-            title="Zurück zum Login"
-            style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '3px 6px', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center' }}
-          >
-            <ILogout />
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* 3-pane body */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>

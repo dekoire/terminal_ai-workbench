@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { IClose, IFolderOpen, IDrive, ITerminal, IAiWand } from '../primitives/Icons'
+import { IClose, IFolderOpen, IDrive, ITerminal, ISpark } from '../primitives/Icons'
 import { aiDetectStartCmd } from '../../utils/aiDetect'
 
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }
@@ -237,10 +237,9 @@ export function NewProjectModal() {
                     onClick={detectWithAI}
                     disabled={detecting || !path.trim() || aiProviders.length === 0}
                     title={aiProviders.length === 0 ? 'Kein AI-Anbieter konfiguriert' : 'Start-Befehl per AI ermitteln'}
-                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: detecting ? 'var(--bg-3)' : 'var(--bg-2)', color: detecting ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || !path.trim() || aiProviders.length === 0) ? 'not-allowed' : 'pointer', fontSize: 11, fontFamily: 'var(--font-ui)', opacity: (!path.trim() || aiProviders.length === 0) ? 0.4 : 1, transition: 'all 0.15s', whiteSpace: 'nowrap' }}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: detecting ? 'var(--accent)' : aiProviders.length === 0 ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || !path.trim() || aiProviders.length === 0) ? 'not-allowed' : 'pointer', opacity: (!path.trim() || aiProviders.length === 0) ? 0.4 : 1, transition: 'all 0.15s' }}
                   >
-                    <IAiWand style={{ width: 13, height: 13 }} />
-                    {detecting ? 'Erkenne…' : 'AI'}
+                    <ISpark className={detecting ? 'anim-pulse' : ''} style={{ width: 13, height: 13 }} />
                   </button>
                 </div>
               </div>

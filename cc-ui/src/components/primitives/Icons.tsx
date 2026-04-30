@@ -37,6 +37,15 @@ export const ISun  = (p: P) => <svg width="13" height="13" viewBox="0 0 14 14" s
 export const IMic  = (p: P) => <svg width="13" height="13" viewBox="0 0 14 14" strokeWidth="1.4" {...base} {...p}><rect x="4.5" y="1" width="5" height="8" rx="2.5"/><path d="M2 7a5 5 0 0 0 10 0M7 12v1.5M4.5 13.5h5"/></svg>
 export const ILogout = (p: P) => <svg width="13" height="13" viewBox="0 0 14 14" strokeWidth="1.4" {...base} {...p}><path d="M9 10l3-3-3-3M12 7H5M5 2H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2"/></svg>
 export const IKanban = (p: P) => <svg width="12" height="12" viewBox="0 0 14 14" strokeWidth="1.4" {...base} {...p}><rect x="1.5" y="1.5" width="3" height="9" rx="1"/><rect x="5.5" y="1.5" width="3" height="6" rx="1"/><rect x="9.5" y="1.5" width="3" height="7.5" rx="1"/></svg>
+export const IDocAI = (p: P) => (
+  <svg width="13" height="13" viewBox="0 0 14 14" {...p}>
+    {/* document outline */}
+    <path d="M3 13V2h5.5L11 4.5V13H3z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+    <path d="M8.5 2v2.5H11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+    {/* AI star in center */}
+    <path d="M7 6l.8 2.2L10 9l-2.2.8L7 12l-.8-2.2L4 9l2.2-.8z" fill="currentColor"/>
+  </svg>
+)
 // ── AI wand icon ──────────────────────────────────────────────────────────────
 
 export const IAiWand = (p: P) => (

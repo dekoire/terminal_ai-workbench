@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { TurnMessage, Template, TerminalShortcut } from '../../store/useAppStore'
-import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand } from '../primitives/Icons'
-import { updateDocsWithAI } from '../../utils/updateDocs'
+import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI } from '../primitives/Icons'
+import { updateDocsWithAI, refreshProjectDocs } from '../../utils/updateDocs'
 import { aiDetectStartCmd } from '../../utils/aiDetect'
 import { Pill } from '../primitives/Pill'
 import { Kbd } from '../primitives/Kbd'
@@ -131,18 +131,6 @@ export function CenterPane() {
         onCloseFileTab={closeFileTab}
       />
       {dangerMode && <DangerBanner />}
-      {/* Active command indicator */}
-      {activeSession && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 14px', background: 'var(--bg-2)', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
-          <ITerminal style={{ color: 'var(--fg-3)', width: 10, height: 10, flexShrink: 0 }} />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-3)' }}>
-            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{aliasCmd}</span>
-            {aliasArgs && <span style={{ color: 'var(--fg-2)' }}> {aliasArgs}</span>}
-          </span>
-          <span style={{ flex: 1 }} />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-3)', opacity: 0.6 }}>{project?.path ?? '~'}</span>
-        </div>
-      )}
       {/* flex:1 + minHeight:0 ensures xterm fills remaining space */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {showFileViewer ? (
@@ -183,7 +171,7 @@ function HDivider({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void 
       }}
     >
       <div style={{
-        height: 1, background: hover ? 'var(--accent)' : 'var(--line)',
+        height: 1, background: hover ? 'var(--accent)' : 'transparent',
         transition: 'background 0.15s',
       }} />
     </div>
@@ -274,10 +262,14 @@ function ProjectHeader() {
   const project = projects.find(p => p.id === activeProjectId)
   const git = useGitInfo(project?.path)
   const [launching, setLaunching] = useState(false)
+  const [started, setStarted] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [cfgPort, setCfgPort] = useState('')
   const [cfgCmd, setCfgCmd] = useState('')
   const [detecting, setDetecting] = useState(false)
+  const [refreshingDocs, setRefreshingDocs] = useState(false)
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null)
+  const gearRef = useRef<HTMLButtonElement>(null)
   const fileCfg = useProjectConfig(project?.path)
 
   const noGit  = git !== null && !git?.hasGit
@@ -296,6 +288,9 @@ function ProjectHeader() {
     if (!project.appPort && fileCfg.port) updateProject(project.id, { appPort: fileCfg.port })
     if (!project.appStartCmd && fileCfg.startCmd) updateProject(project.id, { appStartCmd: fileCfg.startCmd })
   }, [project?.id, fileCfg?.port, fileCfg?.startCmd]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset started state when switching projects
+  useEffect(() => { setStarted(false) }, [activeProjectId])
 
   const detectWithAI = async () => {
     if (!project?.path || detecting) return
@@ -321,7 +316,7 @@ function ProjectHeader() {
       })
       const d = await r.json() as { ok: boolean; pid?: number; logFile?: string }
       if (d.ok) {
-        console.log(`[launch] PID ${d.pid} | log: ${d.logFile}`)
+        setStarted(true)
         if (devPort) setTimeout(() => window.open(`http://localhost:${devPort}`, '_blank'), 2200)
       }
     } finally {
@@ -329,9 +324,20 @@ function ProjectHeader() {
     }
   }
 
+  const doRefreshDocs = async () => {
+    if (!project?.path || refreshingDocs) return
+    setRefreshingDocs(true)
+    try { await refreshProjectDocs(project.path) }
+    finally { setRefreshingDocs(false) }
+  }
+
   const openConfig = () => {
     setCfgPort(String(devPort ?? ''))
     setCfgCmd(devCmd ?? '')
+    if (gearRef.current) {
+      const r = gearRef.current.getBoundingClientRect()
+      setPopoverPos({ top: r.bottom + 6, left: r.left })
+    }
     setConfigOpen(true)
   }
 
@@ -350,7 +356,7 @@ function ProjectHeader() {
   void activeSessionId
 
   return (
-    <div style={{ height: 38, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', position: 'relative' }}>
+    <div style={{ height: 38, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', background: 'var(--bg-1)', position: 'relative' }}>
       {noGit
         ? <IFolder style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
         : <IGit style={{ color: 'var(--fg-2)', flexShrink: 0 }} />
@@ -358,57 +364,87 @@ function ProjectHeader() {
 
       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', whiteSpace: 'nowrap' }}>{project?.name ?? '—'}</span>
 
-      {/* Play button — always visible when project is active */}
+      <span style={{ flex: 1 }} />
+
+      {/* Buttons: Play | Socket (config) | Docs — bare icons, right-aligned */}
       {project && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          {/* Play — green, start dev server */}
           <button
             onClick={hasDevServer ? launchDevServer : openConfig}
             disabled={launching}
-            title={hasDevServer ? `${devCmd} → http://localhost:${devPort}` : devPort ? `Befehl fehlt — klicken zum Konfigurieren` : devCmd ? `Port fehlt — klicken zum Konfigurieren` : 'Dev Server konfigurieren'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              background: launching ? 'var(--bg-3)' : hasDevServer ? 'var(--ok)' : 'var(--bg-3)',
-              border: hasDevServer ? 'none' : '1px solid var(--line-strong)',
-              borderRadius: 5, padding: '3px 9px',
-              color: launching ? 'var(--fg-3)' : hasDevServer ? '#fff' : (devPort || devCmd) ? 'var(--fg-1)' : 'var(--fg-2)',
-              fontSize: 11, fontWeight: 600, cursor: launching ? 'wait' : 'pointer',
-              fontFamily: 'var(--font-ui)', transition: 'all 0.15s',
-              opacity: launching ? 0.7 : 1,
-            }}
+            title={started ? `Läuft — ${devCmd}` : hasDevServer ? `Starten: ${devCmd}` : 'Dev Server konfigurieren'}
+            style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: launching ? 'var(--fg-3)' : 'var(--ok)', cursor: launching ? 'wait' : 'pointer', opacity: launching ? 0.5 : 1, flexShrink: 0 }}
           >
-            {launching ? '…' : '▶'}&nbsp;
-            {launching ? 'Starting…' : hasDevServer ? `localhost:${devPort}` : devPort ? `localhost:${devPort}` : devCmd ? devCmd : 'Dev Server'}
+            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="4,2 13,8 4,14" fill="currentColor" stroke="none"/>
+            </svg>
           </button>
-          <button onClick={openConfig} title="Port / Befehl konfigurieren" style={{ background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', fontSize: 10, padding: '2px 4px', fontFamily: 'inherit', lineHeight: 1 }}>⚙</button>
+          {/* Socket — configure port/command */}
+          <button
+            ref={gearRef}
+            onClick={openConfig}
+            title="Port / Befehl konfigurieren"
+            style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg-2)', cursor: 'pointer', flexShrink: 0 }}
+          >
+            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="7" width="6" height="5" rx="1"/>
+              <line x1="7" y1="4" x2="7" y2="7"/>
+              <line x1="9" y1="4" x2="9" y2="7"/>
+              <line x1="8" y1="12" x2="8" y2="14"/>
+            </svg>
+          </button>
+          {/* Docs */}
+          <button
+            onClick={doRefreshDocs}
+            disabled={refreshingDocs}
+            title={`Docs aktualisieren — ${project?.name ?? 'dieses Projekt'}`}
+            style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg-2)', cursor: refreshingDocs ? 'wait' : 'pointer', opacity: refreshingDocs ? 0.5 : 1, flexShrink: 0 }}
+          >
+            <IDocAI className={refreshingDocs ? 'anim-blink' : ''} style={{ width: 17, height: 17 }} />
+          </button>
         </div>
       )}
 
-      {/* Inline config popover */}
+      {/* Config modal — centered on screen */}
       {configOpen && (
-        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 42, left: 14, zIndex: 200, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, width: 320, boxShadow: '0 8px 28px rgba(0,0,0,0.4)' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-1)' }}>Dev Server konfigurieren</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: 8, alignItems: 'center', fontSize: 11 }}>
-            <span style={{ color: 'var(--fg-3)' }}>Port</span>
-            <input value={cfgPort} onChange={e => setCfgPort(e.target.value.replace(/\D/g, ''))} placeholder="3000" style={{ padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none' }} />
-            <span style={{ color: 'var(--fg-3)' }}>Start-Befehl</span>
-            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-              <input value={cfgCmd} onChange={e => setCfgCmd(e.target.value)} disabled={detecting} placeholder="npm run dev" style={{ flex: 1, padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none', minWidth: 0 }} />
-              <button
-                onClick={detectWithAI}
-                disabled={detecting || aiProviders.length === 0}
-                title={aiProviders.length === 0 ? 'Kein AI-Anbieter konfiguriert' : 'Start-Befehl per AI ermitteln'}
-                style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 7px', border: '1px solid var(--line-strong)', borderRadius: 5, background: detecting ? 'var(--bg-3)' : 'var(--bg-2)', color: detecting ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || aiProviders.length === 0) ? 'not-allowed' : 'pointer', fontSize: 10, fontFamily: 'var(--font-ui)', opacity: aiProviders.length === 0 ? 0.4 : 1, whiteSpace: 'nowrap' }}
-              >
-                <IAiWand style={{ width: 11, height: 11 }} />
-                {detecting ? '…' : 'AI'}
-              </button>
+        <>
+          <div onClick={() => setConfigOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 998, background: 'rgba(0,0,0,0.45)' }} />
+          <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 999, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 10, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, width: 440, boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>Port und Serverstart festlegen</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 90, flexShrink: 0, color: 'var(--fg-3)' }}>Port</span>
+                <input value={cfgPort} onChange={e => setCfgPort(e.target.value.replace(/\D/g, ''))} placeholder="3000" style={{ width: 100, padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{ width: 90, flexShrink: 0, color: 'var(--fg-3)', paddingTop: 6 }}>Start-Befehl</span>
+                <div style={{ flex: 1, display: 'flex', gap: 5, alignItems: 'flex-start' }}>
+                  <textarea
+                    value={cfgCmd}
+                    onChange={e => setCfgCmd(e.target.value)}
+                    disabled={detecting}
+                    placeholder="npm run dev"
+                    rows={2}
+                    style={{ flex: 1, padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none', resize: 'none', lineHeight: 1.6 }}
+                  />
+                  <button
+                    onClick={detectWithAI}
+                    disabled={detecting || aiProviders.length === 0}
+                    title={aiProviders.length === 0 ? 'Kein AI-Anbieter konfiguriert' : 'Start-Befehl per AI ermitteln'}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-1)', color: detecting ? 'var(--accent)' : aiProviders.length === 0 ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || aiProviders.length === 0) ? 'not-allowed' : 'pointer', opacity: aiProviders.length === 0 ? 0.4 : 1 }}
+                  >
+                    <ISpark className={detecting ? 'anim-pulse' : ''} style={{ width: 12, height: 12 }} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfigOpen(false)} style={{ background: 'none', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-2)', padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Abbrechen</button>
+              <button onClick={saveConfig} style={{ background: 'var(--accent)', border: 'none', borderRadius: 5, color: 'var(--accent-fg)', padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Speichern</button>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={() => setConfigOpen(false)} style={{ background: 'none', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-2)', padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Abbrechen</button>
-            <button onClick={saveConfig} style={{ background: 'var(--accent)', border: 'none', borderRadius: 5, color: 'var(--accent-fg)', padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Speichern</button>
-          </div>
-        </div>
+        </>
       )}
 
       {/* Doc applying spinner */}
@@ -416,20 +452,6 @@ function ProjectHeader() {
         <span className="anim-spin" style={{ display: 'inline-block', fontSize: 10, color: 'var(--fg-3)' }} title="Docu wird angelegt…">⟳</span>
       )}
 
-      <span style={{ flex: 1 }} />
-
-      {noGit ? (
-        <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>lokal</span>
-      ) : (
-        <>
-          {lastCommit && <span style={{ fontSize: 10.5, color: 'var(--fg-3)', whiteSpace: 'nowrap' }}>{lastCommit}</span>}
-          {dirty > 0 && <Pill tone="warn" dot>{dirty} modified</Pill>}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 5, background: 'var(--bg-2)', border: '1px solid var(--line)', flexShrink: 0 }}>
-            <IBranch style={{ color: 'var(--accent)', flexShrink: 0 }} />
-            <span className="mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>{branch}</span>
-          </div>
-        </>
-      )}
     </div>
   )
 }
@@ -447,7 +469,7 @@ function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, act
   const { activeProjectId, removeSession, aliases } = useAppStore()
 
   return (
-    <div style={{ height: 34, flexShrink: 0, display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 4, gap: 1, overflowX: 'auto' }}>
+    <div style={{ height: 34, flexShrink: 0, display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 4, gap: 1, overflowX: 'auto', scrollbarWidth: 'none' }} className="hide-scrollbar">
       {sessions.map(s => {
         const active = s.id === activeId && activeFilePath === null
         const alias = aliases.find(a => a.name === s.alias)
@@ -462,7 +484,7 @@ function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, act
             style={{
               height: 30, padding: '0 10px 0 12px',
               display: 'flex', alignItems: 'center', gap: 7,
-              borderRadius: '6px 6px 0 0',
+              borderRadius: 0,
               background: active ? (isDangerous ? 'rgba(239,122,122,0.07)' : 'var(--bg-0)') : 'transparent',
               borderTop: `2px solid ${topBorderColor}`,
               borderLeft: active ? '1px solid var(--line)' : 'none',
@@ -482,7 +504,7 @@ function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, act
               <span title="--dangerously-skip-permissions" style={{ fontSize: 8, color: 'var(--err)', background: 'rgba(239,122,122,0.15)', border: '1px solid rgba(239,122,122,0.3)', borderRadius: 3, padding: '1px 3px', letterSpacing: 0.2, flexShrink: 0 }}>YOLO</span>
             )}
             {isExited && <span style={{ fontSize: 8.5, color: 'var(--fg-3)', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 3, padding: '1px 4px', flexShrink: 0 }}>ended</span>}
-            <span className="mono" style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0 }}>{s.alias}</span>
+            {s.alias && <span className="mono" style={{ fontSize: 9.5, color: active ? 'var(--info)' : 'var(--fg-3)', flexShrink: 0 }}>{s.alias}</span>}
             <IClose
               style={{ color: 'var(--fg-3)', opacity: 0.7, marginLeft: 2, flexShrink: 0 }}
               onClick={(e: React.MouseEvent) => { e.stopPropagation(); removeSession(activeProjectId, s.id) }}
@@ -503,7 +525,7 @@ function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, act
             style={{
               height: 30, padding: '0 8px 0 10px',
               display: 'flex', alignItems: 'center', gap: 6,
-              borderRadius: '6px 6px 0 0',
+              borderRadius: 0,
               background: active ? 'rgba(212,163,72,0.07)' : 'transparent',
               borderTop: `2px solid ${active ? '#d4a348' : 'transparent'}`,
               borderLeft: active ? '1px solid var(--line)' : 'none',
@@ -522,8 +544,8 @@ function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, act
         )
       })}
 
-      <button onClick={onNew} style={{ background: 'transparent', border: 'none', color: 'var(--fg-2)', padding: '0 10px', height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontFamily: 'inherit', flexShrink: 0 }}>
-        <IPlus /><span>New</span><Kbd>⌘T</Kbd>
+      <button onClick={onNew} title="Neue Session (⌘T)" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', margin: '0 4px', marginBottom: 4, background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0, alignSelf: 'flex-end' }}>
+        <IPlus style={{ width: 11, height: 11 }} /><span>New</span>
       </button>
     </div>
   )
@@ -799,7 +821,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     playwrightCheck, setPlaywrightCheck,
     localhostCheck, setLocalhostCheck,
     aiProviders, activeAiProvider, aiFunctionMap,
-    terminalShortcuts,
+    terminalShortcuts, docTemplates,
   } = useAppStore()
   const [attachments, setAttachments]   = useState<string[]>([])
   const [picking, setPicking]           = useState(false)
@@ -807,6 +829,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   const [editTemplate, setEditTemplate] = useState<Template | null>(null)
   const [tplMenu, setTplMenu]           = useState<{ x: number; y: number; tpl: Template } | null>(null)
   const [aiRefining, setAiRefining]     = useState(false)
+  const [aiAnalysing, setAiAnalysing]   = useState(false)
   const [aiError, setAiError]           = useState('')
   const [pathInput, setPathInput]       = useState<'file' | 'image' | null>(null)
   const [pathInputVal, setPathInputVal] = useState('')
@@ -858,8 +881,6 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
 
     let fullMsg = inputValue
     if (favBodies.length > 0) fullMsg += (fullMsg ? '\n\n' : '') + favBodies.join('\n\n')
-    if (playwrightCheck) fullMsg += '\n\nTeste es mit Playwright aus und fixe Fehler die du beim Testen findest'
-    if (localhostCheck)  fullMsg += '\n\nNach dem du fertig bist starte es im Browser unter localhost und dem richtigen Port'
 
     if (isTerminal) {
       window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: fullMsg }))
@@ -877,17 +898,50 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
     setAiRefining(true)
     setAiError('')
+    const textRefinePrompt = docTemplates.find(t => t.id === 'ai-prompt-text-refine')?.content
     try {
       const r = await fetch('/api/ai-refine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: provider.provider, apiKey: provider.apiKey, model: provider.model, text: inputValue }),
+        body: JSON.stringify({ provider: provider.provider, apiKey: provider.apiKey, model: provider.model, text: inputValue, ...(textRefinePrompt ? { systemPrompt: textRefinePrompt } : {}) }),
       })
       const d = await r.json() as { ok: boolean; text?: string; error?: string }
       if (d.ok && d.text) setInputValue(d.text)
       else setAiError(d.error ?? 'Fehler beim Überarbeiten')
     } catch (e) { setAiError(String(e)) }
     setAiRefining(false)
+  }
+
+  const analyseWithAI = async () => {
+    if (!inputValue.trim()) return
+    const terminalProviderId = aiFunctionMap['terminal'] || activeAiProvider
+    const provider = aiProviders.find(p => p.id === terminalProviderId) ?? aiProviders[0]
+    if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
+    setAiAnalysing(true)
+    setAiError('')
+    const analysePrompt = docTemplates.find(t => t.id === 'user-story-analyse')?.content
+    try {
+      let userMsg = inputValue
+      if (project?.path) {
+        try {
+          const docsRes = await fetch(`/api/read-docs?path=${encodeURIComponent(project.path)}`)
+          const docsData = await docsRes.json() as { ok: boolean; files?: { filename: string; content: string }[] }
+          if (docsData.ok && docsData.files?.length) {
+            const docsContext = docsData.files.map(f => `### ${f.filename}\n${f.content}`).join('\n\n---\n\n')
+            userMsg = `${inputValue}\n\n---\n\nPROJEKT-DOKUMENTATION:\n${docsContext}`
+          }
+        } catch { /* no docs — proceed without */ }
+      }
+      const r = await fetch('/api/ai-refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: provider.provider, apiKey: provider.apiKey, model: provider.model, text: userMsg, ...(analysePrompt ? { systemPrompt: analysePrompt } : {}) }),
+      })
+      const d = await r.json() as { ok: boolean; text?: string; error?: string }
+      if (d.ok && d.text) setInputValue(d.text)
+      else setAiError(d.error ?? 'Fehler bei der Analyse')
+    } catch (e) { setAiError(String(e)) }
+    setAiAnalysing(false)
   }
 
   const toggleVoice = () => {
@@ -965,7 +1019,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '8px 14px 10px', background: 'var(--bg-1)', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '8px 14px 10px', background: 'var(--bg-0)', overflow: 'hidden' }}>
       <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleAttach} />
 
       {/* Terminal-Modus Badge */}
@@ -973,10 +1027,6 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 10, color: 'var(--accent)', fontWeight: 500, letterSpacing: 0.3, flexWrap: 'wrap' }}>
           <ITerminal style={{ color: 'var(--accent)', flexShrink: 0 }} />
           <span>Terminal-Eingabe → {activeSession.alias}</span>
-          <span style={{ color: 'var(--fg-3)' }}>·</span>
-          <span style={{ color: 'var(--fg-3)' }}>⏎ sendet direkt</span>
-          <span style={{ color: 'var(--fg-3)' }}>·</span>
-          <span style={{ color: 'var(--fg-3)' }}>Pfade werden als Text eingefügt — Claude liest Dateien selbst</span>
         </div>
       )}
 
@@ -1032,17 +1082,6 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
           style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'none', width: '100%', flex: 1, minHeight: 0 }}
         />
 
-        {/* Automation-Checkboxes (nur im Nicht-Terminal-Modus relevant, aber immer sichtbar) */}
-        <div style={{ display: 'flex', gap: 14, padding: '5px 0 4px', flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 10.5, color: playwrightCheck ? 'var(--accent)' : 'var(--fg-3)', userSelect: 'none' }}>
-            <input type="checkbox" checked={playwrightCheck} onChange={e => setPlaywrightCheck(e.target.checked)} style={{ accentColor: 'var(--accent)', cursor: 'pointer' }} />
-            Playwright-Test &amp; Fehler fixen
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 10.5, color: localhostCheck ? 'var(--accent)' : 'var(--fg-3)', userSelect: 'none' }}>
-            <input type="checkbox" checked={localhostCheck} onChange={e => setLocalhostCheck(e.target.checked)} style={{ accentColor: 'var(--accent)', cursor: 'pointer' }} />
-            Im Browser starten (localhost)
-          </label>
-        </div>
 
         {/* Favorite templates — always auto-included on send */}
         {templates.some(t => t.favorite) && (
@@ -1143,16 +1182,29 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
           </button>
           <button
             onClick={refineWithAI}
-            disabled={aiRefining || !inputValue.trim()}
+            disabled={aiRefining || aiAnalysing || !inputValue.trim()}
             title={(() => {
               if (aiProviders.length === 0) return 'AI-Anbieter in Settings → AI einrichten'
               const tid = aiFunctionMap['terminal'] || activeAiProvider
               const p = aiProviders.find(p => p.id === tid) ?? aiProviders[0]
               return `Text mit ${p.name} überarbeiten`
             })()}
-            style={{ ...chip, padding: '4px 7px', color: 'var(--accent)', border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', opacity: (aiRefining || !inputValue.trim()) ? 0.5 : 1 }}
+            style={{ ...chip, padding: '4px 7px', color: 'var(--accent)', border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', opacity: (aiRefining || aiAnalysing || !inputValue.trim()) ? 0.5 : 1 }}
           >
             <ISpark style={{ flexShrink: 0, width: 13, height: 13, ...(aiRefining ? { animation: 'cc-pulse 0.5s ease-in-out infinite' } : {}) }} />
+          </button>
+          <button
+            onClick={analyseWithAI}
+            disabled={aiAnalysing || aiRefining || !inputValue.trim()}
+            title={(() => {
+              if (aiProviders.length === 0) return 'AI-Anbieter in Settings → AI einrichten'
+              const tid = aiFunctionMap['terminal'] || activeAiProvider
+              const p = aiProviders.find(p => p.id === tid) ?? aiProviders[0]
+              return `Implementierungsauftrag mit ${p.name} generieren`
+            })()}
+            style={{ ...chip, padding: '4px 7px', color: 'var(--ok)', border: '1px solid color-mix(in srgb, var(--ok) 35%, transparent)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)', opacity: (aiAnalysing || aiRefining || !inputValue.trim()) ? 0.5 : 1 }}
+          >
+            <IBolt style={{ flexShrink: 0, width: 13, height: 13, ...(aiAnalysing ? { animation: 'cc-pulse 0.5s ease-in-out infinite' } : {}) }} />
           </button>
           <button onClick={send} style={{ ...primaryBtn, display: 'flex', alignItems: 'center', gap: 5 }}>
             {isTerminal ? <ITerminal style={{ color: 'var(--accent-fg)' }} /> : <ISend style={{ color: 'var(--accent-fg)' }} />}

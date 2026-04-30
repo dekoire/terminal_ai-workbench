@@ -13,9 +13,9 @@ const PRIORITY_CFG: Record<TicketPriority, { label: string; color: string; bg: s
 }
 
 const TYPE_CFG: Record<TicketType, { label: string; color: string }> = {
-  story: { label: 'User Story', color: 'var(--accent)' },
-  nfc:   { label: 'NFC',        color: '#be95ff'       },
-  bug:   { label: 'Bug',        color: 'var(--err)'    },
+  story: { label: 'User Story', color: 'var(--ok)'   },
+  nfc:   { label: 'NRF',        color: '#5b9cf6'     },
+  bug:   { label: 'Bug',        color: 'var(--err)'  },
 }
 
 function TypeIcon({ type, size = 11 }: { type?: TicketType; size?: number }) {
@@ -94,89 +94,8 @@ const COLUMNS: { id: KanbanStatus; label: string; color: string; bg: string }[] 
   { id: 'done',    label: 'Done',    color: 'var(--ok)',    bg: 'rgba(124,217,168,0.12)' },
 ]
 
-const US_PROMPT = `Du bist ein erfahrener Product Owner. Forme den folgenden Text in eine vollständige User Story um.
-
-Antworte exakt in diesem Format (ohne zusätzlichen Text davor oder danach):
-
-**Titel:** [prägnanter Titel]
-
-**User Story:**
-Als [Rolle] möchte ich [Funktion], damit [Nutzen].
-
-**Akzeptanzkriterien:**
-- [ ] ...
-- [ ] ...
-
-**Testfälle:**
-1. **[Testfall-Name]:** [Schritte und erwartetes Ergebnis]`
-
-const ANALYSE_SYSTEM = `Du bist ein erfahrener Software-Architekt. Du formulierst Implementierungsaufträge für Claude Code — direkt, technisch und präzise.
-
-WICHTIG:
-- Kein klassisches User-Story-Format ("Als Nutzer möchte ich...").
-- Direkte Sprache, wie ein Senior Developer an Claude Code spricht.
-- Orientiere dich an den bestehenden Patterns und Architektur aus der Dokumentation.
-- Erkenne Abhängigkeiten zu anderen Komponenten.
-- Beachte UI-Konsistenz: neue Bereiche sollen so aussehen wie bestehende.
-
-ANTWORT-FORMAT (exakt so, kein Prolog/Epilog):
-
-**Titel:** [prägnanter Titel]
-
-## Aufgabe
-[Was genau implementiert werden soll — klar, direkt]
-
-## Betroffene Dateien & Komponenten
-[Basierend auf der Dokumentation: welche Dateien werden geändert/erstellt]
-
-## Implementierungsdetails
-[Technische Anforderungen, Patterns, Constraints — basierend auf der Doku-Architektur]
-
-## Abhängigkeiten
-[Andere Komponenten/Features/State die berücksichtigt werden müssen]
-
-## Akzeptanzkriterien
-- [ ] ...
-
----
-
-# Prompt 02: Dokumentation kontinuierlich aktualisieren
-
-Du bist ein günstiger Dokumentations- und Kontext-Agent.
-
-Ziel:
-Aktualisiere die bestehende AI-Projektdokumentation unter \`/docs\` nach den letzten Code-Änderungen, damit Claude Code später mit aktuellem Kontext arbeiten kann.
-
-Du sollst NICHT implementieren.
-Du sollst nur prüfen, aktualisieren und sauber dokumentieren.
-
-Bitte prüfe:
-- Welche Dateien wurden geändert?
-- Welche neuen Komponenten/Funktionen wurden hinzugefügt?
-- Welche bestehenden Komponenten wurden erweitert?
-- Haben sich Abhängigkeiten geändert?
-- Gibt es neue Patterns oder Regeln?
-- Gibt es doppelte Logik, die dokumentiert werden sollte?
-- Gibt es neue Risiken oder technische Schulden?
-- Sind alte Dokumentationsstellen nicht mehr korrekt?
-
-Aktualisiere gezielt nur relevante Stellen in:
-- docs/AI_PROJECT_CONTEXT.md
-- docs/AI_COMPONENT_MAP.md
-- docs/AI_RULES_SUMMARY.md
-- docs/AI_CHANGE_GUIDE.md
-- docs/AI_UI_MAP.md
-- docs/AI_API_MAP.md
-- docs/AI_REUSE_CANDIDATES.md
-
-Wichtig:
-- Keine komplette Doku neu schreiben, wenn nicht nötig.
-- Nur gezielt aktualisieren.
-- Alte Informationen korrigieren, wenn sie nicht mehr stimmen.
-- Neue Komponenten mit Pfad, Zweck und Abhängigkeiten ergänzen.
-- Wiederverwendbare Logik markieren.
-- Doppelte oder ähnliche Funktionen markieren.
-- Wenn eine Änderung bestehende Regeln verletzt, deutlich markieren.`
+// US_PROMPT and ANALYSE_SYSTEM are now configurable in Settings → Vorlagen
+// Defaults live in useAppStore DEFAULT_DOC_TEMPLATES ('ai-prompt-user-story-format', 'user-story-analyse')
 
 interface Props {
   projectId: string
@@ -478,7 +397,7 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
       style={{
         background: hovered ? 'rgba(255,138,91,0.15)' : 'rgba(255,138,91,0.07)',
         border: '1px solid var(--accent)',
-        borderLeft: `4px solid ${ticket.type === 'bug' ? 'var(--err)' : ticket.type === 'nfc' ? '#be95ff' : 'var(--accent)'}`,
+        borderLeft: `4px solid ${TYPE_CFG[ticket.type ?? 'story'].color}`,
         borderRadius: 8,
         padding: '10px 12px 9px',
         cursor: isDragging ? 'grabbing' : 'grab',
@@ -603,6 +522,15 @@ function useKanbanProvider() {
   return aiProviders.find(p => p.id === id) ?? aiProviders[0] ?? null
 }
 
+function useKanbanPrompts() {
+  const { docTemplates } = useAppStore()
+  const US_PROMPT = docTemplates.find(t => t.id === 'ai-prompt-user-story-format')?.content
+    ?? `Du bist ein erfahrener Product Owner. Forme den folgenden Text in eine vollständige User Story um.\n\nAntworte exakt in diesem Format:\n\n**Titel:** [prägnanter Titel]\n\n**User Story:**\nAls [Rolle] möchte ich [Funktion], damit [Nutzen].\n\n**Akzeptanzkriterien:**\n- [ ] ...\n\n**Testfälle:**\n1. **[Testfall-Name]:** [Schritte und erwartetes Ergebnis]`
+  const ANALYSE_SYSTEM = docTemplates.find(t => t.id === 'user-story-analyse')?.content
+    ?? `Du bist ein erfahrener Software-Architekt. Du formulierst Implementierungsaufträge für Claude Code — direkt, technisch und präzise.\n\nANTWORT-FORMAT:\n\n**Titel:** [prägnanter Titel]\n\n## Aufgabe\n[Was genau implementiert werden soll]\n\n## Akzeptanzkriterien\n- [ ] ...`
+  return { US_PROMPT, ANALYSE_SYSTEM }
+}
+
 function NewTicketModal({ projectId, projectPath, onSave, onClose }: {
   projectId: string
   projectPath: string
@@ -618,6 +546,7 @@ function NewTicketModal({ projectId, projectPath, onSave, onClose }: {
   const [aiError, setAiError]         = useState('')
 
   const provider = useKanbanProvider()
+  const { US_PROMPT, ANALYSE_SYSTEM } = useKanbanPrompts()
 
   const refineAsUserStory = async () => {
     const body = text.trim()
@@ -726,6 +655,7 @@ function TicketDetail({ ticket, projectId, projectPath, onSave, onClose }: {
   onClose: () => void
 }) {
   const provider                    = useKanbanProvider()
+  const { US_PROMPT, ANALYSE_SYSTEM } = useKanbanPrompts()
   const [draft, setDraft]           = useState<KanbanTicket>({ ...ticket })
   const [aiLoading, setAiLoading]   = useState(false)
   const [analyseLoading, setAnalyse] = useState(false)
@@ -1253,7 +1183,7 @@ function GlobalTicketCard({ ticket, isDragging, onPointerDown, onDevelop }: {
   const [hovered, setHovered] = useState(false)
   const c = ticket.projectColor
 
-  const typeColor = ticket.type === 'bug' ? 'var(--err)' : ticket.type === 'nfc' ? '#be95ff' : c.fg
+  const typeColor = TYPE_CFG[ticket.type ?? 'story'].color
   const dateStr = ticket.createdAt
     ? new Date(ticket.createdAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
     : ''

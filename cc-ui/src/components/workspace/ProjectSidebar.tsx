@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { Project, Session } from '../../store/useAppStore'
-import { IChev, IFolder, IFolderOpen, IBranch, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ISpinner } from '../primitives/Icons'
+import { IChev, IFolder, IFolderOpen, IBranch, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ISpinner, IMoon, ISun } from '../primitives/Icons'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
 import { Kbd } from '../primitives/Kbd'
 import { updateDocsWithAI } from '../../utils/updateDocs'
+import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
 // ── ContextMenu ───────────────────────────────────────────────────────────────
 type CtxItem = { label: string; icon?: React.ReactNode; danger?: boolean; action: () => void } | null
@@ -51,35 +52,46 @@ function useCtxMenu() {
   return { open, menu }
 }
 
+function ThemeToggleBtn() {
+  const { theme, setTheme, preset, setPreset, setAccent, setAccentFg, terminalTheme, setTerminalTheme } = useAppStore()
+  const toggle = () => {
+    const cur = DESIGN_PRESETS.find(d => d.id === preset) ?? DESIGN_PRESETS[0]
+    const nextId = cur.dark ? 'light-' + cur.id : cur.id.replace(/^light-/, '')
+    const next = DESIGN_PRESETS.find(d => d.id === nextId) ?? cur
+    setPreset(next.id); setTheme(next.dark ? 'dark' : 'light')
+    setAccent(next.accent); setAccentFg(next.accentFg); applyPreset(next)
+    if (next.dark && terminalTheme === 'github-light') setTerminalTheme('default')
+    if (!next.dark && terminalTheme === 'default') setTerminalTheme('github-light')
+  }
+  return (
+    <button onClick={toggle} title={theme === 'dark' ? 'Zu hell wechseln' : 'Zu dunkel wechseln'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '2px 3px', borderRadius: 4 }}>
+      {theme === 'dark' ? <IMoon style={{ width: 13, height: 13 }} /> : <ISun style={{ width: 13, height: 13 }} />}
+    </button>
+  )
+}
+
+function SidebarLogoutBtn() {
+  const { setScreen } = useAppStore()
+  return (
+    <button onClick={() => setScreen('login')} title="Zurück zum Login" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '2px 3px', borderRadius: 4 }}>
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 2H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2"/>
+        <path d="M10 10l3-3-3-3"/>
+        <path d="M13 7H6"/>
+      </svg>
+    </button>
+  )
+}
+
 export function ProjectSidebar() {
   const { projects, templates, activeProjectId, activeSessionId, setActiveProject, setActiveSession, setScreen, setNewProjectOpen, setNewSessionOpen, removeProject, removeSession, inputValue, setInputValue } = useAppStore()
 
   return (
     <aside style={{
       width: '100%', flexShrink: 0, background: 'var(--bg-1)',
-      borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column',
+      display: 'flex', flexDirection: 'column',
     }}>
-      {/* App header */}
-      <div style={{
-        padding: '10px 12px', borderBottom: '1px solid var(--line)',
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <div style={{
-          width: 24, height: 24, borderRadius: 6, background: 'var(--accent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--accent-fg, #1a1410)', flexShrink: 0,
-        }}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 5l3 3-3 3M9 11h4"/>
-          </svg>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', lineHeight: 1.2 }}>Codera AI</div>
-          <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>{projects.length} projects</div>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 0' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '18px 0 12px' }}>
         {/* Projects */}
         <CollapsibleSection label="Projects" count={projects.length} defaultOpen action={
           <button onClick={() => setNewProjectOpen(true)} style={iconBtn}><IPlus /></button>
@@ -111,13 +123,15 @@ export function ProjectSidebar() {
       </div>
 
       <div style={{
-        borderTop: '1px solid var(--line)', padding: '8px 12px',
+        padding: '8px 12px 16px',
         display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--fg-2)',
-        cursor: 'pointer',
-      }} onClick={() => setScreen('settings')}>
-        <ISettings style={{ flexShrink: 0 }} />
-        <span style={{ flex: 1 }}>Settings</span>
-        <Kbd>⌘,</Kbd>
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }} onClick={() => setScreen('settings')}>
+          <ISettings style={{ flexShrink: 0 }} />
+          <span>Settings</span>
+        </div>
+        <ThemeToggleBtn />
+        <SidebarLogoutBtn />
       </div>
     </aside>
   )
@@ -295,31 +309,9 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
 }
 
 function SessionRow({ session, active, project, onSelect, onClose }: { session: Session; active: boolean; project: Project; onSelect: () => void; onClose: () => void }) {
-  const { aliases, updateSession, setActiveSession } = useAppStore()
+  const { aliases, updateSession } = useAppStore()
   const [hovered, setHovered] = useState(false)
-  const [launching, setLaunching] = useState(false)
   const { open: openCtx, menu: ctxMenu } = useCtxMenu()
-  const hasDevServer = !!(project.appPort && project.appStartCmd)
-
-  const launchDevServer = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (launching) return
-    setLaunching(true)
-    setActiveSession(session.id)
-    onSelect()
-    try {
-      if (project.appPort) {
-        await fetch('/api/kill-port', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: project.appPort }) })
-      }
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('cc:terminal-send-raw', { detail: { data: (project.appStartCmd ?? '') + '\r' } }))
-        if (project.appPort) {
-          setTimeout(() => window.open(`http://localhost:${project.appPort}`, '_blank'), 2000)
-        }
-        setLaunching(false)
-      }, 300)
-    } catch { setLaunching(false) }
-  }
 
   const alias = aliases.find(a => a.name === session.alias)
   const isDangerous = session.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous'
@@ -349,7 +341,7 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px 4px 6px',
-        margin: '0 6px', borderRadius: 5, cursor: 'pointer',
+        margin: '0 6px', borderRadius: 0, cursor: 'pointer',
         background: bgColor,
         color: textColor,
         borderLeft: `2px solid ${borderColor}`,
@@ -362,16 +354,6 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
       {/* Badges */}
       {isDangerous && (
         <span title="--dangerously-skip-permissions" style={{ fontSize: 8.5, color: 'var(--err)', background: 'rgba(239,122,122,0.15)', border: '1px solid rgba(239,122,122,0.35)', borderRadius: 3, padding: '1px 4px', letterSpacing: 0.2, flexShrink: 0 }}>YOLO</span>
-      )}
-      {/* Play button for dev server */}
-      {hovered && hasDevServer && (
-        <span
-          onClick={launchDevServer}
-          title={`${project.appStartCmd} → http://localhost:${project.appPort}`}
-          style={{ fontSize: 9, color: launching ? 'var(--fg-3)' : 'var(--ok)', cursor: launching ? 'wait' : 'pointer', flexShrink: 0, lineHeight: 1, userSelect: 'none' }}
-        >
-          {launching ? '…' : '▶'}
-        </span>
       )}
       {hovered
         ? <IClose style={{ width: 9, height: 9, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.8 }} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onClose() }} />
@@ -401,7 +383,7 @@ function TemplatesSection({
   const hidden  = templates.length - TEMPLATES_COLLAPSED
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 14, paddingTop: 0, paddingBottom: 14 }}>
       {ctxMenu}
       {/* Header — click label to collapse section */}
       <div style={{
@@ -476,12 +458,12 @@ function SidebarTypeIcon({ type }: { type?: string }) {
     </svg>
   )
   if (type === 'nfc') return (
-    <svg viewBox="0 0 12 12" fill="none" stroke="#be95ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
+    <svg viewBox="0 0 12 12" fill="none" stroke="#5b9cf6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <path d="M6 1l1.5 3h3L8 6.5l1 3.5L6 8.5 3 10l1-3.5L1.5 4h3z"/>
     </svg>
   )
   return (
-    <svg viewBox="0 0 12 12" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
+    <svg viewBox="0 0 12 12" fill="none" stroke="var(--ok)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
       <circle cx="6" cy="3.5" r="2"/>
       <path d="M2 11c0-2.2 1.8-4 4-4s4 1.8 4 4"/>
     </svg>
@@ -524,7 +506,7 @@ function UserStoriesSection() {
         />
       )}
 
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 14, paddingTop: 0, paddingBottom: 14 }}>
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -656,7 +638,7 @@ function StoryRow({ ticket, projectName, onOpen }: {
 function CollapsibleSection({ label, count, action, children, defaultOpen = true }: { label: string; count?: number; action?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 14, paddingTop: 0, paddingBottom: 14 }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 10px 6px 14px', textTransform: 'uppercase', fontSize: 10,
