@@ -4,6 +4,26 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 export type Screen = 'login' | 'workspace' | 'settings' | 'templates' | 'history'
 export type Theme = 'dark' | 'light'
 export type PermMode = 'normal' | 'dangerous'
+export type SessionKind = 'single' | 'crew'
+
+export interface AgentRole {
+  id: string
+  name: string
+  model: string          // OpenRouter model ID, e.g. "anthropic/claude-opus-4"
+  strengths: string[]    // human-readable tags shown in UI and passed to orchestrator
+  systemPrompt: string
+  tools: string[]
+}
+
+export interface CrewConfig {
+  name: string
+  goal?: string
+  orchestration: 'auto' | 'manual'
+  backend: 'openrouter' | 'direct'
+  process?: 'sequential' | 'hierarchical'
+  agents: AgentRole[]   // snapshot at session creation time
+  managerModel?: string // OpenRouter model ID for the manager agent, e.g. "anthropic/claude-opus-4"
+}
 
 export interface Session {
   id: string
@@ -14,6 +34,8 @@ export interface Session {
   status: 'active' | 'idle' | 'error' | 'exited'
   permMode: PermMode
   startedAt: number
+  kind?: SessionKind  // undefined treated as 'single' for backwards compatibility
+  crew?: CrewConfig
 }
 
 export interface Project {
@@ -119,6 +141,144 @@ export interface TerminalShortcut {
   enabled: boolean
   category: ShortcutCategory
 }
+
+// CrewAI tool class names used across the app
+export const CREW_TOOL_GROUPS = [
+  {
+    id: 'read',
+    label: 'Lesen',
+    color: '#3b82f6',
+    tools: [
+      { id: 'FileReadTool',      label: 'Dateien lesen',  short: 'File Read' },
+      { id: 'DirectoryReadTool', label: 'Ordner lesen',   short: 'Dir Read'  },
+    ],
+  },
+  {
+    id: 'write',
+    label: 'Schreiben',
+    color: '#22c55e',
+    tools: [
+      { id: 'FileWriterTool', label: 'Dateien schreiben', short: 'File Write' },
+    ],
+  },
+  {
+    id: 'web',
+    label: 'Web & Suche',
+    color: '#f59e0b',
+    tools: [
+      { id: 'ScrapeWebsiteTool', label: 'Webseiten abrufen', short: 'Web' },
+      { id: 'CSVSearchTool',     label: 'CSV durchsuchen',   short: 'CSV' },
+      { id: 'JSONSearchTool',    label: 'JSON durchsuchen',  short: 'JSON' },
+    ],
+  },
+] as const
+
+export const DEFAULT_AGENT_ROLES: AgentRole[] = [
+  {
+    id: 'ar-architect',
+    name: 'Architect',
+    model: 'anthropic/claude-opus-4',
+    strengths: ['Planung', 'Architektur', 'Technische Entscheidungen'],
+    systemPrompt: 'Du bist ein erfahrener Software-Architekt. Du planst Implementierungen, erkennst Abhängigkeiten und triffst technische Entscheidungen. Antworte strukturiert und präzise.',
+    tools: ['FileReadTool', 'DirectoryReadTool'],
+  },
+  {
+    id: 'ar-coder',
+    name: 'Coder',
+    model: 'anthropic/claude-sonnet-4-6',
+    strengths: ['TypeScript', 'React', 'Implementierung', 'Bugfixes'],
+    systemPrompt: 'Du bist ein präziser Entwickler. Du implementierst Features nach dem Plan des Architekten — minimal, korrekt, ohne Scope-Creep. Kein unnötiger Code.',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
+  },
+  {
+    id: 'ar-reviewer',
+    name: 'Reviewer',
+    model: 'openai/gpt-4o',
+    strengths: ['Code Review', 'Bugs finden', 'Best Practices'],
+    systemPrompt: 'Du bist ein kritischer Code-Reviewer. Du suchst nach Bugs, Logikfehlern und Abweichungen von Coding Guidelines. Sei konkret und direkt.',
+    tools: ['FileReadTool', 'DirectoryReadTool'],
+  },
+  {
+    id: 'ar-researcher',
+    name: 'Researcher',
+    model: 'deepseek/deepseek-r1',
+    strengths: ['Recherche', 'Analyse', 'Dokumentation', 'Zusammenfassung'],
+    systemPrompt: 'Du bist ein Recherche-Spezialist. Du findest Informationen, analysierst Abhängigkeiten und erstellst klare Dokumentation.',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'ScrapeWebsiteTool'],
+  },
+  {
+    id: 'ar-security',
+    name: 'Security',
+    model: 'anthropic/claude-opus-4',
+    strengths: ['Sicherheitsanalyse', 'Vulnerabilities', 'OWASP', 'Auth'],
+    systemPrompt: 'Du bist ein Security-Spezialist. Du analysierst Code auf Sicherheitslücken, prüfst Authentifizierung, Autorisierung und Datenschutz. Fokus auf OWASP Top 10 und CVEs.',
+    tools: ['FileReadTool', 'DirectoryReadTool'],
+  },
+  {
+    id: 'ar-devops',
+    name: 'DevOps',
+    model: 'openai/gpt-4o',
+    strengths: ['CI/CD', 'Docker', 'Kubernetes', 'Deployment', 'Monitoring'],
+    systemPrompt: 'Du bist ein DevOps-Engineer. Du konfigurierst CI/CD-Pipelines, Docker-Container, Cloud-Deployments und Monitoring. Fokus auf Automatisierung und Zuverlässigkeit.',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
+  },
+  {
+    id: 'ar-tester',
+    name: 'QA / Tester',
+    model: 'anthropic/claude-sonnet-4-6',
+    strengths: ['Unit Tests', 'E2E Tests', 'Test-Coverage', 'Edge Cases'],
+    systemPrompt: 'Du bist ein QA-Engineer. Du schreibst Unit-, Integrations- und E2E-Tests. Du deckst Edge Cases auf und stellst sicher, dass Anforderungen vollständig getestet sind.',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
+  },
+  {
+    id: 'ar-debugger',
+    name: 'Debugger',
+    model: 'anthropic/claude-sonnet-4-6',
+    strengths: ['Root-Cause-Analyse', 'Fehlersuche', 'Logging', 'Profiling'],
+    systemPrompt: 'Du bist ein Debugging-Spezialist. Du analysierst Fehlermeldungen, Stack Traces und Logs. Du findest die Root Cause von Problemen systematisch durch Hypothesen und Tests.',
+    tools: ['FileReadTool', 'DirectoryReadTool'],
+  },
+  {
+    id: 'ar-database',
+    name: 'Database',
+    model: 'openai/gpt-4o',
+    strengths: ['SQL', 'Schema Design', 'Query-Optimierung', 'Migrations'],
+    systemPrompt: 'Du bist ein Datenbank-Experte. Du entwirfst Schemas, optimierst Queries, schreibst Migrations und berätst bei der Wahl von Datenbanksystemen (SQL vs NoSQL).',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool', 'CSVSearchTool', 'JSONSearchTool'],
+  },
+  {
+    id: 'ar-frontend',
+    name: 'Frontend',
+    model: 'anthropic/claude-sonnet-4-6',
+    strengths: ['UI/UX', 'CSS', 'Accessibility', 'Performance', 'Responsive'],
+    systemPrompt: 'Du bist ein Frontend-Spezialist. Du implementierst UIs mit besonderem Fokus auf Usability, Accessibility (WCAG), Performance und visueller Konsistenz.',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
+  },
+  {
+    id: 'ar-backend',
+    name: 'Backend',
+    model: 'anthropic/claude-sonnet-4-6',
+    strengths: ['APIs', 'Microservices', 'Performance', 'Skalierung'],
+    systemPrompt: 'Du bist ein Backend-Entwickler. Du designst und implementierst REST/GraphQL APIs, Microservices und Backend-Systeme mit Fokus auf Performance und Skalierbarkeit.',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
+  },
+  {
+    id: 'ar-refactor',
+    name: 'Refactoring',
+    model: 'anthropic/claude-sonnet-4-6',
+    strengths: ['Clean Code', 'Tech-Debt', 'Patterns', 'SOLID', 'DRY'],
+    systemPrompt: 'Du bist ein Code-Qualitäts-Experte. Du erkennst Tech-Debt, anwendest Design Patterns und machst Code wartbarer — ohne Funktionalität zu verändern.',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
+  },
+  {
+    id: 'ar-data',
+    name: 'Data Analyst',
+    model: 'deepseek/deepseek-r1',
+    strengths: ['Datenanalyse', 'Visualisierung', 'Python', 'Pandas', 'ML'],
+    systemPrompt: 'Du bist ein Data-Science-Experte. Du analysierst Daten, erstellst Visualisierungen und baust ML-Modelle. Du arbeitest bevorzugt mit Python, Pandas und scikit-learn.',
+    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool', 'CSVSearchTool', 'ScrapeWebsiteTool'],
+  },
+]
 
 export const DEFAULT_TERMINAL_SHORTCUTS: TerminalShortcut[] = [
   { id: 'ctrl-c',     key: 'c',         ctrl: true,  label: 'Ctrl+C', description: 'Prozess unterbrechen (SIGINT)',       signal: '\x03',   enabled: true, category: 'control'    },
@@ -321,6 +481,62 @@ No output = all good.
 - [ ] No regressions in existing features
 `,
   },
+  {
+    id: 'dt-crew-setup',
+    name: 'Docs/CREW_SETUP.md',
+    relativePath: 'Docs/CREW_SETUP.md',
+    enabled: false,
+    content: `# Agenten-Crew Setup
+
+## Überblick
+Dieses Projekt nutzt eine Agenten-Crew für komplexe Aufgaben. Mehrere spezialisierte
+AI-Agenten arbeiten zusammen — Claude fungiert als Orchestrator und verteilt Aufgaben.
+
+## Voraussetzungen
+
+### Crew AI installieren
+\`\`\`bash
+pip install crewai crewai-tools
+\`\`\`
+
+### OpenRouter API Key
+1. Registrierung auf [openrouter.ai](https://openrouter.ai)
+2. API Key unter Settings → Keys erstellen
+3. Key in Codera AI hinterlegen: Settings → Agenten → OpenRouter Key
+
+## Agenten-Rollen in diesem Projekt
+
+| Rolle | Modell | Stärken |
+|-------|--------|---------|
+| Architect | claude/opus-4 | Planung, Architektur, Technische Entscheidungen |
+| Coder | claude/sonnet-4 | TypeScript, React, Implementierung |
+| Reviewer | openai/gpt-4o | Code Review, Tests, Sicherheit |
+| Researcher | deepseek/r1 | Recherche, Dokumentation, Analyse |
+
+## Orchestrierungs-Prinzip
+
+Claude (Orchestrator) analysiert die eingehende Anforderung und entscheidet:
+1. Welche Agenten für diese Aufgabe geeignet sind
+2. In welcher Reihenfolge sie arbeiten sollen
+3. Wie die Ergebnisse zusammengeführt werden
+
+## Crew-Session starten
+
+1. Neue Session → "Agenten-Crew" auswählen
+2. Crew-Name und optionales Ziel eingeben
+3. Agenten aus den Presets wählen (oder anpassen)
+4. Aufgabe in das Textfeld eingeben — Claude übernimmt die Koordination
+
+## Modelle & Kosten (OpenRouter)
+
+| Modell | Kosten (ca.) | Einsatz |
+|--------|-------------|---------|
+| anthropic/claude-opus-4 | $15/1M tokens | Architektur, komplexe Entscheidungen |
+| anthropic/claude-sonnet-4 | $3/1M tokens | Standard-Implementierung |
+| openai/gpt-4o | $2.5/1M tokens | Code Review |
+| deepseek/deepseek-r1 | $0.55/1M tokens | Recherche, Analyse |
+`,
+  },
   // ── AI Prompts ────────────────────────────────────────────────────────────
   {
     id: 'ai-prompt-doc-update',
@@ -450,7 +666,10 @@ export interface AppState {
   terminalFontSize: number   // terminal font size (px)
   uiFont: string             // UI font family
   uiFontSize: number         // UI base font size (px)
+  logoSize: number           // logo image height (px)
   showTitleBar: boolean      // show/hide top window chrome bar
+  customTerminalColors: Record<string, string>  // key → hex, overrides terminal theme
+  customUiColors: Record<string, string>        // css-var name → hex, persisted overrides
   tokens: RepoToken[]    // repo/git tokens
   dangerMode: boolean
   activeProjectId: string
@@ -462,6 +681,7 @@ export interface AppState {
   inputValue: string
   newProjectOpen: boolean
   newSessionOpen: boolean
+  newSessionPreKind: SessionKind | null
   notes: Record<string, string>        // sessionId → note text
   kanban: Record<string, KanbanTicket[]>  // projectId → tickets
   aiFunctionMap: Record<string, string>   // functionKey → providerId
@@ -472,6 +692,20 @@ export interface AppState {
   terminalShortcuts: TerminalShortcut[]
   docTemplates: DocTemplate[]
   docApplying: Record<string, boolean>
+  lastProjectPath: string
+  agentRoles: AgentRole[]
+  openrouterKey: string
+  defaultManagerModel: string
+  crewVerbose: boolean
+  crewTelemetryOff: boolean
+  crewQuietLogs: boolean
+  crewWrapperScript: string
+  crewRunTitleModel: string
+
+  setCustomTerminalColor: (key: string, value: string) => void
+  resetCustomTerminalColors: () => void
+  setCustomUiColor: (key: string, value: string) => void
+  resetCustomUiColors: () => void
 
   setScreen: (s: Screen) => void
   setTheme: (t: Theme) => void
@@ -483,6 +717,7 @@ export interface AppState {
   setTerminalFontSize: (s: number) => void
   setUiFont: (f: string) => void
   setUiFontSize: (s: number) => void
+  setLogoSize: (s: number) => void
   setShowTitleBar: (v: boolean) => void
   addToken: (t: RepoToken) => void
   updateToken: (id: string, patch: Partial<Omit<RepoToken, 'id'>>) => void
@@ -493,6 +728,7 @@ export interface AppState {
   setInputValue: (v: string) => void
   setNewProjectOpen: (o: boolean) => void
   setNewSessionOpen: (o: boolean) => void
+  setNewSessionPreKind: (k: SessionKind | null) => void
   setNote: (sessionId: string, text: string) => void
   setPlaywrightCheck: (v: boolean) => void
   setLocalhostCheck: (v: boolean) => void
@@ -528,6 +764,17 @@ export interface AppState {
   updateDocTemplate: (id: string, patch: Partial<Omit<DocTemplate, 'id'>>) => void
   removeDocTemplate: (id: string) => void
   setDocApplying: (projectId: string, applying: boolean) => void
+  setLastProjectPath: (p: string) => void
+  addAgentRole: (r: AgentRole) => void
+  updateAgentRole: (id: string, patch: Partial<Omit<AgentRole, 'id'>>) => void
+  removeAgentRole: (id: string) => void
+  setOpenrouterKey: (key: string) => void
+  setDefaultManagerModel: (model: string) => void
+  setCrewVerbose: (v: boolean) => void
+  setCrewTelemetryOff: (v: boolean) => void
+  setCrewQuietLogs: (v: boolean) => void
+  setCrewWrapperScript: (s: string) => void
+  setCrewRunTitleModel: (model: string) => void
 }
 
 const DEMO_TURNS: TurnMessage[] = [
@@ -639,7 +886,10 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   terminalFontSize: 13,
   uiFont: 'system',
   uiFontSize: 13,
+  logoSize: 24,
   showTitleBar: true,
+  customTerminalColors: {},
+  customUiColors: {},
   tokens: [],
   dangerMode: false,
   activeProjectId: 'p1',
@@ -651,6 +901,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   inputValue: '',
   newProjectOpen: false,
   newSessionOpen: false,
+  newSessionPreKind: null,
   notes: {},
   kanban: {},
   aiFunctionMap: {},
@@ -661,6 +912,20 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   terminalShortcuts: DEFAULT_TERMINAL_SHORTCUTS,
   docTemplates: DEFAULT_DOC_TEMPLATES,
   docApplying: {},
+  lastProjectPath: '',
+  agentRoles: DEFAULT_AGENT_ROLES,
+  openrouterKey: '',
+  defaultManagerModel: 'anthropic/claude-sonnet-4-6',
+  crewVerbose: false,
+  crewTelemetryOff: true,
+  crewQuietLogs: true,
+  crewWrapperScript: '',
+  crewRunTitleModel: 'deepseek/deepseek-chat',
+
+  setCustomTerminalColor: (key, value) => set(s => ({ customTerminalColors: { ...s.customTerminalColors, [key]: value } })),
+  resetCustomTerminalColors: () => set({ customTerminalColors: {} }),
+  setCustomUiColor: (key, value) => set(s => ({ customUiColors: { ...s.customUiColors, [key]: value } })),
+  resetCustomUiColors: () => set({ customUiColors: {} }),
 
   setScreen: (screen) => set({ screen }),
   setTheme: (theme) => set({ theme }),
@@ -672,6 +937,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setTerminalFontSize: (terminalFontSize) => set({ terminalFontSize }),
   setUiFont: (uiFont) => set({ uiFont }),
   setUiFontSize: (uiFontSize) => set({ uiFontSize }),
+  setLogoSize: (logoSize) => set({ logoSize }),
   setShowTitleBar: (showTitleBar) => set({ showTitleBar }),
   addToken: (t) => set((s) => ({ tokens: [...s.tokens, t] })),
   updateToken: (id, patch) => set((s) => ({ tokens: s.tokens.map(t => t.id === id ? { ...t, ...patch } : t) })),
@@ -682,6 +948,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setInputValue: (inputValue) => set({ inputValue }),
   setNewProjectOpen: (newProjectOpen) => set({ newProjectOpen }),
   setNewSessionOpen: (newSessionOpen) => set({ newSessionOpen }),
+  setNewSessionPreKind: (newSessionPreKind) => set({ newSessionPreKind }),
   setNote: (sessionId, text) => set((s) => ({ notes: { ...s.notes, [sessionId]: text } })),
   setPlaywrightCheck: (v) => set({ playwrightCheck: v }),
   setLocalhostCheck: (v) => set({ localhostCheck: v }),
@@ -810,6 +1077,17 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   updateDocTemplate: (id, patch) => set((s) => ({ docTemplates: s.docTemplates.map(t => t.id === id ? { ...t, ...patch } : t) })),
   removeDocTemplate: (id) => set((s) => ({ docTemplates: s.docTemplates.filter(t => t.id !== id) })),
   setDocApplying: (projectId, applying) => set((s) => ({ docApplying: { ...s.docApplying, [projectId]: applying } })),
+  setLastProjectPath: (lastProjectPath) => set({ lastProjectPath }),
+  addAgentRole: (r) => set((s) => ({ agentRoles: [...s.agentRoles, r] })),
+  updateAgentRole: (id, patch) => set((s) => ({ agentRoles: s.agentRoles.map(r => r.id === id ? { ...r, ...patch } : r) })),
+  removeAgentRole: (id) => set((s) => ({ agentRoles: s.agentRoles.filter(r => r.id !== id) })),
+  setOpenrouterKey: (openrouterKey) => set({ openrouterKey }),
+  setDefaultManagerModel: (defaultManagerModel) => set({ defaultManagerModel }),
+  setCrewVerbose: (crewVerbose) => set({ crewVerbose }),
+  setCrewTelemetryOff: (crewTelemetryOff) => set({ crewTelemetryOff }),
+  setCrewQuietLogs: (crewQuietLogs) => set({ crewQuietLogs }),
+  setCrewWrapperScript: (crewWrapperScript) => set({ crewWrapperScript }),
+  setCrewRunTitleModel: (crewRunTitleModel) => set({ crewRunTitleModel }),
 }), {
   name: 'cc-app-state',
   storage: createJSONStorage(() => fileStorage),
@@ -849,6 +1127,34 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         state.docTemplates = [...state.docTemplates, def]
       }
     }
+    // Ensure agentRoles defaults exist
+    if (!state.agentRoles || state.agentRoles.length === 0) {
+      state.agentRoles = DEFAULT_AGENT_ROLES
+    }
+    // Migrate legacy tool names (Claude-style: 'Read','Write','Bash','Edit') → CrewAI class names
+    const LEGACY_TOOL_NAMES = new Set(['Read', 'Write', 'Edit', 'Bash'])
+    const needsMigration = state.agentRoles.some(r => r.tools.some(t => LEGACY_TOOL_NAMES.has(t)))
+    if (needsMigration) {
+      state.agentRoles = state.agentRoles.map(r => {
+        const def = DEFAULT_AGENT_ROLES.find(d => d.id === r.id)
+        if (def) return { ...r, tools: def.tools }
+        // Custom role: heuristic conversion
+        const hasWrite = r.tools.some(t => t === 'Write' || t === 'Edit')
+        const hasBash  = r.tools.includes('Bash')
+        const newTools: string[] = ['FileReadTool', 'DirectoryReadTool']
+        if (hasWrite) newTools.push('FileWriterTool')
+        if (hasBash)  newTools.push('ScrapeWebsiteTool')
+        return { ...r, tools: newTools }
+      })
+    }
+    // Ensure openrouterKey exists
+    if (state.openrouterKey === undefined) state.openrouterKey = ''
+    if (state.defaultManagerModel === undefined) state.defaultManagerModel = 'anthropic/claude-sonnet-4-6'
+    if (state.crewVerbose === undefined) state.crewVerbose = false
+    if (state.crewTelemetryOff === undefined) state.crewTelemetryOff = true
+    if (state.crewQuietLogs === undefined) state.crewQuietLogs = true
+    if (state.crewWrapperScript === undefined) state.crewWrapperScript = ''
+    if (state.crewRunTitleModel === undefined) state.crewRunTitleModel = 'deepseek/deepseek-chat'
   },
   partialize: (s) => ({
     projects:        s.projects,
@@ -863,6 +1169,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     terminalFontSize:   s.terminalFontSize,
     uiFont:             s.uiFont,
     uiFontSize:      s.uiFontSize,
+    logoSize:        s.logoSize,
     showTitleBar:    s.showTitleBar,
     tokens:          s.tokens,
     activeProjectId: s.activeProjectId,
@@ -875,5 +1182,14 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     aiProviders:     s.aiProviders,
     activeAiProvider: s.activeAiProvider,
     docTemplates:    s.docTemplates,
+    lastProjectPath: s.lastProjectPath,
+    agentRoles:          s.agentRoles,
+    openrouterKey:          s.openrouterKey,
+    defaultManagerModel:    s.defaultManagerModel,
+    crewVerbose:         s.crewVerbose,
+    crewTelemetryOff:    s.crewTelemetryOff,
+    crewQuietLogs:       s.crewQuietLogs,
+    crewWrapperScript:   s.crewWrapperScript,
+    crewRunTitleModel:   s.crewRunTitleModel,
   }),
 }))

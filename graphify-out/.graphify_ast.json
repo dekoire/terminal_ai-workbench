@@ -1,0 +1,2778 @@
+{
+  "nodes": [
+    {
+      "id": "app_tsx",
+      "label": "App.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "main_tsx",
+      "label": "main.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/main.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "vite_env_d_ts",
+      "label": "vite-env.d.ts",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/vite-env.d.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_workspace_kanbanboard_tsx",
+      "label": "KanbanBoard.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "kanbanboard_typeicon",
+      "label": "TypeIcon()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L21"
+    },
+    {
+      "id": "kanbanboard_prioritybadge",
+      "label": "PriorityBadge()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L43"
+    },
+    {
+      "id": "kanbanboard_onmove",
+      "label": "onMove()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L226"
+    },
+    {
+      "id": "kanbanboard_onup",
+      "label": "onUp()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L234"
+    },
+    {
+      "id": "kanbanboard_savedetail",
+      "label": "saveDetail()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L286"
+    },
+    {
+      "id": "kanbanboard_if",
+      "label": "if()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L644"
+    },
+    {
+      "id": "kanbanboard_addimages",
+      "label": "addImages()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L739"
+    },
+    {
+      "id": "kanbanboard_refineasuserstory",
+      "label": "refineAsUserStory()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L752"
+    },
+    {
+      "id": "kanbanboard_analysewithdocs",
+      "label": "analyseWithDocs()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L773"
+    },
+    {
+      "id": "kanbanboard_picksession",
+      "label": "pickSession()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L1072"
+    },
+    {
+      "id": "components_workspace_centerpane_tsx",
+      "label": "CenterPane.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "centerpane_userowdrag",
+      "label": "useRowDrag()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L12"
+    },
+    {
+      "id": "centerpane_handler",
+      "label": "handler()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L57"
+    },
+    {
+      "id": "centerpane_closefiletab",
+      "label": "closeFileTab()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L66"
+    },
+    {
+      "id": "centerpane_selectsession",
+      "label": "selectSession()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L77"
+    },
+    {
+      "id": "centerpane_usegitinfo",
+      "label": "useGitInfo()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L200"
+    },
+    {
+      "id": "centerpane_start",
+      "label": "start()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L392"
+    },
+    {
+      "id": "centerpane_handleattach",
+      "label": "handleAttach()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L667"
+    },
+    {
+      "id": "centerpane_removeattachment",
+      "label": "removeAttachment()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L673"
+    },
+    {
+      "id": "centerpane_insertfullpath",
+      "label": "insertFullPath()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L677"
+    },
+    {
+      "id": "centerpane_confirmpathinput",
+      "label": "confirmPathInput()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L685"
+    },
+    {
+      "id": "centerpane_send",
+      "label": "send()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L695"
+    },
+    {
+      "id": "centerpane_refinewithai",
+      "label": "refineWithAI()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L713"
+    },
+    {
+      "id": "centerpane_togglevoice",
+      "label": "toggleVoice()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L733"
+    },
+    {
+      "id": "centerpane_sendraw",
+      "label": "sendRaw()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L758"
+    },
+    {
+      "id": "centerpane_handlekey",
+      "label": "handleKey()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L762"
+    },
+    {
+      "id": "centerpane_enteredit",
+      "label": "enterEdit()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1131"
+    },
+    {
+      "id": "centerpane_exitedit",
+      "label": "exitEdit()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1140"
+    },
+    {
+      "id": "centerpane_handleeditchange",
+      "label": "handleEditChange()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1142"
+    },
+    {
+      "id": "centerpane_undo",
+      "label": "undo()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1150"
+    },
+    {
+      "id": "centerpane_redo",
+      "label": "redo()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1153"
+    },
+    {
+      "id": "centerpane_savefile",
+      "label": "saveFile()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1157"
+    },
+    {
+      "id": "centerpane_saveas",
+      "label": "saveAs()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1176"
+    },
+    {
+      "id": "centerpane_replacefirst",
+      "label": "replaceFirst()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1181"
+    },
+    {
+      "id": "centerpane_replaceall",
+      "label": "replaceAll()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1188"
+    },
+    {
+      "id": "centerpane_handlekeydown",
+      "label": "handleKeyDown()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1194"
+    },
+    {
+      "id": "centerpane_autoenteredit",
+      "label": "autoEnterEdit()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1201"
+    },
+    {
+      "id": "components_workspace_workspace_tsx",
+      "label": "Workspace.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "workspace_useresizedrag",
+      "label": "useResizeDrag()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L10"
+    },
+    {
+      "id": "workspace_vdivider",
+      "label": "VDivider()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L46"
+    },
+    {
+      "id": "workspace_toggletheme",
+      "label": "toggleTheme()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L75"
+    },
+    {
+      "id": "workspace_handler",
+      "label": "handler()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L91"
+    },
+    {
+      "id": "components_workspace_utilitypanel_tsx",
+      "label": "UtilityPanel.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "utilitypanel_formatelapsed",
+      "label": "formatElapsed()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L8"
+    },
+    {
+      "id": "utilitypanel_formattime",
+      "label": "formatTime()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L16"
+    },
+    {
+      "id": "utilitypanel_getext",
+      "label": "getExt()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L107"
+    },
+    {
+      "id": "utilitypanel_fileicon",
+      "label": "FileIcon()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L111"
+    },
+    {
+      "id": "utilitypanel_openinfinder",
+      "label": "openInFinder()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L142"
+    },
+    {
+      "id": "utilitypanel_openwithapp",
+      "label": "openWithApp()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L146"
+    },
+    {
+      "id": "utilitypanel_close",
+      "label": "close()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L186"
+    },
+    {
+      "id": "utilitypanel_loadchildren",
+      "label": "loadChildren()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L191"
+    },
+    {
+      "id": "utilitypanel_handler",
+      "label": "handler()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L213"
+    },
+    {
+      "id": "utilitypanel_handleclick",
+      "label": "handleClick()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L222"
+    },
+    {
+      "id": "utilitypanel_handledoubleclick",
+      "label": "handleDoubleClick()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L233"
+    },
+    {
+      "id": "utilitypanel_handlecontextmenu",
+      "label": "handleContextMenu()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L242"
+    },
+    {
+      "id": "utilitypanel_createitem",
+      "label": "createItem()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L248"
+    },
+    {
+      "id": "utilitypanel_dodelete",
+      "label": "doDelete()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L406"
+    },
+    {
+      "id": "utilitypanel_handleexport",
+      "label": "handleExport()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L832"
+    },
+    {
+      "id": "utilitypanel_opendatafile",
+      "label": "openDataFile()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L880"
+    },
+    {
+      "id": "utilitypanel_closedatafile",
+      "label": "closeDataFile()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L895"
+    },
+    {
+      "id": "components_workspace_projectsidebar_tsx",
+      "label": "ProjectSidebar.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "projectsidebar_h",
+      "label": "h()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L13"
+    },
+    {
+      "id": "components_terminal_xtermpane_tsx",
+      "label": "XTermPane.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "xtermpane_resolvetheme",
+      "label": "resolveTheme()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L48"
+    },
+    {
+      "id": "xtermpane_xtermpane",
+      "label": "XTermPane()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L67"
+    },
+    {
+      "id": "components_terminal_diffblock_tsx",
+      "label": "DiffBlock.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/DiffBlock.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_modals_folderbrowser_tsx",
+      "label": "FolderBrowser.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/FolderBrowser.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "folderbrowser_load",
+      "label": "load()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/FolderBrowser.tsx",
+      "source_location": "L25"
+    },
+    {
+      "id": "folderbrowser_navigate",
+      "label": "navigate()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/FolderBrowser.tsx",
+      "source_location": "L43"
+    },
+    {
+      "id": "components_modals_newprojectmodal_tsx",
+      "label": "NewProjectModal.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewProjectModal.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "newprojectmodal_pickfolder",
+      "label": "pickFolder()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewProjectModal.tsx",
+      "source_location": "L16"
+    },
+    {
+      "id": "newprojectmodal_create",
+      "label": "create()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewProjectModal.tsx",
+      "source_location": "L30"
+    },
+    {
+      "id": "components_modals_newsessionmodal_tsx",
+      "label": "NewSessionModal.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "newsessionmodal_start",
+      "label": "start()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L17"
+    },
+    {
+      "id": "newsessionmodal_gocreatealias",
+      "label": "goCreateAlias()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L42"
+    },
+    {
+      "id": "components_modals_devportmodal_tsx",
+      "label": "DevPortModal.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "devportmodal_detectrunningport",
+      "label": "detectRunningPort()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L62"
+    },
+    {
+      "id": "devportmodal_detectframework",
+      "label": "detectFramework()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L75"
+    },
+    {
+      "id": "devportmodal_confirm",
+      "label": "confirm()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L85"
+    },
+    {
+      "id": "components_screens_prompttemplates_tsx",
+      "label": "PromptTemplates.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "prompttemplates_emptyform",
+      "label": "emptyForm()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L17"
+    },
+    {
+      "id": "prompttemplates_opennew",
+      "label": "openNew()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L25"
+    },
+    {
+      "id": "prompttemplates_openedit",
+      "label": "openEdit()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L30"
+    },
+    {
+      "id": "prompttemplates_save",
+      "label": "save()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L35"
+    },
+    {
+      "id": "components_screens_historybrowser_tsx",
+      "label": "HistoryBrowser.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/HistoryBrowser.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_screens_aliassettings_tsx",
+      "label": "AliasSettings.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "aliassettings_emptyalias",
+      "label": "emptyAlias()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L32"
+    },
+    {
+      "id": "aliassettings_checkcmd",
+      "label": "checkCmd()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L35"
+    },
+    {
+      "id": "aliassettings_usecmdcheck",
+      "label": "useCmdCheck()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L43"
+    },
+    {
+      "id": "aliassettings_useallcmdchecks",
+      "label": "useAllCmdChecks()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L59"
+    },
+    {
+      "id": "aliassettings_openedit",
+      "label": "openEdit()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L94"
+    },
+    {
+      "id": "aliassettings_opennew",
+      "label": "openNew()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L95"
+    },
+    {
+      "id": "aliassettings_save",
+      "label": "save()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L96"
+    },
+    {
+      "id": "aliassettings_toggleshow",
+      "label": "toggleShow()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L296"
+    },
+    {
+      "id": "aliassettings_openadd",
+      "label": "openAdd()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L299"
+    },
+    {
+      "id": "aliassettings_cancel",
+      "label": "cancel()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L301"
+    },
+    {
+      "id": "aliassettings_mask",
+      "label": "mask()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L312"
+    },
+    {
+      "id": "aliassettings_commit",
+      "label": "commit()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L840"
+    },
+    {
+      "id": "aliassettings_emptyform",
+      "label": "emptyForm()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L876"
+    },
+    {
+      "id": "components_screens_loginscreen_tsx",
+      "label": "LoginScreen.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/LoginScreen.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_primitives_pill_tsx",
+      "label": "Pill.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Pill.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_primitives_avatar_tsx",
+      "label": "Avatar.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Avatar.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "avatar_avatar",
+      "label": "Avatar()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Avatar.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_primitives_kbd_tsx",
+      "label": "Kbd.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Kbd.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "kbd_kbd",
+      "label": "Kbd()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Kbd.tsx",
+      "source_location": "L3"
+    },
+    {
+      "id": "components_primitives_icons_tsx",
+      "label": "Icons.tsx",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Icons.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "icons_ifolder",
+      "label": "IFolder()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Icons.tsx",
+      "source_location": "L7"
+    },
+    {
+      "id": "theme_presets_ts",
+      "label": "presets.ts",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/theme/presets.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "presets_applypreset",
+      "label": "applyPreset()",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/theme/presets.ts",
+      "source_location": "L104"
+    },
+    {
+      "id": "store_useappstore_ts",
+      "label": "useAppStore.ts",
+      "file_type": "code",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/store/useAppStore.ts",
+      "source_location": "L1"
+    }
+  ],
+  "edges": [
+    {
+      "source": "app_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_screens_loginscreen",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_workspace_workspace",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_screens_aliassettings",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_screens_prompttemplates",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_screens_historybrowser",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_modals_newprojectmodal",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_modals_newsessionmodal",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "app_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_theme_presets",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/App.tsx",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "main_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/main.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "main_tsx",
+      "target": "client",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/main.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "main_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_index_css",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/main.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "main_tsx",
+      "target": "app_tsx",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/main.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_typeicon",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_prioritybadge",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_onmove",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L226",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_onup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L234",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_savedetail",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L286",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_if",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L644",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_addimages",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L739",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_refineasuserstory",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L752",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_analysewithdocs",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L773",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_picksession",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L1072",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_onmove",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L1096",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_kanbanboard_tsx",
+      "target": "kanbanboard_onup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/KanbanBoard.tsx",
+      "source_location": "L1102",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_pill",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_kbd",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_avatar",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_terminal_diffblock",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_terminal_xtermpane",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_userowdrag",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_handler",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L57",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_closefiletab",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L66",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_selectsession",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L77",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_handler",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L86",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_usegitinfo",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L200",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_start",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L392",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_handleattach",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L667",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_removeattachment",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L673",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_insertfullpath",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L677",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_confirmpathinput",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L685",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_send",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L695",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_refinewithai",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L713",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_togglevoice",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L733",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_sendraw",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L758",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_handlekey",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L762",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_enteredit",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1131",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_exitedit",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1140",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_handleeditchange",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1142",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_undo",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1150",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_redo",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1153",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_savefile",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1157",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_saveas",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1176",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_replacefirst",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1181",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_replaceall",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1188",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_handlekeydown",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1194",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_centerpane_tsx",
+      "target": "centerpane_autoenteredit",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1201",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_handler",
+      "target": "centerpane_closefiletab",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L94",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_handler",
+      "target": "centerpane_selectsession",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L100",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_confirmpathinput",
+      "target": "centerpane_insertfullpath",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L687",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_togglevoice",
+      "target": "centerpane_start",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L752",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_handlekey",
+      "target": "centerpane_send",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L764",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_handlekey",
+      "target": "centerpane_sendraw",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L774",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_saveas",
+      "target": "centerpane_savefile",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1178",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_replacefirst",
+      "target": "centerpane_handleeditchange",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1185",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_replaceall",
+      "target": "centerpane_handleeditchange",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1191",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_handlekeydown",
+      "target": "centerpane_savefile",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1196",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_handlekeydown",
+      "target": "centerpane_undo",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1197",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_handlekeydown",
+      "target": "centerpane_redo",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1198",
+      "weight": 1.0
+    },
+    {
+      "source": "centerpane_autoenteredit",
+      "target": "centerpane_enteredit",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/CenterPane.tsx",
+      "source_location": "L1201",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_workspace_projectsidebar",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_workspace_centerpane",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_workspace_utilitypanel",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_theme_presets",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "workspace_useresizedrag",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "workspace_vdivider",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L46",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "workspace_toggletheme",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L75",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_workspace_tsx",
+      "target": "workspace_handler",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L91",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_pill",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_formatelapsed",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_formattime",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_getext",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L107",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_fileicon",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L111",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_openinfinder",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L142",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_openwithapp",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L146",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_close",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L186",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_loadchildren",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L191",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_handler",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L213",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_handleclick",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L222",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_handledoubleclick",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L233",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_handlecontextmenu",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L242",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_createitem",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L248",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_dodelete",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L406",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_handleexport",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L832",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_opendatafile",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L880",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_closedatafile",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L895",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_handler",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L906",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_utilitypanel_tsx",
+      "target": "utilitypanel_handler",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L917",
+      "weight": 1.0
+    },
+    {
+      "source": "utilitypanel_fileicon",
+      "target": "utilitypanel_getext",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L112",
+      "weight": 1.0
+    },
+    {
+      "source": "utilitypanel_handler",
+      "target": "utilitypanel_loadchildren",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L215",
+      "weight": 1.0
+    },
+    {
+      "source": "utilitypanel_handleclick",
+      "target": "utilitypanel_loadchildren",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L224",
+      "weight": 1.0
+    },
+    {
+      "source": "utilitypanel_handleclick",
+      "target": "utilitypanel_openinfinder",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L229",
+      "weight": 1.0
+    },
+    {
+      "source": "utilitypanel_handledoubleclick",
+      "target": "utilitypanel_openinfinder",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L238",
+      "weight": 1.0
+    },
+    {
+      "source": "utilitypanel_createitem",
+      "target": "utilitypanel_loadchildren",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L260",
+      "weight": 1.0
+    },
+    {
+      "source": "utilitypanel_handler",
+      "target": "utilitypanel_opendatafile",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/UtilityPanel.tsx",
+      "source_location": "L908",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_projectsidebar_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_projectsidebar_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_projectsidebar_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_projectsidebar_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_projectsidebar_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_workspace_kanbanboard",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_projectsidebar_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_kbd",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "components_workspace_projectsidebar_tsx",
+      "target": "projectsidebar_h",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/ProjectSidebar.tsx",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "xterm",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "addon_fit",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "addon_web_links",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "xterm_css",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_theme_presets",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "xtermpane_resolvetheme",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L48",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_xtermpane_tsx",
+      "target": "xtermpane_xtermpane",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/XTermPane.tsx",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "components_terminal_diffblock_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/terminal/DiffBlock.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_folderbrowser_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/FolderBrowser.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_folderbrowser_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/FolderBrowser.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_folderbrowser_tsx",
+      "target": "folderbrowser_load",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/FolderBrowser.tsx",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_folderbrowser_tsx",
+      "target": "folderbrowser_navigate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/FolderBrowser.tsx",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "folderbrowser_navigate",
+      "target": "folderbrowser_load",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/FolderBrowser.tsx",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newprojectmodal_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewProjectModal.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newprojectmodal_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewProjectModal.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newprojectmodal_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewProjectModal.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newprojectmodal_tsx",
+      "target": "newprojectmodal_pickfolder",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewProjectModal.tsx",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newprojectmodal_tsx",
+      "target": "newprojectmodal_create",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewProjectModal.tsx",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newsessionmodal_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newsessionmodal_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newsessionmodal_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newsessionmodal_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newsessionmodal_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_kbd",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newsessionmodal_tsx",
+      "target": "newsessionmodal_start",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_newsessionmodal_tsx",
+      "target": "newsessionmodal_gocreatealias",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/NewSessionModal.tsx",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_devportmodal_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_devportmodal_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_devportmodal_tsx",
+      "target": "devportmodal_detectrunningport",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L62",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_devportmodal_tsx",
+      "target": "devportmodal_detectframework",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L75",
+      "weight": 1.0
+    },
+    {
+      "source": "components_modals_devportmodal_tsx",
+      "target": "devportmodal_confirm",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/modals/DevPortModal.tsx",
+      "source_location": "L85",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_pill",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_kbd",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "prompttemplates_emptyform",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "prompttemplates_opennew",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "prompttemplates_openedit",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_prompttemplates_tsx",
+      "target": "prompttemplates_save",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "prompttemplates_opennew",
+      "target": "prompttemplates_emptyform",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/PromptTemplates.tsx",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_historybrowser_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/HistoryBrowser.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_historybrowser_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/HistoryBrowser.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_historybrowser_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/HistoryBrowser.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_historybrowser_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_pill",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/HistoryBrowser.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_historybrowser_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_kbd",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/HistoryBrowser.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_pill",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_theme_presets",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_emptyalias",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L32",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_checkcmd",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_usecmdcheck",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_useallcmdchecks",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L59",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_openedit",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L94",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_opennew",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L95",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_save",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L96",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_toggleshow",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L296",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_openadd",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L299",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_openedit",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L300",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_cancel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L301",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_save",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L302",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_mask",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L312",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_commit",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L840",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_emptyform",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L876",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_openadd",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L879",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_openedit",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L880",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_cancel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L881",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_save",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L882",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_toggleshow",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L893",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_aliassettings_tsx",
+      "target": "aliassettings_mask",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L894",
+      "weight": 1.0
+    },
+    {
+      "source": "aliassettings_opennew",
+      "target": "aliassettings_emptyalias",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L95",
+      "weight": 1.0
+    },
+    {
+      "source": "aliassettings_save",
+      "target": "aliassettings_cancel",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L309",
+      "weight": 1.0
+    },
+    {
+      "source": "aliassettings_openadd",
+      "target": "aliassettings_emptyform",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/AliasSettings.tsx",
+      "source_location": "L879",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_loginscreen_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/LoginScreen.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_loginscreen_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_store_useappstore",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/LoginScreen.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "components_screens_loginscreen_tsx",
+      "target": "users_naelahmed_documents_projekt_terminal_cc_ui_src_components_primitives_icons",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/screens/LoginScreen.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_primitives_pill_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Pill.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_primitives_avatar_tsx",
+      "target": "avatar_avatar",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Avatar.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_primitives_kbd_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Kbd.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_primitives_kbd_tsx",
+      "target": "kbd_kbd",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Kbd.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "components_primitives_icons_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Icons.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "components_primitives_icons_tsx",
+      "target": "icons_ifolder",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/primitives/Icons.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "theme_presets_ts",
+      "target": "presets_applypreset",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/theme/presets.ts",
+      "source_location": "L104",
+      "weight": 1.0
+    },
+    {
+      "source": "store_useappstore_ts",
+      "target": "zustand",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/store/useAppStore.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "store_useappstore_ts",
+      "target": "middleware",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/store/useAppStore.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "workspace_toggletheme",
+      "target": "presets_applypreset",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/Users/naelahmed/Documents/Projekt Terminal/cc-ui/src/components/workspace/Workspace.tsx",
+      "source_location": "L83",
+      "weight": 1.0
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

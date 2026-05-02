@@ -10,13 +10,15 @@ import { NewSessionModal } from './components/modals/NewSessionModal'
 import { DESIGN_PRESETS, applyPreset } from './theme/presets'
 
 export default function App() {
-  const { screen, theme, accent, accentFg, preset, uiFont, uiFontSize, newProjectOpen, newSessionOpen } = useAppStore()
+  const { screen, theme, accent, accentFg, preset, uiFont, uiFontSize, newProjectOpen, newSessionOpen, customUiColors } = useAppStore()
 
   // Apply preset + accent overrides whenever they change
   useEffect(() => {
     const p = DESIGN_PRESETS.find(d => d.id === preset) ?? DESIGN_PRESETS[0]
     applyPreset(p, accent, accentFg)
-  }, [theme, accent, accentFg, preset])
+    // Re-apply custom overrides on top
+    Object.entries(customUiColors).forEach(([k, v]) => document.documentElement.style.setProperty(k, v))
+  }, [theme, accent, accentFg, preset, customUiColors])
 
   // Apply UI font + size
   useEffect(() => {
@@ -33,13 +35,30 @@ export default function App() {
     document.documentElement.style.fontSize = `${uiFontSize}px`
   }, [uiFont, uiFontSize])
 
+  // Workspace stays mounted permanently so PTY WebSocket connections survive
+  // screen switches. Non-workspace screens render on top via absolute overlay.
+  const workspaceActive = screen === 'workspace'
+  const overlayScreen   = screen !== 'workspace' && screen !== 'login'
+
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-0)' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-0)', position: 'relative' }}>
       {screen === 'login' && <LoginScreen />}
-      {screen === 'workspace' && <Workspace />}
-      {screen === 'settings' && <AliasSettings />}
-      {screen === 'templates' && <PromptTemplates />}
-      {screen === 'history' && <HistoryBrowser />}
+
+      {/* Keep Workspace alive at all times (except login) so terminals never restart */}
+      {screen !== 'login' && (
+        <div style={{ position: 'absolute', inset: 0, display: workspaceActive ? 'flex' : 'none', flexDirection: 'column' }}>
+          <Workspace />
+        </div>
+      )}
+
+      {/* Overlay screens rendered on top of the hidden workspace */}
+      {overlayScreen && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 10, background: 'var(--bg-0)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {screen === 'settings'  && <AliasSettings />}
+          {screen === 'templates' && <PromptTemplates />}
+          {screen === 'history'   && <HistoryBrowser />}
+        </div>
+      )}
 
       {newProjectOpen && <NewProjectModal />}
       {newSessionOpen && <NewSessionModal />}

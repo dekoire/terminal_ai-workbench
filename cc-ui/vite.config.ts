@@ -150,6 +150,27 @@ function apiPlugin() {
         })
       }) as Connect.NextHandleFunction)
 
+      // Check if a Python package is importable (GET /api/python-import?pkg=crewai)
+      // Fallback for packages installed in venvs not on PATH
+      server.middlewares.use('/api/python-import', ((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const pkg = (url.searchParams.get('pkg') ?? '').replace(/['"\\;|&$`]/g, '')
+        if (!pkg) { res.end(JSON.stringify({ ok: false })); return }
+        // Try system python3, then common venv locations
+        exec(`python3 -c "import ${pkg}; print('ok')" 2>/dev/null`, { timeout: 5000 }, (err, out) => {
+          if (!err && out?.trim() === 'ok') {
+            res.end(JSON.stringify({ ok: true, via: 'python3' }))
+            return
+          }
+          // Also try any crewai binary in common venv locations
+          exec(`find "$HOME" -maxdepth 4 -name '${pkg}' -type f 2>/dev/null | head -1`, { timeout: 5000 }, (_, found) => {
+            const foundPath = found?.trim()
+            res.end(JSON.stringify({ ok: !!foundPath, via: foundPath || null }))
+          })
+        })
+      }) as Connect.NextHandleFunction)
+
       // Store read (GET ~/.cc-ui-data.json)
       server.middlewares.use('/api/store-read', ((req, res) => {
         res.setHeader('Content-Type', 'application/json')
@@ -472,6 +493,295 @@ function apiPlugin() {
           res.end(JSON.stringify({ ok: false, error: String(e) }))
         }
       }) as Connect.NextHandleFunction)
+      // Generate + write a CrewAI Python script, return shell command (POST /api/crew-script)
+      server.middlewares.use('/api/crew-script', ((req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{}'); return }
+        res.setHeader('Content-Type', 'application/json')
+        let body = ''
+        req.on('data', (c: Buffer) => { body += c.toString() })
+        req.on('end', () => {
+          try {
+            const { crew, openrouterKey, crewaiPath, crewVerbose, crewTelemetryOff, crewQuietLogs, crewWrapperScript } = JSON.parse(body) as {
+              crew: { name: string; goal?: string; orchestration: string; backend: string; process?: string; managerModel?: string; agents: { id: string; name: string; model: string; strengths: string[]; systemPrompt: string }[] }
+              openrouterKey: string
+              crewaiPath: string
+              crewVerbose: boolean
+              crewTelemetryOff: boolean
+              crewQuietLogs: boolean
+              crewWrapperScript: string
+            }
+
+            const venvDir   = path.dirname(path.dirname(crewaiPath))
+            const pythonBin = path.join(venvDir, 'bin', 'python3')
+
+            const verboseVal = crewVerbose ? 'True' : 'False'
+
+            // Collect all unique tools across all agents for the import line
+            const allTools = [...new Set(crew.agents.flatMap(a => a.tools ?? []))]
+            const toolsImport = allTools.length > 0
+              ? `from crewai_tools import ${allTools.join(', ')}\n`
+              : ''
+
+            const agentsCode = crew.agents.map((a, i) => {
+              const varName = `agent_${i}`
+              const safeModel = a.model.startsWith('openrouter/') ? a.model : `openrouter/${a.model}`
+              const prompt = (a.systemPrompt || `Du bist ${a.name}. Stärken: ${a.strengths.join(', ')}.`).replace(/'/g, "\\'").replace(/\n/g, '\\n')
+              const toolsList = (a.tools ?? []).length > 0
+                ? `[${a.tools.map((t: string) => `${t}()`).join(', ')}]`
+                : '[]'
+              return `${varName} = Agent(\n    role=${JSON.stringify(a.name)},\n    goal=${JSON.stringify(a.strengths.slice(0, 2).join(', ') || a.name)},\n    backstory='${prompt}',\n    llm=LLM(model=${JSON.stringify(safeModel)}, base_url='https://openrouter.ai/api/v1', api_key=os.environ['OPENROUTER_API_KEY']),\n    tools=${toolsList},\n    verbose=${verboseVal}\n)`
+            }).join('\n\n')
+
+            const agentVars = crew.agents.map((_, i) => `agent_${i}`).join(', ')
+            const crewName  = crew.name.replace(/'/g, "\\'")
+            const crewGoal  = (crew.goal || '').replace(/'/g, "\\'")
+            // Process mode and manager
+            const isSequential = crew.process === 'sequential'
+            const managerModelRaw = crew.managerModel ?? 'anthropic/claude-opus-4'
+            const managerModel = managerModelRaw.startsWith('openrouter/') ? managerModelRaw : `openrouter/${managerModelRaw}`
+            const managerModelLabel = managerModelRaw.split('/').pop() ?? managerModelRaw
+
+            // Build agent_defs list for runtime: (agent_obj, role_name, model_short)
+            const agentDefsTuple = crew.agents.map((a, i) => {
+              const modelShort = (a.model.startsWith('openrouter/') ? a.model.slice('openrouter/'.length) : a.model).split('/').pop() ?? a.model
+              return `    (agent_${i}, ${JSON.stringify(a.name)}, ${JSON.stringify(modelShort)})`
+            }).join(',\n')
+
+            const telemetryBlock = crewTelemetryOff ? `os.environ['OTEL_SDK_DISABLED']          = 'true'
+os.environ['CREWAI_TELEMETRY_OPT_OUT']   = '1'
+os.environ['ANONYMIZED_TELEMETRY']        = 'false'
+os.environ['CREWAI_TRACING_ENABLED']     = 'false'
+` : ''
+
+            const quietLogsBlock = crewQuietLogs ? `import logging, os as _os
+_os.environ['LITELLM_LOG']     = 'ERROR'
+_os.environ['LITELLM_VERBOSE'] = 'False'
+for _lg in ('crewai', 'litellm', 'opentelemetry', 'chromadb', 'httpx', 'httpcore', 'urllib3', 'asyncio'):
+    logging.getLogger(_lg).setLevel(logging.ERROR)
+logging.disable(logging.WARNING)
+
+import warnings
+warnings.filterwarnings('ignore')
+` : ''
+
+            const wrapperBlock = crewWrapperScript ? `\n# ── Custom wrapper script ──\n${crewWrapperScript}\n` : ''
+
+            const script = `#!/usr/bin/env python3
+# Codera AI — Auto-generated Crew Script
+# Crew: ${crewName}
+import os, sys
+os.environ['OPENROUTER_API_KEY'] = ${JSON.stringify(openrouterKey)}
+os.environ['OPENAI_API_KEY']     = ${JSON.stringify(openrouterKey)}
+${telemetryBlock}${quietLogsBlock}${wrapperBlock}
+import io as _io, re as _re
+_old_stdout, sys.stdout = sys.stdout, _io.StringIO()
+from crewai import Agent, Task, Crew, Process, LLM
+sys.stdout = _old_stdout
+${toolsImport}
+# Fix: orphaned tool_result blocks crash Anthropic in hierarchical mode
+def _sanitize_messages(msgs):
+    """Remove tool_result/tool messages whose ID has no matching tool_use/tool_call in the preceding assistant message."""
+    if not isinstance(msgs, list):
+        return msgs
+    cleaned, last_tool_ids = [], set()
+    for msg in msgs:
+        if not isinstance(msg, dict):
+            cleaned.append(msg); continue
+        role = msg.get('role', '')
+        if role == 'assistant':
+            # Collect IDs from both OpenAI format (tool_calls) and Anthropic native (content blocks)
+            last_tool_ids = set()
+            for tc in (msg.get('tool_calls') or []):
+                if isinstance(tc, dict) and tc.get('id'):
+                    last_tool_ids.add(tc['id'])
+            c = msg.get('content', [])
+            if isinstance(c, list):
+                for b in c:
+                    if isinstance(b, dict) and b.get('type') == 'tool_use' and b.get('id'):
+                        last_tool_ids.add(b['id'])
+            cleaned.append(msg)
+        elif role == 'tool':
+            # OpenAI format tool result — drop if orphaned
+            if msg.get('tool_call_id') in last_tool_ids:
+                cleaned.append(msg)
+        elif role == 'user':
+            # Anthropic native format — strip orphaned tool_result content blocks
+            c = msg.get('content', '')
+            if isinstance(c, list):
+                c2 = [b for b in c if not (isinstance(b, dict) and b.get('type') == 'tool_result' and b.get('tool_use_id') not in last_tool_ids)]
+                if len(c2) != len(c):
+                    msg = {**msg, 'content': c2 or ''}
+            last_tool_ids = set()
+            cleaned.append(msg)
+        else:
+            cleaned.append(msg)
+    return cleaned
+
+# Patch 1: crewai agent_utils level
+try:
+    import crewai.utilities.agent_utils as _au
+    _orig_llm_call = _au.get_llm_response
+    def _safe_llm_call(llm, messages, *args, **kwargs):
+        return _orig_llm_call(llm, _sanitize_messages(messages), *args, **kwargs)
+    _au.get_llm_response = _safe_llm_call
+    try:
+        import crewai.agents.crew_agent_executor as _cae
+        _cae.get_llm_response = _safe_llm_call
+    except Exception:
+        pass
+except Exception:
+    pass
+
+# Patch 2: openai client level (last line of defence — catches any format)
+try:
+    import openai.resources.chat.completions as _oai_comp
+    _orig_create = _oai_comp.Completions.create
+    def _safe_create(self, *args, **kwargs):
+        if 'messages' in kwargs:
+            kwargs['messages'] = _sanitize_messages(kwargs['messages'])
+        return _orig_create(self, *args, **kwargs)
+    _oai_comp.Completions.create = _safe_create
+except Exception:
+    pass
+
+# Strip emojis from all output
+_EMOJI_RE = _re.compile(
+    u'[\\U0001F300-\\U0001F9FF\\U00002600-\\U000027BF\\U0001FA00-\\U0001FA9F'
+    u'\\U00002700-\\U000027BF\\U0001F1E0-\\U0001F1FF\\u2600-\\u26FF\\u2700-\\u27BF]+'
+)
+class _NoEmojiWriter:
+    def __init__(self, w): self._w = w
+    def write(self, s): self._w.write(_EMOJI_RE.sub('', s))
+    def flush(self): self._w.flush()
+    def fileno(self): return self._w.fileno()
+    def isatty(self): return self._w.isatty()
+sys.stdout = _NoEmojiWriter(sys.stdout)
+sys.stderr = _NoEmojiWriter(sys.stderr)
+
+${agentsCode}
+
+# (agent_object, display_role, model_short_name)
+_agent_defs = [
+${agentDefsTuple}
+]
+
+# Patch each agent to emit markers when the manager delegates to it.
+# Agent is a Pydantic v2 model, so we bypass __setattr__ via object.__setattr__.
+# Instance __dict__ entries shadow class methods (non-data descriptors) in Python's MRO.
+import base64 as _b64
+_is_hierarchical = ${!isSequential ? 'True' : 'False'}
+_orch_model = ${JSON.stringify(managerModelLabel)}
+def _make_marked(agent, role, model_short):
+    _orig = agent.execute_task          # capture bound method before we shadow it
+    def _marked(*args, **kwargs):
+        _task_desc = ''
+        try: _task_desc = str(args[0].description) if args else ''
+        except Exception: pass
+        _task_b64 = _b64.b64encode(_task_desc[:400].encode('utf-8', errors='replace')).decode()
+        if _is_hierarchical:
+            print(f'\\n###CREW:Orchestrator:{_orch_model}:step:{_task_b64}###', flush=True)
+        print(f'\\n###CREW:{role.replace(" ", "_")}:{model_short}:start:{_task_b64}###', flush=True)
+        _result = _orig(*args, **kwargs)
+        _out_str = str(_result)
+        _tok = max(1, len(_out_str) // 4)
+        _out_b64 = _b64.b64encode(_out_str[:150].encode('utf-8', errors='replace')).decode()
+        print(f'###CREW_META:{role.replace(" ", "_")}:{model_short}:{_tok}:{_out_b64}:{_task_b64}###', flush=True)
+        print(f'###CREW:{role.replace(" ", "_")}:{model_short}:done###', flush=True)
+        return _result
+    object.__setattr__(agent, 'execute_task', _marked)  # bypass Pydantic validation
+
+for _ag, _role, _ms in _agent_defs:
+    _make_marked(_ag, _role, _ms)
+
+${isSequential ? '' : `_manager_llm = LLM(
+    model=${JSON.stringify(managerModel)},
+    base_url='https://openrouter.ai/api/v1',
+    api_key=os.environ['OPENROUTER_API_KEY']
+)
+
+# Manager agent must have tools=[] — CrewAI raises if manager has tools
+_manager_agent = Agent(
+    role='Crew Manager',
+    goal='IMMER an Spezialisten delegieren — niemals selbst antworten. Zerlege jede Aufgabe und delegiere jeden Teil an den passenden Agenten. Sammle alle Ergebnisse und fasse sie zusammen.',
+    backstory='Du bist ein strikter Projektmanager. Deine einzige Aufgabe ist es zu delegieren. Du hast kein eigenes Wissen und kannst keine Aufgaben selbst loesen — du MUSST immer den passenden Spezialisten beauftragen. Antworte niemals direkt, delegiere immer zuerst.',
+    llm=_manager_llm,
+    tools=[],
+    allow_delegation=True,
+    verbose=${verboseVal}
+)
+`}
+# Template task — description is filled at kickoff time via inputs dict
+_task_template = Task(
+    description='{task_input}',
+    expected_output='Vollstaendige, detaillierte Antwort auf Deutsch',
+)
+
+_crew = Crew(
+    agents=[ag for ag, _, _ in _agent_defs],
+    tasks=[_task_template],
+    process=Process.${isSequential ? 'sequential' : 'hierarchical'},
+    ${isSequential ? '' : 'manager_agent=_manager_agent,'}
+    verbose=${verboseVal}
+)
+
+print('\\n\\033[1;32m${crewName} bereit${crewGoal ? ' — ' + crewGoal : ''}\\033[0m')
+print('\\033[90mAgenten: ${crew.agents.map(a => a.name).join(', ')}\\033[0m')
+print('\\033[90mProzess: ${isSequential ? 'Sequentiell (kein Manager)' : `Hierarchisch — Manager: ${managerModelLabel}`}\\033[0m')
+print('\\033[90mEingabe: Aufgabe beschreiben → Enter · quit zum Beenden\\033[0m\\n')
+
+while True:
+    try:
+        task_input = input('\\033[1;36m> \\033[0m').strip()
+        if not task_input:
+            continue
+        if task_input.lower() in ('quit', 'exit', 'q', ':q'):
+            print('\\n\\033[90mCrew beendet.\\033[0m')
+            break
+
+        print(f'\\033[90m[Crew empfangen: {task_input[:60]}{"..." if len(task_input) > 60 else ""}]\\033[0m', flush=True)
+        _input_b64 = _b64.b64encode(task_input.encode('utf-8', errors='replace')).decode()
+        # Reset cached task output so CrewAI re-runs agents instead of returning stale result
+        try:
+            object.__setattr__(_task_template, 'output', None)
+        except Exception:
+            pass
+        print(f'\\n###CREW_RUN_START:{_input_b64}###', flush=True)
+${isSequential ? '' : `        print(f'\\n###CREW:Orchestrator:${managerModelLabel}:start###', flush=True)\n`}        result = _crew.kickoff(inputs={'task_input': task_input})
+        try:
+            _tok = getattr(result, 'token_usage', None)
+            if _tok is not None:
+                _total = getattr(_tok, 'total_tokens', 0) or 0
+                print(f'\\n###CREW_TOTAL_TOKENS:{_total}###', flush=True)
+        except Exception:
+            pass
+${isSequential ? '' : `        print(f'###CREW:Orchestrator:${managerModelLabel}:done###', flush=True)\n`}        print(f'\\n###CREW_RESULT_READY###', flush=True)
+    except KeyboardInterrupt:
+        print('\\n\\033[90mCrew beendet.\\033[0m')
+        break
+    except Exception as e:
+        import traceback, base64 as _b64e
+        _err_str = f'{type(e).__name__}: {e}'
+        _tb_str  = traceback.format_exc()
+        _err_b64 = _b64e.b64encode((_err_str[:300]).encode('utf-8', errors='replace')).decode()
+        _tb_b64  = _b64e.b64encode((_tb_str[:2000]).encode('utf-8', errors='replace')).decode()
+        print(f'\\n###CREW_ERROR:{_err_b64}:{_tb_b64}###', flush=True)
+        print(f'\\n\\033[1;31mFehler: {e}\\033[0m')
+        traceback.print_exc()
+        print()
+`
+
+            const tmpFile = path.join(require('os').tmpdir(), `cc-crew-${Date.now()}.py`)
+            fs.writeFileSync(tmpFile, script, { mode: 0o755 })
+
+            const cmd = pythonBin
+            const args = tmpFile
+            res.end(JSON.stringify({ ok: true, cmd, args, scriptPath: tmpFile }))
+          } catch (e) {
+            res.end(JSON.stringify({ ok: false, error: String(e) }))
+          }
+        })
+      }) as Connect.NextHandleFunction)
+
     },
   }
 }
@@ -539,14 +849,13 @@ function terminalPlugin() {
                 process.env.PATH ?? '',
               ].filter(Boolean).join(':')
 
-              // Always spawn a fully-interactive login shell (-l -i).
-              // This guarantees .zshrc aliases (like cc-mini, cc-ds4pro) are loaded.
-              // For alias sessions we auto-type the command after the shell is ready,
-              // exactly as if the user typed it — the most reliable way to invoke
-              // shell aliases including those with spaces in arguments.
-              const spawnCmd = ZSH
-              const spawnArgs = ['-li']
+              // If cmd is an absolute path (e.g. /usr/bin/python3 for crew sessions),
+              // spawn it directly — no shell echo, no alias resolution needed.
+              // Otherwise spawn zsh -li so .zshrc aliases like cc-mini are available.
+              const isAbsCmd    = cmd.startsWith('/')
               const isPlainShell = (cmd === 'zsh' && !args)
+              const spawnCmd  = isAbsCmd ? cmd : ZSH
+              const spawnArgs = isAbsCmd ? (args ? args.split(' ') : []) : ['-li']
 
               const ptyEnv: Record<string, string> = {
                 ...(process.env as Record<string, string>),
@@ -555,6 +864,10 @@ function terminalPlugin() {
                 COLORTERM: 'truecolor',
                 HOME: process.env.HOME ?? '/Users/' + (process.env.USER ?? 'user'),
                 LANG: process.env.LANG ?? 'en_US.UTF-8',
+                PYTHONIOENCODING: 'utf-8',
+                PYTHONUNBUFFERED: '1',
+                CREWAI_TRACING_ENABLED: 'false',
+                CREWAI_VERBOSE: 'false',
               }
 
               const ptyProc = pty.spawn(spawnCmd, spawnArgs, {
@@ -568,18 +881,45 @@ function terminalPlugin() {
               const session: PtySession = { pty: ptyProc, clients: new Set([ws]) }
               sessions.set(sessionId, session)
 
-              // Auto-type the alias command once the shell has initialised.
-              // Using a real interactive shell + write() is the only way to
-              // reliably expand .zshrc aliases like cc-mini or cc-ds4pro.
-              if (!isPlainShell) {
+              // For named alias commands (not absolute paths), auto-type into the
+              // interactive shell so .zshrc aliases get expanded.
+              if (!isPlainShell && !isAbsCmd) {
                 const fullCmd = args ? `${cmd} ${args}` : cmd
                 setTimeout(() => {
                   try { ptyProc.write(fullCmd + '\r') } catch {}
                 }, 600)
               }
 
+              // Stateful: persists across PTY chunks so chunk-split panel lines are filtered
+              let inPanel = false
+              const filterPanels = (raw: string): string => {
+                const lines = raw.split('\n')
+                const out: string[] = []
+                let blanks = 0
+                for (const line of lines) {
+                  const vis = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\r/g, '').trim()
+                  if (!vis) { if (!inPanel && ++blanks <= 1) out.push(line); continue }
+                  blanks = 0
+                  // New run → reset panel state so stale state doesn't bleed into next run
+                  if (vis.startsWith('###CREW_RUN_START:')) inPanel = false
+                  // Always let protocol markers through even when inside a Rich panel
+                  if (vis.startsWith('###CREW')) { out.push(line); continue }
+                  const fc = vis[0]
+                  if (fc === '╭') { inPanel = true;  continue }
+                  if (fc === '╰') { inPanel = false; continue }
+                  if (inPanel || fc === '│') continue
+                  const lc = vis[vis.length - 1]
+                  if (lc === '│') continue
+                  if (/^[─╌━┄╯╰]+$/.test(vis)) continue
+                  out.push(line)
+                }
+                return out.join('\n')
+              }
+
               const broadcast = (data: string) => {
-                const payload = JSON.stringify({ type: 'data', data })
+                const filtered = filterPanels(data)
+                if (!filtered && data.includes('\n')) return
+                const payload = JSON.stringify({ type: 'data', data: filtered })
                 for (const c of session.clients) {
                   if (c.readyState === 1) c.send(payload)
                 }

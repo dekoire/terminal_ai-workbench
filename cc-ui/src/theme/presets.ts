@@ -23,8 +23,8 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   },
   {
     id: 'cobalt',      name: 'Cobalt',     dark: true,
-    accent: '#4d9fff', accentFg: '#030811',
-    sidebarBg: '#0d1220', sidebarBg2: '#111929', sidebarLine: '#1e2840',
+    accent: '#10a37f', accentFg: '#ffffff',
+    sidebarBg: '#171717', sidebarBg2: '#212121', sidebarLine: '#383838',
   },
   {
     id: 'forest',      name: 'Forest',     dark: true,
@@ -89,8 +89,8 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   },
   {
     id: 'light-slate', name: 'Slate Light', dark: false,
-    accent: '#1a9e94', accentFg: '#f0fffe',
-    sidebarBg: '#edf6f5', sidebarBg2: '#e0eeec', sidebarLine: '#c4e0dc',
+    accent: '#d97757', accentFg: '#ffffff',
+    sidebarBg: '#f5f5f5', sidebarBg2: '#ececec', sidebarLine: '#e0e0e0',
   },
   {
     id: 'light-carbon', name: 'Carbon Light', dark: false,
@@ -108,14 +108,16 @@ export function applyPreset(preset: AccentPreset, accentOverride?: string, accen
 
   // Full bg/fg palette for dark vs. light
   if (preset.dark) {
-    root.style.setProperty('--bg-0',         '#0e0d0b')
-    root.style.setProperty('--bg-3',         '#24211c')
-    root.style.setProperty('--bg-4',         '#2d2924')
-    root.style.setProperty('--line-strong',  '#3a3631')
-    root.style.setProperty('--fg-0',         '#f3ece2')
-    root.style.setProperty('--fg-1',         '#c9c0b3')
-    root.style.setProperty('--fg-2',         '#8a8478')
-    root.style.setProperty('--fg-3',         '#5e5950')
+    // ChatGPT-style neutral palette for cobalt, warm palette for all others
+    const isCobalt = preset.id === 'cobalt'
+    root.style.setProperty('--bg-0',         isCobalt ? '#212121' : '#0e0d0b')
+    root.style.setProperty('--bg-3',         isCobalt ? '#3f3f3f' : '#24211c')
+    root.style.setProperty('--bg-4',         isCobalt ? '#4a4a4a' : '#2d2924')
+    root.style.setProperty('--line-strong',  isCobalt ? '#565656' : '#3a3631')
+    root.style.setProperty('--fg-0',         isCobalt ? '#ececec' : '#f3ece2')
+    root.style.setProperty('--fg-1',         isCobalt ? '#c4c4c4' : '#c9c0b3')
+    root.style.setProperty('--fg-2',         isCobalt ? '#8e8e8e' : '#8a8478')
+    root.style.setProperty('--fg-3',         isCobalt ? '#5e5e5e' : '#5e5950')
     root.style.setProperty('--ok',           '#7cd9a8')
     root.style.setProperty('--warn',         '#f4c365')
     root.style.setProperty('--err',          '#ef7a7a')
@@ -124,14 +126,15 @@ export function applyPreset(preset: AccentPreset, accentOverride?: string, accen
     root.style.setProperty('--danger-soft',  'rgba(226,92,92,0.12)')
     root.style.setProperty('--danger-line',  'rgba(226,92,92,0.45)')
   } else {
-    root.style.setProperty('--bg-0',         '#faf8f4')
-    root.style.setProperty('--bg-3',         '#e3ddcf')
-    root.style.setProperty('--bg-4',         '#d8d1c0')
-    root.style.setProperty('--line-strong',  '#c8c0ad')
-    root.style.setProperty('--fg-0',         '#1c1814')
-    root.style.setProperty('--fg-1',         '#4a443c')
-    root.style.setProperty('--fg-2',         '#7a7368')
-    root.style.setProperty('--fg-3',         '#a09889')
+    const isSlate = preset.id === 'light-slate'
+    root.style.setProperty('--bg-0',         isSlate ? '#fafafa' : '#faf8f4')
+    root.style.setProperty('--bg-3',         isSlate ? '#e8e8e8' : '#e3ddcf')
+    root.style.setProperty('--bg-4',         isSlate ? '#dedede' : '#d8d1c0')
+    root.style.setProperty('--line-strong',  isSlate ? '#d2d2d2' : '#c8c0ad')
+    root.style.setProperty('--fg-0',         isSlate ? '#1c1c1e' : '#1c1814')
+    root.style.setProperty('--fg-1',         isSlate ? '#3c3c3e' : '#4a443c')
+    root.style.setProperty('--fg-2',         isSlate ? '#6b6b6b' : '#7a7368')
+    root.style.setProperty('--fg-3',         isSlate ? '#9a9a9a' : '#a09889')
     root.style.setProperty('--ok',           '#3d9b6c')
     root.style.setProperty('--warn',         '#b88425')
     root.style.setProperty('--err',          '#c0463f')

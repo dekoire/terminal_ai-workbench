@@ -1,7 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import type { TurnMessage, Template, TerminalShortcut } from '../../store/useAppStore'
-import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI } from '../primitives/Icons'
+import type { TurnMessage, Template, TerminalShortcut, Session } from '../../store/useAppStore'
+import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, ICrew } from '../primitives/Icons'
+import simpleLogo from '../../assets/simple_logo.svg'
+import { TERMINAL_THEMES } from '../../theme/presets'
 import { updateDocsWithAI, refreshProjectDocs } from '../../utils/updateDocs'
 import { aiDetectStartCmd } from '../../utils/aiDetect'
 import { Pill } from '../primitives/Pill'
@@ -39,42 +41,27 @@ function useRowDrag(onMove: (delta: number) => void) {
   }, [onMove])
 }
 
-export function CenterPane() {
-  const { dangerMode, projects, activeProjectId, activeSessionId, setActiveSession, setNewSessionOpen, aliases } = useAppStore()
-  // setActiveSession used in selectSession below
+interface CenterPaneProps {
+  fileTabs: string[]
+  activeFilePath: string | null
+  setActiveFilePath: (p: string | null) => void
+  closeFileTab: (p: string) => void
+}
+
+export function CenterPane({ fileTabs, activeFilePath, setActiveFilePath, closeFileTab }: CenterPaneProps) {
+  const { dangerMode, projects, activeProjectId, activeSessionId, setActiveSession, setNewSessionOpen, aliases, terminalTheme, theme: appTheme } = useAppStore()
+  const termBg = (TERMINAL_THEMES.find(t => t.id === terminalTheme)?.theme.background)
+    ?? (appTheme === 'dark' ? '#0e0d0b' : '#faf8f4')
   const project = projects.find(p => p.id === activeProjectId)
   const sessions = project?.sessions ?? []
-  const activeSession = sessions.find(s => s.id === activeSessionId)
 
-  const [inputH, setInputH] = useState(220)
+  // All sessions show in center — crew sessions are first-class tabs
+  const activeCrewSession = sessions.find(s => s.id === activeSessionId && s.kind === 'crew')
+
+  const [inputH, setInputH] = useState(130)
   const dragInput = useRowDrag(useCallback((dy: number) => {
     setInputH(h => Math.min(400, Math.max(80, h - dy)))
   }, []))
-
-  // File tabs — opened via right-click "In Tab öffnen"
-  const [fileTabs, setFileTabs] = useState<string[]>([])
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const path = (e as CustomEvent<string>).detail
-      setFileTabs(prev => prev.includes(path) ? prev : [...prev, path])
-      setActiveFilePath(path) // show file view; session stays in store
-    }
-    window.addEventListener('cc:open-file-tab', handler)
-    return () => window.removeEventListener('cc:open-file-tab', handler)
-  }, [])
-
-  const closeFileTab = (path: string) => {
-    setFileTabs(prev => {
-      const next = prev.filter(p => p !== path)
-      if (activeFilePath === path) {
-        if (next.length > 0) setActiveFilePath(next[next.length - 1])
-        else { setActiveFilePath(null) }
-      }
-      return next
-    })
-  }
 
   const selectSession = (sid: string) => {
     setActiveFilePath(null)
@@ -83,46 +70,17 @@ export function CenterPane() {
 
   const showFileViewer = activeFilePath !== null
 
-  // Keyboard shortcuts: Cmd/Ctrl+T = new session, Cmd+1-9 = switch tab, Cmd+W = close file tab
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey
-      if (!mod) return
-      if (e.key === 't') {
-        e.preventDefault()
-        setNewSessionOpen(true)
-      } else if (e.key === 'w' && activeFilePath) {
-        e.preventDefault()
-        closeFileTab(activeFilePath)
-      } else {
-        const n = parseInt(e.key)
-        if (n >= 1 && n <= 9) {
-          e.preventDefault()
-          if (n <= sessions.length) {
-            selectSession(sessions[n - 1].id)
-          } else {
-            const fi = n - sessions.length - 1
-            if (fi >= 0 && fi < fileTabs.length) setActiveFilePath(fileTabs[fi])
-          }
-        }
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [sessions, fileTabs, activeFilePath, selectSession, closeFileTab, setNewSessionOpen])
-
-  // Use cmd/args baked into the session at creation time — no stale alias lookup.
-  // Fall back to alias lookup for sessions created before this field existed.
-  const _fallbackAlias = aliases.find(a => a.name === activeSession?.alias)
-  const aliasCmd  = activeSession?.cmd  || _fallbackAlias?.cmd  || 'zsh'
-  const aliasArgs = activeSession?.args != null ? activeSession.args : (_fallbackAlias?.args ?? '')
+  // Compute cmd/args for a session (baked-in at creation, fall back to alias lookup)
+  const sessionCmd  = (s: typeof sessions[0]) => s.cmd  || aliases.find(a => a.name === s.alias)?.cmd  || 'zsh'
+  const sessionArgs = (s: typeof sessions[0]) => s.args != null ? s.args : (aliases.find(a => a.name === s.alias)?.args ?? '')
 
   return (
     <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg-0)' }}>
       <ProjectHeader />
+      {dangerMode && <DangerBanner />}
       <SessionTabs
         sessions={sessions}
-        activeId={showFileViewer ? '' : activeSessionId}
+        activeId={showFileViewer ? '' : activeSessionId ?? ''}
         onNew={() => setNewSessionOpen(true)}
         onSelectSession={selectSession}
         fileTabs={fileTabs}
@@ -130,30 +88,129 @@ export function CenterPane() {
         onSelectFileTab={setActiveFilePath}
         onCloseFileTab={closeFileTab}
       />
-      {dangerMode && <DangerBanner />}
-      {/* flex:1 + minHeight:0 ensures xterm fills remaining space */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {showFileViewer ? (
-          <FileTabViewer path={activeFilePath} />
-        ) : activeSession ? (
-          <XTermPane
-            sessionId={activeSession.id}
-            cmd={aliasCmd}
-            args={aliasArgs}
-            cwd={project?.path ?? '~'}
-          />
-        ) : (
-          <EmptyState onNew={() => setNewSessionOpen(true)} />
-        )}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        {showFileViewer && <FileTabViewer path={activeFilePath} />}
+        {sessions.length === 0 && !showFileViewer && <EmptyState onNew={() => setNewSessionOpen(true)} />}
+
+        {sessions.map(s => {
+          const isActive = s.id === activeSessionId && !showFileViewer
+          return (
+            <div key={s.id} style={{ display: isActive ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
+              <XTermPane
+                sessionId={s.id}
+                cmd={sessionCmd(s)}
+                args={sessionArgs(s)}
+                cwd={project?.path ?? '~'}
+              />
+            </div>
+          )
+        })}
       </div>
 
       {/* Horizontal drag handle */}
       <HDivider onMouseDown={dragInput} />
 
       <div style={{ height: inputH, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <InputArea onRequestH={(h) => setInputH(ih => Math.max(ih, h))} />
+        <InputArea onRequestH={(h) => setInputH(h)} />
       </div>
+
     </main>
+  )
+}
+
+// ── Crew Bar — compact agent strip above terminal ─────────────────────────────
+type CrewAgentLiveStatus = 'idle' | 'active' | 'done'
+
+function CrewBar({ session }: { session: Session }) {
+  const crew = session.crew
+  const [agentStatus, setAgentStatus] = useState<Record<string, CrewAgentLiveStatus>>({})
+  const [, setTick] = useState(0)
+  const startTimes = useRef<Record<string, number>>({})
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { sessionId: sid, agent, status } = (e as CustomEvent<{ sessionId: string; agent: string; model: string; status: string }>).detail
+      if (sid !== session.id) return
+      setAgentStatus(prev => {
+        const next = { ...prev }
+        if (status === 'start') {
+          // mark all previous as done
+          Object.keys(next).forEach(k => { if (next[k] === 'active') next[k] = 'done' })
+          next[agent] = 'active'
+          startTimes.current[agent] = Date.now()
+        } else {
+          next[agent] = 'done'
+        }
+        return next
+      })
+    }
+    window.addEventListener('cc:crew-event', handler)
+    return () => window.removeEventListener('cc:crew-event', handler)
+  }, [session.id])
+
+  // Live timer tick while any agent is active
+  const hasActive = Object.values(agentStatus).some(s => s === 'active')
+  useEffect(() => {
+    if (!hasActive) return
+    const id = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [hasActive])
+
+  if (!crew) return null
+
+  // Color by position in crew.agents → each agent gets a unique color
+  const AGENT_PALETTE = ['#ef4444','#3b82f6','#22c55e','#a855f7','#eab308','#ec4899','#06b6d4','#6366f1','#14b8a6','#e879f9']
+  const agentColor = (name: string) => {
+    const idx = crew!.agents.findIndex(a => a.name === name)
+    return AGENT_PALETTE[Math.max(0, idx) % AGENT_PALETTE.length]
+  }
+
+  // Sort: active first, idle middle, done last
+  const sorted = [...crew.agents].sort((a, b) => {
+    const rank = (s: string) => s === 'active' ? 0 : s === 'idle' ? 1 : 2
+    return rank(agentStatus[a.name] ?? 'idle') - rank(agentStatus[b.name] ?? 'idle')
+  })
+
+  return (
+    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', overflowX: 'auto', scrollbarWidth: 'none' }}>
+      {sorted.map((agent) => {
+        const color  = agentColor(agent.name)
+        const status = agentStatus[agent.name] ?? 'idle'
+        const isActive = status === 'active'
+        const isDone   = status === 'done'
+        const elapsedSec = isActive && startTimes.current[agent.name]
+          ? Math.floor((Date.now() - startTimes.current[agent.name]) / 1000)
+          : null
+        return (
+          <div
+            key={agent.id}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '3px 9px', borderRadius: 5, flexShrink: 0,
+              background: isActive
+                ? `color-mix(in srgb, ${color} 14%, var(--bg-2))`
+                : isDone
+                  ? 'color-mix(in srgb, var(--fg-3) 8%, var(--bg-2))'
+                  : 'var(--bg-2)',
+              border: `1px solid ${isActive ? color : isDone ? 'color-mix(in srgb, var(--fg-3) 20%, var(--line))' : 'var(--line)'}`,
+              boxShadow: isActive ? `0 0 8px 1px ${color}55, 0 0 2px 0px ${color}99` : 'none',
+              transition: 'all 0.3s',
+              opacity: isDone ? 0.55 : 1,
+            }}
+          >
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: isActive ? color : isDone ? 'var(--fg-3)' : color, flexShrink: 0, opacity: isDone ? 0.5 : 1, boxShadow: isActive ? `0 0 6px 2px ${color}` : 'none', animation: isActive ? 'cc-pulse 1.2s ease-in-out infinite' : 'none' }} />
+            <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? color : isDone ? 'var(--fg-3)' : 'var(--fg-1)' }}>{agent.name}</span>
+            {!isActive && <span className="mono" style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>{agent.model.split('/').pop()}</span>}
+            {isActive && elapsedSec !== null && <span className="mono" style={{ fontSize: 9.5, color: color, opacity: 0.85 }}>{elapsedSec}s</span>}
+            {isDone && <span style={{ fontSize: 9, color: 'var(--fg-3)' }}>✓</span>}
+          </div>
+        )
+      })}
+      <span style={{ flex: 1 }} />
+      <span style={{ fontSize: 10, color: 'var(--fg-3)', flexShrink: 0 }}>
+        {crew.orchestration === 'auto' ? 'Auto' : 'Manuell'}
+      </span>
+    </div>
   )
 }
 
@@ -353,59 +410,26 @@ function ProjectHeader() {
     setConfigOpen(false)
   }
 
+  // Listen to events from Workspace titlebar buttons
+  useEffect(() => {
+    const onPlay    = () => { if (hasDevServer) launchDevServer(); else openConfig() }
+    const onConfig  = () => openConfig()
+    const onDocs    = () => doRefreshDocs()
+    window.addEventListener('cc:hdr-play',   onPlay)
+    window.addEventListener('cc:hdr-config', onConfig)
+    window.addEventListener('cc:hdr-docs',   onDocs)
+    return () => {
+      window.removeEventListener('cc:hdr-play',   onPlay)
+      window.removeEventListener('cc:hdr-config', onConfig)
+      window.removeEventListener('cc:hdr-docs',   onDocs)
+    }
+  }, [hasDevServer, launching, refreshingDocs, devCmd, devPort, project]) // eslint-disable-line react-hooks/exhaustive-deps
+
   void activeSessionId
 
+  // Render nothing visible — just the config modal when open
   return (
-    <div style={{ height: 38, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', background: 'var(--bg-1)', position: 'relative' }}>
-      {noGit
-        ? <IFolder style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
-        : <IGit style={{ color: 'var(--fg-2)', flexShrink: 0 }} />
-      }
-
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', whiteSpace: 'nowrap' }}>{project?.name ?? '—'}</span>
-
-      <span style={{ flex: 1 }} />
-
-      {/* Buttons: Play | Socket (config) | Docs — bare icons, right-aligned */}
-      {project && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          {/* Play — green, start dev server */}
-          <button
-            onClick={hasDevServer ? launchDevServer : openConfig}
-            disabled={launching}
-            title={started ? `Läuft — ${devCmd}` : hasDevServer ? `Starten: ${devCmd}` : 'Dev Server konfigurieren'}
-            style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: launching ? 'var(--fg-3)' : 'var(--ok)', cursor: launching ? 'wait' : 'pointer', opacity: launching ? 0.5 : 1, flexShrink: 0 }}
-          >
-            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="4,2 13,8 4,14" fill="currentColor" stroke="none"/>
-            </svg>
-          </button>
-          {/* Socket — configure port/command */}
-          <button
-            ref={gearRef}
-            onClick={openConfig}
-            title="Port / Befehl konfigurieren"
-            style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg-2)', cursor: 'pointer', flexShrink: 0 }}
-          >
-            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="5" y="7" width="6" height="5" rx="1"/>
-              <line x1="7" y1="4" x2="7" y2="7"/>
-              <line x1="9" y1="4" x2="9" y2="7"/>
-              <line x1="8" y1="12" x2="8" y2="14"/>
-            </svg>
-          </button>
-          {/* Docs */}
-          <button
-            onClick={doRefreshDocs}
-            disabled={refreshingDocs}
-            title={`Docs aktualisieren — ${project?.name ?? 'dieses Projekt'}`}
-            style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg-2)', cursor: refreshingDocs ? 'wait' : 'pointer', opacity: refreshingDocs ? 0.5 : 1, flexShrink: 0 }}
-          >
-            <IDocAI className={refreshingDocs ? 'anim-blink' : ''} style={{ width: 17, height: 17 }} />
-          </button>
-        </div>
-      )}
-
+    <>
       {/* Config modal — centered on screen */}
       {configOpen && (
         <>
@@ -447,17 +471,12 @@ function ProjectHeader() {
         </>
       )}
 
-      {/* Doc applying spinner */}
-      {isDocApplying && (
-        <span className="anim-spin" style={{ display: 'inline-block', fontSize: 10, color: 'var(--fg-3)' }} title="Docu wird angelegt…">⟳</span>
-      )}
-
-    </div>
+    </>
   )
 }
 
-function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, activeFilePath, onSelectFileTab, onCloseFileTab }: {
-  sessions: { id: string; name: string; alias: string; status: string; permMode: string }[]
+export function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, activeFilePath, onSelectFileTab, onCloseFileTab }: {
+  sessions: { id: string; name: string; alias: string; status: string; permMode: string; kind?: string }[]
   activeId: string
   onNew: () => void
   onSelectSession: (id: string) => void
@@ -467,15 +486,15 @@ function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, act
   onCloseFileTab: (path: string) => void
 }) {
   const { activeProjectId, removeSession, aliases } = useAppStore()
-
   return (
-    <div style={{ height: 34, flexShrink: 0, display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 4, gap: 1, overflowX: 'auto', scrollbarWidth: 'none' }} className="hide-scrollbar">
+    <div style={{ height: 34, flexShrink: 0, display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 4, gap: 1, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none' }} className="hide-scrollbar">
       {sessions.map(s => {
         const active = s.id === activeId && activeFilePath === null
         const alias = aliases.find(a => a.name === s.alias)
-        const isDangerous = s.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous'
+        const isCrew = s.kind === 'crew'
+        const isDangerous = !isCrew && (s.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous')
         const isExited = s.status === 'exited'
-        const topBorderColor = isDangerous ? 'var(--err)' : active ? 'var(--accent)' : 'transparent'
+        const topBorderColor = isCrew ? (active ? '#3b82f6' : 'transparent') : isDangerous ? 'var(--err)' : active ? 'var(--accent)' : 'transparent'
         const dotColor = isDangerous ? 'var(--err)' : s.status === 'active' ? 'var(--ok)' : s.status === 'error' ? 'var(--err)' : 'var(--fg-3)'
         return (
           <div
@@ -494,17 +513,25 @@ function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, act
               opacity: isExited && !active ? 0.6 : 1,
             }}
           >
-            {/* Status indicator: dash for exited, dot for others */}
-            {isExited
-              ? <span style={{ width: 8, height: 2, borderRadius: 1, background: 'var(--fg-3)', flexShrink: 0 }} />
-              : <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0, ...(s.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}) }} />
-            }
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isExited ? 'line-through' : 'none' }}>{s.name}</span>
+            {/* Left badges: shield (if dangerous), crew icon (if crew) */}
             {isDangerous && (
-              <span title="--dangerously-skip-permissions" style={{ fontSize: 8, color: 'var(--err)', background: 'rgba(239,122,122,0.15)', border: '1px solid rgba(239,122,122,0.3)', borderRadius: 3, padding: '1px 3px', letterSpacing: 0.2, flexShrink: 0 }}>YOLO</span>
+              <IShieldPlus title="--dangerously-skip-permissions" style={{ width: 10, height: 10, color: 'var(--err)', flexShrink: 0 }} />
+            )}
+            {isCrew && (
+              <ICrew style={{ width: 10, height: 10, color: active ? '#3b82f6' : 'var(--fg-3)', flexShrink: 0 }} />
+            )}
+
+            {/* Name */}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isExited ? 'line-through' : 'none', flex: 1 }}>{s.name}</span>
+
+            {/* Right side: alias sub-label, status dot */}
+            {!isCrew && s.alias && s.alias !== s.name && (
+              <span className="mono" style={{ fontSize: 9.5, color: active ? '#3b82f6' : 'var(--fg-3)', flexShrink: 0 }}>{s.alias}</span>
             )}
             {isExited && <span style={{ fontSize: 8.5, color: 'var(--fg-3)', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 3, padding: '1px 4px', flexShrink: 0 }}>ended</span>}
-            {s.alias && <span className="mono" style={{ fontSize: 9.5, color: active ? 'var(--info)' : 'var(--fg-3)', flexShrink: 0 }}>{s.alias}</span>}
+            {!isExited && !isCrew && (
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0, ...(s.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}) }} />
+            )}
             <IClose
               style={{ color: 'var(--fg-3)', opacity: 0.7, marginLeft: 2, flexShrink: 0 }}
               onClick={(e: React.MouseEvent) => { e.stopPropagation(); removeSession(activeProjectId, s.id) }}
@@ -544,8 +571,8 @@ function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTabs, act
         )
       })}
 
-      <button onClick={onNew} title="Neue Session (⌘T)" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', margin: '0 4px', marginBottom: 4, background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0, alignSelf: 'flex-end' }}>
-        <IPlus style={{ width: 11, height: 11 }} /><span>New</span>
+      <button onClick={onNew} title="Neue Session (⌘T)" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', margin: '0 4px', marginBottom: 4, background: 'none', border: 'none', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0, alignSelf: 'flex-end' }}>
+        <IPlus style={{ width: 12, height: 12, strokeWidth: 2.5 }} /><span>New</span>
       </button>
     </div>
   )
@@ -566,43 +593,52 @@ function DangerBanner() {
 }
 
 function EmptyState({ onNew }: { onNew: () => void }) {
-  const { aliases, activeProjectId, activeSessionId, setActiveProject, setActiveSession, setNewSessionOpen, projects } = useAppStore()
+  const { aliases, setNewSessionPreKind, setNewSessionOpen } = useAppStore()
   const top4 = aliases.slice(0, 4)
 
-  // Start a session with a specific alias by opening the new-session modal
-  // We pre-select via a tiny event trick — simpler than threading props
-  const start = () => onNew()
+  const startWithKind = (kind: 'single' | 'crew') => {
+    setNewSessionPreKind(kind)
+    setNewSessionOpen(true)
+  }
 
   return (
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', gap: 32, padding: '40px 24px', minHeight: 0,
+      justifyContent: 'center', gap: 20, padding: '32px 24px', minHeight: 0,
     }}>
       {/* Icon + heading */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: 14, background: 'var(--accent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--accent-fg, #1a1410)',
-          boxShadow: '0 0 0 8px var(--accent-soft)',
-        }}>
-          <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 5l3 3-3 3M9 11h4"/>
-          </svg>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 5 }}>
-            Keine aktive Session
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--fg-3)', maxWidth: 320 }}>
-            Wähle einen Agent und starte eine neue Terminal-Session in diesem Projekt.
-          </div>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+        <img src={simpleLogo} alt="Codera AI" style={{ width: 52, height: 52, opacity: 0.85 }} />
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-0)' }}>Keine aktive Session</div>
+      </div>
+
+      {/* Session type picker */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={() => startWithKind('single')}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, padding: '10px 14px', borderRadius: 7, border: '1px solid var(--line-strong)', background: 'var(--bg-1)', cursor: 'pointer', width: 148, textAlign: 'left', transition: 'border-color 0.15s, background 0.15s' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.background = 'var(--accent-soft)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line-strong)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-1)' }}
+        >
+          <ITerminal style={{ color: 'var(--accent)', width: 13, height: 13 }} />
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-0)' }}>Terminal Session</span>
+          <span style={{ fontSize: 10, color: 'var(--fg-3)', lineHeight: 1.4 }}>Ein Agent, ein Terminal</span>
+        </button>
+        <button
+          onClick={() => startWithKind('crew')}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, padding: '10px 14px', borderRadius: 7, border: '1px solid var(--line-strong)', background: 'var(--bg-1)', cursor: 'pointer', width: 148, textAlign: 'left', transition: 'border-color 0.15s, background 0.15s' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.background = 'var(--accent-soft)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line-strong)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-1)' }}
+        >
+          <ISpark style={{ color: 'var(--accent)', width: 13, height: 13 }} />
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-0)' }}>Agenten-Crew</span>
+          <span style={{ fontSize: 10, color: 'var(--fg-3)', lineHeight: 1.4 }}>Multi-Agent Team</span>
+        </button>
       </div>
 
       {/* Quick-start alias cards */}
       {top4.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 220px)', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 148px)', gap: 7 }}>
           {top4.map(alias => (
             <AliasCard key={alias.id} alias={alias} onStart={onNew} />
           ))}
@@ -613,13 +649,13 @@ function EmptyState({ onNew }: { onNew: () => void }) {
       <button
         onClick={onNew}
         style={{
-          display: 'flex', alignItems: 'center', gap: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           background: 'var(--accent)', color: 'var(--accent-fg, #1a1410)',
-          border: 'none', borderRadius: 8, padding: '9px 20px',
-          fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          border: 'none', borderRadius: 4, padding: '5px 14px',
+          width: 304, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
         }}
       >
-        <IPlus />
+        <IPlus style={{ width: 13, height: 13 }} />
         Neue Session starten
       </button>
     </div>
@@ -635,23 +671,23 @@ function AliasCard({ alias, onStart }: { alias: { id: string; name: string; cmd:
       onMouseLeave={() => setHovered(false)}
       style={{
         border: `1px solid ${hovered ? 'var(--accent-line)' : 'var(--line-strong)'}`,
-        borderRadius: 8, padding: '12px 14px', cursor: 'pointer',
+        borderRadius: 6, padding: '8px 10px', cursor: 'pointer',
         background: hovered ? 'var(--accent-soft)' : 'var(--bg-1)',
         transition: 'border-color 0.15s, background 0.15s',
-        display: 'flex', flexDirection: 'column', gap: 6,
+        display: 'flex', flexDirection: 'column', gap: 4,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <div style={{
-          width: 26, height: 26, borderRadius: 6, background: hovered ? 'var(--accent)' : 'var(--bg-3)',
+          width: 20, height: 20, borderRadius: 4, background: hovered ? 'var(--accent)' : 'var(--bg-3)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           transition: 'background 0.15s',
         }}>
-          <ITerminal style={{ color: hovered ? 'var(--accent-fg, #1a1410)' : 'var(--fg-2)', width: 12, height: 12 }} />
+          <img src={simpleLogo} alt="" style={{ width: 11, height: 11, filter: hovered ? 'brightness(0) invert(1)' : 'none', transition: 'filter 0.15s' }} />
         </div>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{alias.name}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{alias.name}</span>
       </div>
-      <div style={{ fontSize: 10.5, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginLeft: 26 }}>
         {alias.cmd}{alias.args ? ' ' + alias.args : ''}
       </div>
     </div>
@@ -822,6 +858,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     localhostCheck, setLocalhostCheck,
     aiProviders, activeAiProvider, aiFunctionMap,
     terminalShortcuts, docTemplates,
+    terminalTheme, theme: appTheme,
   } = useAppStore()
   const [attachments, setAttachments]   = useState<string[]>([])
   const [picking, setPicking]           = useState(false)
@@ -834,17 +871,21 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   const [pathInput, setPathInput]       = useState<'file' | 'image' | null>(null)
   const [pathInputVal, setPathInputVal] = useState('')
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [focused, setFocused] = useState(false)
   const taRef      = useRef<HTMLTextAreaElement>(null)
+  const termBg = (TERMINAL_THEMES.find(t => t.id === terminalTheme)?.theme.background)
+    ?? (appTheme === 'dark' ? '#0e0d0b' : '#faf8f4')
   const recRef     = useRef<SpeechRecognition | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const project = projects.find(p => p.id === activeProjectId)
   const activeSession = project?.sessions.find(s => s.id === activeSessionId)
   const isTerminal = !!activeSession
 
-  // Grow the outer container when content has many lines
+  // Grow/shrink the outer container based on content
   useEffect(() => {
     const lines = (inputValue.match(/\n/g) ?? []).length + 1
-    if (lines > 3) onRequestH?.(Math.min(400, lines * 20 + 160))
+    const h = lines > 3 ? Math.min(400, lines * 20 + 160) : 130
+    onRequestH?.(h)
   }, [inputValue, onRequestH])
 
   const handleAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -883,7 +924,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     if (favBodies.length > 0) fullMsg += (fullMsg ? '\n\n' : '') + favBodies.join('\n\n')
 
     if (isTerminal) {
-      window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: fullMsg }))
+      window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: { sessionId: activeSessionId, data: fullMsg } }))
     } else {
       sendMessage(attachments)
       setAttachments([])
@@ -970,7 +1011,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   }
 
   const sendRaw = (signal: string) => {
-    window.dispatchEvent(new CustomEvent('cc:terminal-send-raw', { detail: signal }))
+    window.dispatchEvent(new CustomEvent('cc:terminal-send-raw', { detail: { sessionId: activeSessionId, data: signal } }))
   }
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1019,16 +1060,8 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '8px 14px 10px', background: 'var(--bg-0)', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0px 18px 20px', background: 'var(--bg-0)', overflow: 'hidden' }}>
       <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleAttach} />
-
-      {/* Terminal-Modus Badge */}
-      {isTerminal && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 10, color: 'var(--accent)', fontWeight: 500, letterSpacing: 0.3, flexWrap: 'wrap' }}>
-          <ITerminal style={{ color: 'var(--accent)', flexShrink: 0 }} />
-          <span>Terminal-Eingabe → {activeSession.alias}</span>
-        </div>
-      )}
 
       {/* Inline path input — shown when Pfad/Bild button is active */}
       {isTerminal && pathInput && (
@@ -1053,7 +1086,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
         </div>
       )}
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: `1px solid ${isTerminal ? 'var(--accent-line)' : 'var(--line-strong)'}`, borderRadius: 8, background: 'var(--bg-2)', padding: '8px 10px 6px', boxShadow: isTerminal ? '0 0 0 2px var(--accent-soft)' : inputValue ? '0 0 0 3px var(--accent-soft)' : 'none', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: `1px solid ${focused ? 'var(--accent)' : 'var(--line-strong)'}`, borderRadius: 8, background: 'var(--bg-1)', padding: '16px 18px 10px', boxShadow: focused ? '0 0 0 2px var(--accent-soft), 0 4px 16px rgba(0,0,0,0.12)' : '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
         {attachments.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
             {attachments.map(p => {
@@ -1079,6 +1112,8 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
           onDragOver={isTerminal ? e => e.preventDefault() : undefined}
           onDrop={isTerminal ? e => e.preventDefault() : undefined}
           placeholder={isTerminal ? 'Befehl oder Text ans Terminal senden…' : 'Nachricht senden… (⏎ senden, ⇧⏎ neue Zeile)'}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'none', width: '100%', flex: 1, minHeight: 0 }}
         />
 
@@ -1132,7 +1167,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
           {isTerminal ? (
             <>
               <button
-                style={{ ...chip, background: pathInput === 'file' ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${pathInput === 'file' ? 'var(--accent)' : 'var(--line)'}`, color: pathInput === 'file' ? 'var(--accent)' : 'var(--fg-1)' }}
+                style={{ ...chip, background: pathInput === 'file' ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${pathInput === 'file' ? 'var(--accent)' : 'var(--line)'}`, color: pathInput === 'file' ? 'var(--accent)' : 'var(--fg-1)' }}
                 onClick={() => { setPathInput(p => p === 'file' ? null : 'file'); setPathInputVal('') }}
                 title="Pfad einfügen — Datei aus dem Finder hier reinziehen oder Pfad eintippen"
               >
@@ -1140,27 +1175,20 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
                 Pfad einfügen
               </button>
               <button
-                style={{ ...chip, background: pathInput === 'image' ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${pathInput === 'image' ? 'var(--accent)' : 'var(--line)'}`, color: pathInput === 'image' ? 'var(--accent)' : 'var(--fg-1)' }}
+                style={{ ...chip, background: pathInput === 'image' ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${pathInput === 'image' ? 'var(--accent)' : 'var(--line)'}`, color: pathInput === 'image' ? 'var(--accent)' : 'var(--fg-1)' }}
                 onClick={() => { setPathInput(p => p === 'image' ? null : 'image'); setPathInputVal('') }}
                 title="Bild einfügen — fügt --image &quot;/pfad&quot; ein"
               >
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke={pathInput === 'image' ? 'var(--accent)' : 'var(--accent)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                  <rect x="1" y="2" width="10" height="8" rx="1.5"/>
-                  <circle cx="4" cy="5" r="1"/>
-                  <path d="M1 9l3-3 2 2 2-2 3 3"/>
-                </svg>
+                <IImage style={{ width: 11, height: 11, flexShrink: 0 }} />
                 Bild einfügen
               </button>
               {/* Shortcuts reference button */}
               <button
-                style={{ ...chip, background: showShortcuts ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${showShortcuts ? 'var(--accent)' : 'var(--line)'}`, color: showShortcuts ? 'var(--accent)' : 'var(--fg-2)', padding: '3px 7px' }}
+                style={{ ...chip, background: showShortcuts ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${showShortcuts ? 'var(--accent)' : 'var(--line)'}`, color: showShortcuts ? 'var(--accent)' : 'var(--fg-2)', padding: '3px 7px' }}
                 onClick={() => setShowShortcuts(v => !v)}
                 title="Terminal-Tastenkürzel anzeigen"
               >
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                  <rect x="1" y="2.5" width="10" height="7" rx="1.5"/>
-                  <path d="M3 5h1M5.5 5h1M8 5h1M3 7.5h6"/>
-                </svg>
+                <IKeyboard style={{ width: 11, height: 11, flexShrink: 0 }} />
               </button>
             </>
           ) : (
@@ -1170,13 +1198,10 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
             </button>
           )}
           <span style={{ flex: 1 }} />
-          <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
-            <Kbd>⏎</Kbd>{isTerminal ? ' Terminal' : ' senden'} · <Kbd>⇧⏎</Kbd> Zeile
-          </span>
           <button
             onClick={toggleVoice}
             title={recording ? 'Aufnahme stoppen' : 'Spracheingabe starten'}
-            style={{ ...chip, padding: '4px 7px', color: recording ? 'var(--err)' : 'var(--fg-2)', border: `1px solid ${recording ? 'var(--err)' : 'var(--line)'}`, background: recording ? 'rgba(239,122,122,0.1)' : 'var(--bg-3)' }}
+            style={{ ...chip, padding: '4px 7px', color: recording ? 'var(--err)' : 'var(--fg-2)', border: `1px solid ${recording ? 'var(--err)' : 'var(--line)'}`, background: recording ? 'rgba(239,122,122,0.1)' : 'var(--bg-2)' }}
           >
             <IMic style={{ color: recording ? 'var(--err)' : 'var(--fg-3)', flexShrink: 0, ...(recording ? { animation: 'cc-pulse 1s ease-in-out infinite' } : {}) }} />
           </button>
@@ -1251,10 +1276,7 @@ function TerminalShortcutsModal({ shortcuts, onClose }: { shortcuts: TerminalSho
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)', flexShrink: 0 }}>
-          <svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="1" y="2.5" width="10" height="7" rx="1.5"/>
-            <path d="M3 5h1M5.5 5h1M8 5h1M3 7.5h6"/>
-          </svg>
+          <IKeyboard style={{ width: 13, height: 13, color: 'var(--accent)' }} />
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', flex: 1 }}>Terminal-Tastenkürzel</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 4, fontSize: 16, lineHeight: 1 }}>×</button>
         </div>
@@ -1608,5 +1630,5 @@ function FtvTextViewer({ content, search, showLineNums, ext }: { content: string
 
 const primaryBtn: React.CSSProperties = { background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 const ghostBtn: React.CSSProperties = { background: 'transparent', color: 'var(--fg-1)', border: '1px solid var(--line-strong)', padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
-const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 const ftBtn: React.CSSProperties = { background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, color: 'var(--fg-1)', fontSize: 10.5, padding: '2px 7px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }

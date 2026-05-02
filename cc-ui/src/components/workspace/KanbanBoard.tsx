@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { KanbanTicket, KanbanStatus, TicketPriority, TicketType } from '../../store/useAppStore'
-import { IClose, IPlus, ITrash, IFile, ISpark, IEdit, ICopy, IKanban } from '../primitives/Icons'
+import { IClose, IPlus, ITrash, IFile, ISpark, IEdit, ICopy, IKanban, IBug, IStar, IUser } from '../primitives/Icons'
 
 // ── Type & Priority config ─────────────────────────────────────────────────────
 
@@ -20,24 +20,9 @@ const TYPE_CFG: Record<TicketType, { label: string; color: string }> = {
 
 function TypeIcon({ type, size = 11 }: { type?: TicketType; size?: number }) {
   const s: React.CSSProperties = { width: size, height: size, flexShrink: 0 }
-  if (type === 'bug') return (
-    <svg viewBox="0 0 12 12" fill="none" stroke={TYPE_CFG.bug.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
-      <path d="M6 9a3 3 0 0 1-3-3V5a3 3 0 0 1 6 0v1a3 3 0 0 1-3 3z"/>
-      <path d="M3 5H1M9 5h2M3 7.5H1M9 7.5h2M4.5 3L3.5 2M7.5 3L8.5 2M6 9v2.5"/>
-    </svg>
-  )
-  if (type === 'nfc') return (
-    <svg viewBox="0 0 12 12" fill="none" stroke={TYPE_CFG.nfc.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
-      <path d="M6 1l1.5 3h3L8 6.5l1 3.5L6 8.5 3 10l1-3.5L1.5 4h3z"/>
-    </svg>
-  )
-  // story (default)
-  return (
-    <svg viewBox="0 0 12 12" fill="none" stroke={TYPE_CFG.story.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={s}>
-      <circle cx="6" cy="3.5" r="2"/>
-      <path d="M2 11c0-2.2 1.8-4 4-4s4 1.8 4 4"/>
-    </svg>
-  )
+  if (type === 'bug') return <IBug style={{ ...s, color: TYPE_CFG.bug.color }} />
+  if (type === 'nfc') return <IStar style={{ ...s, color: TYPE_CFG.nfc.color }} />
+  return <IUser style={{ ...s, color: TYPE_CFG.story.color }} />
 }
 
 function PriorityBadge({ priority }: { priority?: TicketPriority }) {
@@ -237,7 +222,7 @@ export function KanbanBoard({ projectId, projectName, projectPath, initialDetail
           padding: '11px 16px', borderBottom: '1px solid var(--line)', flexShrink: 0,
           background: 'var(--bg-2)',
         }}>
-          <KanbanIconSvg />
+          <IKanban style={{ color: 'var(--accent)', flexShrink: 0 }} />
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', flex: 1 }}>
             {projectName} <span style={{ color: 'var(--fg-3)', fontWeight: 400 }}>· Kanban</span>
           </span>
@@ -901,16 +886,6 @@ function ModalFooter({ aiLoading, analyseLoading, aiError, hasText, providerName
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function KanbanIconSvg() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"
-      strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent)', flexShrink: 0 }}>
-      <rect x="1.5" y="1.5" width="3" height="9" rx="1"/>
-      <rect x="5.5" y="1.5" width="3" height="6" rx="1"/>
-      <rect x="9.5" y="1.5" width="3" height="7.5" rx="1"/>
-    </svg>
-  )
-}
 
 const inputStyle: React.CSSProperties = {
   width: '100%', background: 'var(--bg-1)', border: '1px solid var(--line)',
