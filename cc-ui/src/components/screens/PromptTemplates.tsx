@@ -74,7 +74,7 @@ export function PromptTemplates() {
           ))}
           <div
             onClick={openNew}
-            style={{ padding: 14, borderRadius: 8, background: 'transparent', border: '1px dashed var(--line-strong)', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', justifyContent: 'center', minHeight: 130, color: 'var(--fg-2)', cursor: 'pointer' }}
+            style={{ padding: 14, borderRadius: 6, background: 'transparent', border: '1px dashed var(--line-strong)', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', justifyContent: 'center', minHeight: 130, color: 'var(--fg-2)', cursor: 'pointer' }}
           >
             <IPlus />
             <span style={{ fontSize: 12 }}>New template</span>
@@ -85,7 +85,7 @@ export function PromptTemplates() {
       {/* Editor modal */}
       {editing !== null && (
         <div onClick={() => setEditing(null)} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(8,7,5,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: 540, maxWidth: '92vw', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, boxShadow: '0 24px 64px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 540, maxWidth: '92vw', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, boxShadow: '0 24px 64px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
             <div style={{ height: 38, padding: '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--line)' }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{editing.kind === 'new' ? 'New template' : 'Edit template'}</span>
               <span style={{ flex: 1 }} />
@@ -144,7 +144,7 @@ function TemplateCard({ template: t, onEdit }: { template: Template; onEdit: () 
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ padding: 14, borderRadius: 8, background: 'var(--bg-1)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer', minHeight: 130, position: 'relative' }}
+      style={{ padding: 14, borderRadius: 6, background: 'var(--bg-1)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer', minHeight: 130, position: 'relative' }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <ISpark style={{ color: 'var(--accent)' }} />
@@ -160,7 +160,7 @@ function TemplateCard({ template: t, onEdit }: { template: Template; onEdit: () 
       </div>
       {hovered && (
         <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4 }}>
-          <button onClick={e => { e.stopPropagation(); onEdit() }} style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 4, padding: '3px 6px', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}><IEdit /></button>
+          <button onClick={e => { e.stopPropagation(); onEdit() }} style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 6, padding: '3px 6px', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}><IEdit /></button>
         </div>
       )}
     </div>

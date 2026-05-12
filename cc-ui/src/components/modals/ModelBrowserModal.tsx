@@ -439,14 +439,14 @@ export function ModelBrowserModal({ onClose }: Props) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ width: '90vw', height: '90vh', background: 'var(--bg-1)', borderRadius: 12, border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
+      <div style={{ width: '90vw', height: '90vh', background: 'var(--bg-1)', borderRadius: 6, border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
 
         {/* Header */}
         <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap', rowGap: 8 }}>
           <ITrophy style={{ width: 15, height: 15, color: 'var(--accent)', flexShrink: 0 }} />
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)', flexShrink: 0 }}>Modell-Browser</span>
           <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>via OpenRouter</span>
-          {!loading && <span style={{ fontSize: 10, color: 'var(--fg-3)', background: 'var(--bg-3)', borderRadius: 4, padding: '2px 7px' }}>{filtered.length} / {models.length}</span>}
+          {!loading && <span style={{ fontSize: 10, color: 'var(--fg-3)', background: 'var(--bg-3)', borderRadius: 6, padding: '2px 7px' }}>{filtered.length} / {models.length}</span>}
 
           <div style={{ flex: 1 }} />
 
@@ -474,7 +474,7 @@ export function ModelBrowserModal({ onClose }: Props) {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Suchen…"
-              style={{ paddingLeft: 30, paddingRight: 10, paddingTop: 5, paddingBottom: 5, border: '1px solid var(--line)', borderRadius: 7, background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none', width: 190 }}
+              style={{ paddingLeft: 30, paddingRight: 10, paddingTop: 5, paddingBottom: 5, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none', width: 190 }}
             />
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', padding: 4, flexShrink: 0 }}>
@@ -546,7 +546,7 @@ export function ModelBrowserModal({ onClose }: Props) {
             <div style={{ flex: 1 }} />
 
             {/* Cost guide — bottom center */}
-            <div style={{ padding: '10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', marginTop: 8 }}>
+            <div style={{ padding: '10px', borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--line)', marginTop: 8 }}>
               <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, textAlign: 'center' }}>Kosten-Guide</div>
               {[
                 { label: 'Kostenlos', color: '#22c55e', range: '$0' },
@@ -678,7 +678,7 @@ export function ModelBrowserModal({ onClose }: Props) {
                 </div>
 
                 {/* Kosten */}
-                <div style={{ borderRadius: 8, border: '1px solid var(--line)', overflow: 'hidden' }}>
+                <div style={{ borderRadius: 6, border: '1px solid var(--line)', overflow: 'hidden' }}>
                   <div style={{ padding: '8px 12px', background: 'var(--bg-2)', fontSize: 10, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Kosten</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 1, background: 'var(--line)' }}>
                     {[
@@ -704,7 +704,7 @@ export function ModelBrowserModal({ onClose }: Props) {
                       ? selected.tags.map(tag => {
                           const uc = USE_CASES.find(u => u.id === tag)
                           return uc ? (
-                            <span key={tag} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 5, background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent)', fontWeight: 600 }}>
+                            <span key={tag} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 6, background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent)', fontWeight: 600 }}>
                               {uc.label}
                             </span>
                           ) : null

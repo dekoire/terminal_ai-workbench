@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { Project, Session } from '../../store/useAppStore'
-import { IChev, IFolder, IFolderOpen, IBranch, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IGitFork, IKanban, ISpinner, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, ICrew } from '../primitives/Icons'
+import { idAddress } from '../../lib/ids'
+import { IChev, IFolder, IFolderOpen, IBranch, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IGitFork, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IOrbit, IBell } from '../primitives/Icons'
+import avatarDefault from '../../assets/avatar.jpg'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
 import { Kbd } from '../primitives/Kbd'
 import { updateDocsWithAI } from '../../utils/updateDocs'
@@ -21,7 +23,7 @@ function ContextMenu({ items, pos, onClose }: { items: CtxItem[]; pos: { x: numb
   return (
     <div
       onClick={e => e.stopPropagation()}
-      style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 9999, background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 7, padding: 4, minWidth: 172, boxShadow: '0 8px 28px rgba(0,0,0,0.35)' }}
+      style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 9999, background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 6, padding: 4, minWidth: 172, boxShadow: '0 8px 28px rgba(0,0,0,0.35)' }}
     >
       {items.map((item, i) =>
         item === null
@@ -30,7 +32,7 @@ function ContextMenu({ items, pos, onClose }: { items: CtxItem[]; pos: { x: numb
             <div
               key={i}
               onClick={() => { item.action(); onClose() }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 11.5, borderRadius: 4, cursor: 'pointer', color: item.danger ? 'var(--err)' : 'var(--fg-0)' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 11.5, borderRadius: 6, cursor: 'pointer', color: item.danger ? 'var(--err)' : 'var(--fg-0)' }}
             >
               {item.icon && <span style={{ color: item.danger ? 'var(--err)' : 'var(--fg-3)', display: 'flex' }}>{item.icon}</span>}
               {item.label}
@@ -56,26 +58,141 @@ function ThemeToggleBtn() {
   const { theme, setTheme, preset, setPreset, setAccent, setAccentFg, terminalTheme, setTerminalTheme } = useAppStore()
   const toggle = () => {
     const cur = DESIGN_PRESETS.find(d => d.id === preset) ?? DESIGN_PRESETS[0]
-    const nextId = cur.dark ? 'light-' + cur.id : cur.id.replace(/^light-/, '')
-    const next = DESIGN_PRESETS.find(d => d.id === nextId) ?? cur
+    // Dark → Slate Light; Light → Ember Dark
+    const nextId = cur.dark ? 'light-slate' : 'ember'
+    const next = DESIGN_PRESETS.find(d => d.id === nextId) ?? DESIGN_PRESETS[0]
     setPreset(next.id); setTheme(next.dark ? 'dark' : 'light')
     setAccent(next.accent); setAccentFg(next.accentFg); applyPreset(next)
     if (next.dark && terminalTheme === 'github-light') setTerminalTheme('default')
     if (!next.dark && terminalTheme === 'default') setTerminalTheme('github-light')
   }
   return (
-    <button onClick={toggle} title={theme === 'dark' ? 'Zu hell wechseln' : 'Zu dunkel wechseln'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '2px 3px', borderRadius: 4 }}>
-      {theme === 'dark' ? <IMoon style={{ width: 13, height: 13 }} /> : <ISun style={{ width: 13, height: 13 }} />}
+    <button onClick={toggle} title={theme === 'dark' ? 'Zu hell wechseln' : 'Zu dunkel wechseln'} style={{ background: 'none', border: '1px solid transparent', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '4px 5px', borderRadius: 6 }}>
+      {theme === 'dark' ? <IMoon style={{ width: 16, height: 16 }} /> : <ISun style={{ width: 16, height: 16 }} />}
     </button>
   )
 }
 
-function SidebarLogoutBtn() {
-  const { setScreen } = useAppStore()
+function AvatarPopoverBtn() {
+  const { setScreen, setCurrentUser, currentUser } = useAppStore()
+  const [open, setOpen] = useState(false)
+  const [popPos, setPopPos] = useState({ left: 0, bottom: 0 })
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+
+  const firstName = currentUser?.firstName ?? ''
+  const lastName  = currentUser?.lastName  ?? ''
+  const fullName  = (firstName || lastName) ? `${firstName} ${lastName}`.trim() : null
+  const initials  = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || (currentUser?.email?.charAt(0) ?? 'U').toUpperCase()
+  const avatarSrc = currentUser?.avatarDataUrl ?? avatarDefault
+
+  const handleToggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPopPos({ left: r.left, bottom: window.innerHeight - r.top + 6 })
+    }
+    setOpen(o => !o)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node) && e.target !== btnRef.current) setOpen(false)
+    }
+    setTimeout(() => window.addEventListener('mousedown', h), 0)
+    return () => window.removeEventListener('mousedown', h)
+  }, [open])
+
+  const [hovered, setHovered] = useState(false)
+  const hasCustomAvatar = !!currentUser?.avatarDataUrl
+
   return (
-    <button onClick={() => setScreen('login')} title="Zurück zum Login" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '2px 3px', borderRadius: 4 }}>
-      <ILogout style={{ width: 13, height: 13 }} />
-    </button>
+    <>
+      <button
+        ref={btnRef}
+        onClick={handleToggle}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        title={fullName ?? 'Profil'}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7,
+          background: open || hovered ? 'var(--bg-3)' : 'none',
+          border: open ? '1px solid var(--line)' : hovered ? '1px solid var(--line)' : '1px solid transparent',
+          borderRadius: 6, cursor: 'pointer', padding: '3px 6px 3px 3px',
+          transition: 'background 0.12s, border-color 0.12s', maxWidth: 140, overflow: 'hidden',
+        }}
+      >
+        {/* Avatar circle — custom image or white initials */}
+        <div style={{
+          width: 24, height: 24, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+          background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 9.5, fontWeight: 700, color: '#fff',
+        }}>
+          {hasCustomAvatar ? (
+            <img
+              src={avatarSrc}
+              alt={initials}
+              onError={e => { e.currentTarget.style.display = 'none' }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <span>{initials}</span>
+          )}
+        </div>
+        {/* Name */}
+        {fullName && (
+          <span style={{ fontSize: 11, color: 'var(--fg-1)', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {fullName}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div ref={popRef} style={{ position: 'fixed', left: popPos.left, bottom: popPos.bottom, zIndex: 9999, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.4)', overflow: 'hidden', minWidth: 220 }}>
+          {/* User info header */}
+          {(fullName || currentUser?.email) && (
+            <>
+              <div style={{ padding: '12px 16px 10px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff' }}>
+                  {hasCustomAvatar
+                    ? <img src={avatarSrc} alt={initials} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none' }} />
+                    : <span>{initials}</span>
+                  }
+                </div>
+                <div style={{ overflow: 'hidden' }}>
+                  {fullName && <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</div>}
+                  {currentUser?.email && <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{currentUser.email}</div>}
+                </div>
+              </div>
+              <div style={{ height: 1, background: 'var(--line)', margin: '0 0 4px' }} />
+            </>
+          )}
+          <PopMenuItem icon={<IUser style={{ width: 13, height: 13 }} />} label="Profil" onClick={() => { setOpen(false); setScreen('profile') }} />
+          <PopMenuItem icon={<ISettings style={{ width: 13, height: 13 }} />} label="Einstellungen" onClick={() => { setOpen(false); setScreen('settings') }} />
+          <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
+          <PopMenuItem
+            icon={<ILogout style={{ width: 13, height: 13 }} />}
+            label="Ausloggen"
+            onClick={() => { setOpen(false); setCurrentUser(null); setScreen('login') }}
+          />
+          <div style={{ height: 6 }} />
+        </div>
+      )}
+    </>
+  )
+}
+
+function PopMenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', cursor: 'pointer', fontSize: 12.5, color: 'var(--fg-0)' }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
+      <span style={{ color: 'var(--fg-3)', display: 'flex' }}>{icon}</span>
+      {label}
+    </div>
   )
 }
 
@@ -87,9 +204,18 @@ export function ProjectSidebar() {
       width: '100%', flexShrink: 0, background: 'var(--bg-1)',
       display: 'flex', flexDirection: 'column',
     }}>
+      <style>{`
+        @keyframes perm-bell {
+          0%, 100% { transform: rotate(0deg); }
+          20%       { transform: rotate(-18deg); }
+          40%       { transform: rotate(18deg); }
+          60%       { transform: rotate(-10deg); }
+          80%       { transform: rotate(10deg); }
+        }
+      `}</style>
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 0 12px' }}>
         {/* Projects */}
-        <CollapsibleSection label="Projects" count={projects.length} defaultOpen action={
+        <CollapsibleSection label="Workspaces" count={projects.length} defaultOpen action={
           <button onClick={() => setNewProjectOpen(true)} style={iconBtn}><IPlus /></button>
         }>
           {projects.map((p) => (
@@ -107,7 +233,7 @@ export function ProjectSidebar() {
           ))}
         </CollapsibleSection>
 
-        {/* Prompt templates */}
+        {/* Prompts */}
         <TemplatesSection
           templates={templates}
           onAdd={() => setScreen('templates')}
@@ -116,16 +242,9 @@ export function ProjectSidebar() {
 
       </div>
 
-      <div style={{
-        padding: '8px 12px 16px',
-        display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--fg-2)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }} onClick={() => setScreen('settings')}>
-          <ISettings style={{ flexShrink: 0 }} />
-          <span>Settings</span>
-        </div>
+      <div style={{ padding: '8px 10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+        <AvatarPopoverBtn />
         <ThemeToggleBtn />
-        <SidebarLogoutBtn />
       </div>
     </aside>
   )
@@ -210,7 +329,7 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
     null,
     { label: docUpdating ? 'Docu wird aktualisiert…' : 'Docu aktualisieren', icon: <IEdit />, action: () => { if (!docUpdating) handleDocUpdate() } },
     null,
-    { label: 'Projekt löschen', icon: <ITrash />, danger: true, action: onDeleteProject },
+    { label: 'Workspace löschen', icon: <ITrash />, danger: true, action: onDeleteProject },
   ])
 
   return (
@@ -241,11 +360,13 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
         {open
           ? <IFolderOpen style={{ color: active ? 'var(--fg-2)' : 'var(--fg-2)', flexShrink: 0 }} />
           : <IFolder style={{ color: 'var(--fg-2)', flexShrink: 0 }} />}
-        <span style={{ flex: 1, fontSize: 12, fontWeight: active ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {project.name}
-        </span>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 12, fontWeight: active ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {project.name}
+          </span>
+        </div>
         {isDocApplying && (
-          <ISpinner className="anim-spin" style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} title="Docu wird angelegt…" />
+          <ILoader className="anim-spin" style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} title="Docu wird angelegt…" />
         )}
         <>
           {hasGit && (
@@ -292,7 +413,7 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
             onClick={onNewSession}
             style={{
               display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px 4px 6px',
-              margin: '0 6px', borderRadius: 5, color: 'var(--fg-3)', fontSize: 11.5, cursor: 'pointer',
+              margin: '0 6px', borderRadius: 6, color: 'var(--fg-3)', fontSize: 11.5, cursor: 'pointer',
             }}
           >
             <IPlus /><span>New session</span>
@@ -306,10 +427,26 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
 function SessionRow({ session, active, project, onSelect, onClose }: { session: Session; active: boolean; project: Project; onSelect: () => void; onClose: () => void }) {
   const { aliases, updateSession } = useAppStore()
   const [hovered, setHovered] = useState(false)
+  const [permPending, setPermPending] = useState(false)
   const { open: openCtx, menu: ctxMenu } = useCtxMenu()
 
+  useEffect(() => {
+    const onPending = (e: Event) => {
+      const { sessionId, pending } = (e as CustomEvent).detail as { sessionId: string; pending: boolean }
+      if (sessionId === session.id) setPermPending(pending)
+    }
+    const onDecision = () => setPermPending(false)
+    window.addEventListener('cc:permission-pending', onPending)
+    window.addEventListener('cc:permission-decision', onDecision)
+    return () => {
+      window.removeEventListener('cc:permission-pending', onPending)
+      window.removeEventListener('cc:permission-decision', onDecision)
+    }
+  }, [session.id])
+
   const alias = aliases.find(a => a.name === session.alias)
-  const isCrew = session.kind === 'crew'
+  const isOrbit  = session.kind === 'orbit'
+  const isAgent  = session.kind === 'openrouter-claude'
   const isDangerous = session.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous'
 
   const handleContextMenu = (e: React.MouseEvent) => openCtx(e, [
@@ -321,11 +458,18 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
     { label: 'Session schließen', icon: <IClose />, danger: true, action: onClose },
   ])
 
-  const dotColor = isDangerous ? 'var(--err)' : isCrew ? '#3b82f6' : session.status === 'active' ? 'var(--ok)' : session.status === 'error' ? 'var(--err)' : 'var(--fg-3)'
-  const isExited = session.status === 'exited'
-  const borderColor = isDangerous ? 'var(--err)' : isCrew && active ? '#3b82f6' : active ? 'var(--accent)' : 'transparent'
-  const bgColor = isDangerous && active ? 'rgba(239,122,122,0.1)' : isCrew && active ? 'rgba(59,130,246,0.08)' : active ? 'var(--bg-2)' : 'transparent'
-  const textColor = isDangerous ? (active ? 'var(--err)' : 'var(--fg-1)') : isCrew && active ? '#3b82f6' : active ? 'var(--fg-0)' : 'var(--fg-1)'
+  const isExited   = session.status === 'exited'
+  const isOffline  = isAgent && (isExited || session.status === 'error' || !session.status)
+  const dotColor   = isDangerous
+    ? 'var(--err)'
+    : isOrbit  ? 'var(--orbit)'
+    : session.status === 'active' ? 'var(--ok)'
+    : session.status === 'error'  ? 'var(--err)'
+    : isOffline ? 'var(--warn)'
+    : 'var(--fg-3)'
+  const borderColor = isDangerous ? 'var(--err)' : isOrbit && active ? 'var(--orbit)' : active ? 'var(--accent)' : 'transparent'
+  const bgColor     = isDangerous && active ? 'rgba(239,122,122,0.1)' : isOrbit && active ? 'rgba(139,108,247,0.10)' : active ? 'var(--bg-2)' : 'transparent'
+  const textColor   = isDangerous ? (active ? 'var(--err)' : 'var(--fg-1)') : isOrbit && active ? 'var(--orbit)' : isOffline ? 'var(--fg-2)' : active ? 'var(--fg-0)' : 'var(--fg-1)'
 
   return (
     <div>
@@ -336,26 +480,34 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px 4px 6px',
-        margin: '0 6px', borderRadius: 0, cursor: 'pointer',
-        background: bgColor,
+        display: 'flex', alignItems: 'center', gap: 7, padding: '5px 8px 5px 8px',
+        margin: '1px 6px', borderRadius: 3, cursor: 'pointer',
+        background: active ? bgColor || 'var(--bg-2)' : bgColor,
         color: textColor,
-        borderLeft: `2px solid ${borderColor}`,
+        border: active ? `1px solid ${borderColor}` : '1px solid transparent',
+        opacity: isOffline && !active ? 0.55 : 1,
       }}
     >
       {isDangerous
         ? <IShieldPlus title="--dangerously-skip-permissions" style={{ width: 11, height: 11, color: 'var(--err)', flexShrink: 0 }} />
-        : isCrew
-          ? <ICrew style={{ color: active ? '#3b82f6' : 'var(--fg-3)', flexShrink: 0, width: 12, height: 12 }} />
-          : <ITerminal style={{ color: active ? 'var(--fg-2)' : 'var(--fg-3)', flexShrink: 0 }} />
+        : isOrbit
+          ? <IOrbit  style={{ color: active ? 'var(--orbit)' : 'var(--fg-3)', flexShrink: 0, width: 12, height: 12 }} />
+          : isAgent
+            ? <ISpark  style={{ color: isOffline ? 'var(--warn)' : active ? 'var(--accent)' : 'var(--fg-3)', flexShrink: 0, width: 11, height: 11 }} />
+            : <ITerminal style={{ color: active ? 'var(--fg-2)' : 'var(--fg-3)', flexShrink: 0 }} />
       }
-      <span style={{ flex: 1, fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {session.name}
-      </span>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <span style={{ fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {session.name}
+        </span>
+      </div>
+      {permPending && !hovered && (
+        <IBell style={{ width: 11, height: 11, color: 'var(--accent)', flexShrink: 0, animation: 'perm-bell 1s ease-in-out infinite' }} />
+      )}
       {hovered
         ? <IClose style={{ width: 9, height: 9, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.8 }} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onClose() }} />
         : isExited
-          ? <span style={{ width: 8, height: 2, borderRadius: 1, background: 'var(--fg-3)', flexShrink: 0, opacity: 0.5 }} />
+          ? <span style={{ width: 8, height: 2, borderRadius: 1, background: isAgent ? 'var(--warn)' : 'var(--fg-3)', flexShrink: 0, opacity: isAgent ? 0.9 : 0.5 }} />
           : <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
       }
     </div>
@@ -374,7 +526,7 @@ function TemplatesSection({
 }) {
   const { updateTemplate, removeTemplate } = useAppStore()
   const [expanded, setExpanded] = useState(false)
-  const [sectionOpen, setSectionOpen] = useState(true)
+  const [sectionOpen, setSectionOpen] = useState(false)
   const { open: openCtx, menu: ctxMenu } = useCtxMenu()
   const visible = expanded ? templates : templates.slice(0, TEMPLATES_COLLAPSED)
   const hidden  = templates.length - TEMPLATES_COLLAPSED
@@ -390,9 +542,9 @@ function TemplatesSection({
       }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, userSelect: 'none' }} onClick={() => setSectionOpen(o => !o)}>
           <IChev style={{ transform: sectionOpen ? 'rotate(90deg)' : 'none', width: 8, height: 8, transition: 'transform 0.1s', flexShrink: 0 }} />
-          Prompt templates
-          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 16, height: 16, padding: '0 5px', borderRadius: 99, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', color: 'var(--accent)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0, lineHeight: 1 }}>
-            {templates.length}
+          Prompts
+          <span style={{ color: 'var(--fg-3)', fontSize: 10, fontWeight: 400, letterSpacing: 0 }}>
+            ({templates.length})
           </span>
         </span>
         <button onClick={onAdd} style={iconBtn}><IPlus /></button>
@@ -411,7 +563,7 @@ function TemplatesSection({
               ])}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
-                margin: '0 6px 1px', borderRadius: 5, cursor: 'pointer', color: 'var(--fg-1)', fontSize: 11.5,
+                margin: '0 6px 1px', borderRadius: 6, cursor: 'pointer', color: 'var(--fg-1)', fontSize: 11.5,
               }}
             >
               <ISpark style={{ color: t.favorite ? 'var(--warn)' : 'var(--accent)', flexShrink: 0 }} />
@@ -427,7 +579,7 @@ function TemplatesSection({
               onClick={() => setExpanded(e => !e)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
-                margin: '2px 6px 0', borderRadius: 5, cursor: 'pointer',
+                margin: '2px 6px 0', borderRadius: 6, cursor: 'pointer',
                 color: 'var(--fg-3)', fontSize: 10.5,
               }}
             >
@@ -462,7 +614,7 @@ function SidebarTypeIcon({ type }: { type?: string }) {
 function UserStoriesSection() {
   const { kanban, projects } = useAppStore()
   const [globalOpen, setGlobalOpen]   = useState(false)
-  const [sectionOpen, setSectionOpen] = useState(true)
+  const [sectionOpen, setSectionOpen] = useState(false)
   const [expanded, setExpanded]       = useState(false)
   // open a specific ticket directly in its project's KanbanBoard
   const [openTicket, setOpenTicket]   = useState<{
@@ -551,7 +703,7 @@ function UserStoriesSection() {
                 onClick={() => setExpanded(e => !e)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6, padding: '3px 10px',
-                  margin: '1px 6px 0', borderRadius: 5, cursor: 'pointer',
+                  margin: '1px 6px 0', borderRadius: 6, cursor: 'pointer',
                   color: 'var(--fg-3)', fontSize: 10.5,
                 }}
               >
@@ -585,7 +737,7 @@ function StoryRow({ ticket, projectName, onOpen }: {
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
         padding: '5px 10px',
-        margin: '0 6px 1px', borderRadius: 5, cursor: 'pointer',
+        margin: '0 6px 1px', borderRadius: 6, cursor: 'pointer',
         background: hovered ? 'var(--bg-3)' : 'transparent',
         color: 'var(--fg-1)',
       }}
@@ -640,8 +792,8 @@ function CollapsibleSection({ label, count, action, children, defaultOpen = true
           <IChev style={{ transform: open ? 'rotate(90deg)' : 'none', width: 8, height: 8, transition: 'transform 0.1s', flexShrink: 0 }} />
           {label}
           {count != null && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 16, height: 16, padding: '0 5px', borderRadius: 99, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', color: 'var(--accent)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0, lineHeight: 1 }}>
-              {count}
+            <span style={{ color: 'var(--fg-3)', fontSize: 10, fontWeight: 400, letterSpacing: 0 }}>
+              ({count})
             </span>
           )}
         </span>

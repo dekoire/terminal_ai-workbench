@@ -13,7 +13,7 @@ const HISTORY = [
   { date: '4 days ago · 16:02', title: 'add jest cases for retry', alias: 'minimax', project: 'payments-api', dur: '14m', tokens: '11.0k', status: 'done' as const },
 ]
 
-const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid var(--line)', background: 'var(--bg-2)', color: 'var(--fg-1)', borderRadius: 5, fontSize: 11, fontFamily: 'var(--font-ui)', cursor: 'pointer' }
+const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid var(--line)', background: 'var(--bg-2)', color: 'var(--fg-1)', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-ui)', cursor: 'pointer' }
 
 export function HistoryBrowser() {
   const { setScreen } = useAppStore()

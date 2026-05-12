@@ -32,7 +32,7 @@ function PriorityBadge({ priority }: { priority?: TicketPriority }) {
       fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
       color: p.color, background: p.bg,
       border: `1px solid ${p.color}55`,
-      borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+      borderRadius: 6, padding: '1px 5px', flexShrink: 0,
     }}>
       {p.symbol} {p.label}
     </span>
@@ -43,7 +43,7 @@ function TypePriorityRow({ type, setType, priority, setPriority }: {
   type: TicketType; setType: (t: TicketType) => void
   priority: TicketPriority; setPriority: (p: TicketPriority) => void
 }) {
-  const segBase: React.CSSProperties = { padding: '3px 9px', fontSize: 11, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--line)', background: 'var(--bg-3)', color: 'var(--fg-2)', fontWeight: 400 }
+  const segBase: React.CSSProperties = { padding: '3px 9px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--line)', background: 'var(--bg-3)', color: 'var(--fg-2)', fontWeight: 400 }
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
       {/* Type */}
@@ -212,7 +212,7 @@ export function KanbanBoard({ projectId, projectName, projectPath, initialDetail
         style={{
           width: '90vw', height: '90vh',
           background: 'var(--bg-1)', border: '1px solid var(--line)',
-          borderRadius: 12, display: 'flex', flexDirection: 'column',
+          borderRadius: 6, display: 'flex', flexDirection: 'column',
           overflow: 'hidden', boxShadow: '0 24px 72px rgba(0,0,0,0.5)',
         }}
       >
@@ -234,7 +234,7 @@ export function KanbanBoard({ projectId, projectName, projectPath, initialDetail
             style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '4px 11px',
               background: 'var(--accent)', color: 'var(--accent-fg, #1a1410)',
-              border: 'none', borderRadius: 5, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
+              border: 'none', borderRadius: 6, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
             }}
           >
             <IPlus style={{ width: 10, height: 10 }} /> New ticket
@@ -383,7 +383,7 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
         background: hovered ? 'rgba(255,138,91,0.15)' : 'rgba(255,138,91,0.07)',
         border: '1px solid var(--accent)',
         borderLeft: `4px solid ${TYPE_CFG[ticket.type ?? 'story'].color}`,
-        borderRadius: 8,
+        borderRadius: 6,
         padding: '10px 12px 9px',
         cursor: isDragging ? 'grabbing' : 'grab',
         position: 'relative',
@@ -400,7 +400,7 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
           fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
           color: 'var(--accent)', background: 'rgba(255,138,91,0.15)',
           border: '1px solid rgba(255,138,91,0.35)',
-          borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+          borderRadius: 6, padding: '1px 5px', flexShrink: 0,
           fontFamily: 'var(--font-mono, monospace)',
         }}>
           #{ticket.ticketNumber ?? '—'}
@@ -412,7 +412,7 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
             <button
               onPointerDown={e => e.stopPropagation()}
               onClick={e => { e.stopPropagation(); onEdit() }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 3, borderRadius: 4 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 3, borderRadius: 6 }}
               title="Bearbeiten"
             >
               <IEdit style={{ width: 11, height: 11 }} />
@@ -420,7 +420,7 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
             <button
               onPointerDown={e => e.stopPropagation()}
               onClick={e => { e.stopPropagation(); onRemove() }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 3, borderRadius: 4 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 3, borderRadius: 6 }}
               title="Löschen"
             >
               <ITrash style={{ width: 11, height: 11 }} />
@@ -449,7 +449,7 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
       {ticket.images && ticket.images.length > 0 && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
           {ticket.images.map((img, i) => (
-            <img key={i} src={img} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 5, border: '1px solid var(--line)' }} />
+            <img key={i} src={img} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--line)' }} />
           ))}
         </div>
       )}
@@ -471,7 +471,7 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
               onClick={e => { e.stopPropagation(); onDuplicate() }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
-                background: 'none', border: '1px solid var(--line)', borderRadius: 5,
+                background: 'none', border: '1px solid var(--line)', borderRadius: 6,
                 padding: '3px 8px', fontSize: 11, color: 'var(--fg-3)', cursor: 'pointer',
               }}
               title="Ticket duplizieren"
@@ -484,7 +484,7 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
               onClick={e => { e.stopPropagation(); onDevelop() }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
-                background: 'var(--accent)', border: 'none', borderRadius: 5,
+                background: 'var(--accent)', border: 'none', borderRadius: 6,
                 padding: '4px 11px', fontSize: 11.5, fontWeight: 600,
                 color: 'var(--accent-fg, #1a1410)', cursor: 'pointer',
               }}
@@ -803,7 +803,7 @@ function TicketModalShell({ title, onClose, children }: { title: string; onClose
         style={{
           width: 660, maxWidth: '90vw', maxHeight: '88vh',
           background: 'var(--bg-1)', border: '1px solid var(--line)',
-          borderRadius: 10, display: 'flex', flexDirection: 'column',
+          borderRadius: 6, display: 'flex', flexDirection: 'column',
           boxShadow: '0 24px 64px rgba(0,0,0,0.55)', overflow: 'hidden',
         }}
       >
@@ -901,17 +901,17 @@ const labelStyle: React.CSSProperties = {
 const chip: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 5,
   background: 'var(--bg-3)', border: '1px solid var(--line)',
-  borderRadius: 5, padding: '4px 9px', fontSize: 11.5,
+  borderRadius: 6, padding: '4px 9px', fontSize: 11.5,
   color: 'var(--fg-2)', cursor: 'pointer',
 }
 
 const ghostBtn: React.CSSProperties = {
-  background: 'transparent', border: '1px solid var(--line)', borderRadius: 5,
+  background: 'transparent', border: '1px solid var(--line)', borderRadius: 6,
   padding: '5px 12px', fontSize: 11.5, color: 'var(--fg-2)', cursor: 'pointer',
 }
 
 const primaryBtn: React.CSSProperties = {
-  background: 'var(--accent)', border: 'none', borderRadius: 5,
+  background: 'var(--accent)', border: 'none', borderRadius: 6,
   padding: '5px 14px', fontSize: 11.5, color: 'var(--accent-fg, #1a1410)',
   fontWeight: 500, cursor: 'pointer',
 }
@@ -1030,7 +1030,7 @@ export function GlobalKanbanBoard({ onClose }: { onClose: () => void }) {
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}
     >
-      <div onClick={e => e.stopPropagation()} style={{ width: '90vw', height: '90vh', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 72px rgba(0,0,0,0.5)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '90vw', height: '90vh', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 6, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 72px rgba(0,0,0,0.5)' }}>
 
         {/* ── Header ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', borderBottom: '1px solid var(--line)', flexShrink: 0, background: 'var(--bg-2)' }}>
@@ -1112,7 +1112,7 @@ export function GlobalKanbanBoard({ onClose }: { onClose: () => void }) {
           style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={() => setSessionPick(null)}
         >
-          <div onClick={e => e.stopPropagation()} style={{ width: 340, background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 16px 48px rgba(0,0,0,0.55)' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 340, background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', boxShadow: '0 16px 48px rgba(0,0,0,0.55)' }}>
             <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: 'var(--fg-0)' }}>
                 Session wählen
@@ -1171,7 +1171,7 @@ function GlobalTicketCard({ ticket, isDragging, onPointerDown, onDevelop }: {
       style={{
         background: hovered ? c.bg : c.bg.replace('0.18', '0.08'),
         border: `1px solid ${c.border}`, borderLeft: `4px solid ${typeColor}`,
-        borderRadius: 8, padding: '9px 11px',
+        borderRadius: 6, padding: '9px 11px',
         cursor: isDragging ? 'grabbing' : 'grab',
         userSelect: 'none', touchAction: 'none',
         opacity: isDragging ? 0.3 : 1, transition: 'background 0.12s, opacity 0.12s',
@@ -1209,7 +1209,7 @@ function GlobalTicketCard({ ticket, isDragging, onPointerDown, onDevelop }: {
         {hovered && (
           <button
             onClick={e => { e.stopPropagation(); onDevelop() }}
-            style={{ background: 'var(--accent)', border: 'none', borderRadius: 5, padding: '3px 12px', fontSize: 11.5, fontWeight: 600, color: 'var(--accent-fg, #1a1410)', cursor: 'pointer' }}
+            style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '3px 12px', fontSize: 11.5, fontWeight: 600, color: 'var(--accent-fg, #1a1410)', cursor: 'pointer' }}
           >
             Entwickeln →
           </button>

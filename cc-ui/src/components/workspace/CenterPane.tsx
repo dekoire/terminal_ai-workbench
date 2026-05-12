@@ -1,7 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { TurnMessage, Template, TerminalShortcut, Session } from '../../store/useAppStore'
-import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, ICrew } from '../primitives/Icons'
+import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, IOrbit, IPaperclip, IEdit } from '../primitives/Icons'
+import { useFileAttachments, useDragDrop, usePasteFiles, FileAttachmentBar, DragOverlay } from '../primitives/FileAttachmentArea'
+import { ImageAnnotator } from '../primitives/ImageAnnotator'
 import simpleLogo from '../../assets/simple_logo.svg'
 import { TERMINAL_THEMES } from '../../theme/presets'
 import { updateDocsWithAI, refreshProjectDocs } from '../../utils/updateDocs'
@@ -10,36 +12,11 @@ import { Pill } from '../primitives/Pill'
 import { Kbd } from '../primitives/Kbd'
 import { Avatar } from '../primitives/Avatar'
 import { DiffBlock } from '../terminal/DiffBlock'
+import { AgentView } from '../agent/AgentView'
+import { OrbitView } from '../agent/OrbitView'
 import { XTermPane } from '../terminal/XTermPane'
+import { resolveRefs } from '../../lib/resolveRefs'
 
-// ── horizontal drag-to-resize for input panel ─────────────────────────────────
-function useRowDrag(onMove: (delta: number) => void) {
-  const dragging = useRef(false)
-  const lastY    = useRef(0)
-
-  return useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    dragging.current = true
-    lastY.current = e.clientY
-    const move = (ev: MouseEvent) => {
-      if (!dragging.current) return
-      const dy = ev.clientY - lastY.current
-      lastY.current = ev.clientY
-      onMove(dy)
-    }
-    const up = () => {
-      dragging.current = false
-      document.removeEventListener('mousemove', move)
-      document.removeEventListener('mouseup', up)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-    document.addEventListener('mousemove', move)
-    document.addEventListener('mouseup', up)
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-  }, [onMove])
-}
 
 interface CenterPaneProps {
   fileTabs: string[]
@@ -55,13 +32,36 @@ export function CenterPane({ fileTabs, activeFilePath, setActiveFilePath, closeF
   const project = projects.find(p => p.id === activeProjectId)
   const sessions = project?.sessions ?? []
 
-  // All sessions show in center — crew sessions are first-class tabs
-  const activeCrewSession = sessions.find(s => s.id === activeSessionId && s.kind === 'crew')
 
-  const [inputH, setInputH] = useState(130)
-  const dragInput = useRowDrag(useCallback((dy: number) => {
-    setInputH(h => Math.min(400, Math.max(80, h - dy)))
-  }, []))
+  // ── Popup modal (cc:popup from XTermPane / AgentView) ──────────────────────
+  const [popup, setPopup] = useState<PopupPrompt | null>(null)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setPopup((e as CustomEvent<PopupPrompt>).detail)
+    }
+    window.addEventListener('cc:popup', handler)
+    return () => window.removeEventListener('cc:popup', handler)
+  }, [])
+
+  // Lazy-mount: only mount a terminal once it becomes active for the first time.
+  // This prevents orphaned sessions from opening WebSocket connections on load.
+  const [mountedSessions, setMountedSessions] = useState<Set<string>>(() =>
+    activeSessionId ? new Set([activeSessionId]) : new Set()
+  )
+  useEffect(() => {
+    if (activeSessionId) {
+      setMountedSessions(prev => prev.has(activeSessionId) ? prev : new Set([...prev, activeSessionId]))
+    }
+  }, [activeSessionId])
+
+  // Drop mounted state for sessions that no longer exist (e.g. deleted)
+  useEffect(() => {
+    const ids = new Set(sessions.map(s => s.id))
+    setMountedSessions(prev => {
+      const next = new Set([...prev].filter(id => ids.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [sessions])
 
   const selectSession = (sid: string) => {
     setActiveFilePath(null)
@@ -93,147 +93,32 @@ export function CenterPane({ fileTabs, activeFilePath, setActiveFilePath, closeF
         {sessions.length === 0 && !showFileViewer && <EmptyState onNew={() => setNewSessionOpen(true)} />}
 
         {sessions.map(s => {
-          const isActive = s.id === activeSessionId && !showFileViewer
+          const isActive    = s.id === activeSessionId && !showFileViewer
+          const isAgent     = s.kind === 'openrouter-claude'
+          const isOrbit     = s.kind === 'orbit'
+          const hasMounted  = mountedSessions.has(s.id)
           return (
-            <div key={s.id} style={{ display: isActive ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
-              <XTermPane
-                sessionId={s.id}
-                cmd={sessionCmd(s)}
-                args={sessionArgs(s)}
-                cwd={project?.path ?? '~'}
-              />
+            <div key={s.id} style={{ display: isActive ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column', position: 'relative' }}>
+              {hasMounted && (isOrbit
+                ? <OrbitView sessionId={s.id} />
+                : isAgent
+                  ? <AgentView sessionId={s.id} kind={s.kind!} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} orModel={s.orModel} providerSettingsJson={s.providerSettingsJson} providerAlias={sessionCmd(s)} />
+                  : <XTermPane  sessionId={s.id} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} />
+              )}
             </div>
           )
         })}
       </div>
 
-      {/* Horizontal drag handle */}
-      <HDivider onMouseDown={dragInput} />
-
-      <div style={{ height: inputH, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <InputArea onRequestH={(h) => setInputH(h)} />
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+        <InputArea />
       </div>
 
+      {popup && <PopupDialog popup={popup} onClose={() => setPopup(null)} />}
     </main>
   )
 }
 
-// ── Crew Bar — compact agent strip above terminal ─────────────────────────────
-type CrewAgentLiveStatus = 'idle' | 'active' | 'done'
-
-function CrewBar({ session }: { session: Session }) {
-  const crew = session.crew
-  const [agentStatus, setAgentStatus] = useState<Record<string, CrewAgentLiveStatus>>({})
-  const [, setTick] = useState(0)
-  const startTimes = useRef<Record<string, number>>({})
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { sessionId: sid, agent, status } = (e as CustomEvent<{ sessionId: string; agent: string; model: string; status: string }>).detail
-      if (sid !== session.id) return
-      setAgentStatus(prev => {
-        const next = { ...prev }
-        if (status === 'start') {
-          // mark all previous as done
-          Object.keys(next).forEach(k => { if (next[k] === 'active') next[k] = 'done' })
-          next[agent] = 'active'
-          startTimes.current[agent] = Date.now()
-        } else {
-          next[agent] = 'done'
-        }
-        return next
-      })
-    }
-    window.addEventListener('cc:crew-event', handler)
-    return () => window.removeEventListener('cc:crew-event', handler)
-  }, [session.id])
-
-  // Live timer tick while any agent is active
-  const hasActive = Object.values(agentStatus).some(s => s === 'active')
-  useEffect(() => {
-    if (!hasActive) return
-    const id = setInterval(() => setTick(t => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [hasActive])
-
-  if (!crew) return null
-
-  // Color by position in crew.agents → each agent gets a unique color
-  const AGENT_PALETTE = ['#ef4444','#3b82f6','#22c55e','#a855f7','#eab308','#ec4899','#06b6d4','#6366f1','#14b8a6','#e879f9']
-  const agentColor = (name: string) => {
-    const idx = crew!.agents.findIndex(a => a.name === name)
-    return AGENT_PALETTE[Math.max(0, idx) % AGENT_PALETTE.length]
-  }
-
-  // Sort: active first, idle middle, done last
-  const sorted = [...crew.agents].sort((a, b) => {
-    const rank = (s: string) => s === 'active' ? 0 : s === 'idle' ? 1 : 2
-    return rank(agentStatus[a.name] ?? 'idle') - rank(agentStatus[b.name] ?? 'idle')
-  })
-
-  return (
-    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', overflowX: 'auto', scrollbarWidth: 'none' }}>
-      {sorted.map((agent) => {
-        const color  = agentColor(agent.name)
-        const status = agentStatus[agent.name] ?? 'idle'
-        const isActive = status === 'active'
-        const isDone   = status === 'done'
-        const elapsedSec = isActive && startTimes.current[agent.name]
-          ? Math.floor((Date.now() - startTimes.current[agent.name]) / 1000)
-          : null
-        return (
-          <div
-            key={agent.id}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '3px 9px', borderRadius: 5, flexShrink: 0,
-              background: isActive
-                ? `color-mix(in srgb, ${color} 14%, var(--bg-2))`
-                : isDone
-                  ? 'color-mix(in srgb, var(--fg-3) 8%, var(--bg-2))'
-                  : 'var(--bg-2)',
-              border: `1px solid ${isActive ? color : isDone ? 'color-mix(in srgb, var(--fg-3) 20%, var(--line))' : 'var(--line)'}`,
-              boxShadow: isActive ? `0 0 8px 1px ${color}55, 0 0 2px 0px ${color}99` : 'none',
-              transition: 'all 0.3s',
-              opacity: isDone ? 0.55 : 1,
-            }}
-          >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: isActive ? color : isDone ? 'var(--fg-3)' : color, flexShrink: 0, opacity: isDone ? 0.5 : 1, boxShadow: isActive ? `0 0 6px 2px ${color}` : 'none', animation: isActive ? 'cc-pulse 1.2s ease-in-out infinite' : 'none' }} />
-            <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? color : isDone ? 'var(--fg-3)' : 'var(--fg-1)' }}>{agent.name}</span>
-            {!isActive && <span className="mono" style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>{agent.model.split('/').pop()}</span>}
-            {isActive && elapsedSec !== null && <span className="mono" style={{ fontSize: 9.5, color: color, opacity: 0.85 }}>{elapsedSec}s</span>}
-            {isDone && <span style={{ fontSize: 9, color: 'var(--fg-3)' }}>✓</span>}
-          </div>
-        )
-      })}
-      <span style={{ flex: 1 }} />
-      <span style={{ fontSize: 10, color: 'var(--fg-3)', flexShrink: 0 }}>
-        {crew.orchestration === 'auto' ? 'Auto' : 'Manuell'}
-      </span>
-    </div>
-  )
-}
-
-function HDivider({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
-  const [hover, setHover] = useState(false)
-  return (
-    /* 8 px hit area, 1 px visible line centred inside */
-    <div
-      onMouseDown={onMouseDown}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        height: 8, flexShrink: 0, cursor: 'row-resize',
-        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-      }}
-    >
-      <div style={{
-        height: 1, background: hover ? 'var(--accent)' : 'transparent',
-        transition: 'background 0.15s',
-      }} />
-    </div>
-  )
-}
 
 interface GitInfo {
   branch: string
@@ -434,12 +319,12 @@ function ProjectHeader() {
       {configOpen && (
         <>
           <div onClick={() => setConfigOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 998, background: 'rgba(0,0,0,0.45)' }} />
-          <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 999, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 10, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, width: 440, boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 999, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, width: 440, boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>Port und Serverstart festlegen</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 90, flexShrink: 0, color: 'var(--fg-3)' }}>Port</span>
-                <input value={cfgPort} onChange={e => setCfgPort(e.target.value.replace(/\D/g, ''))} placeholder="3000" style={{ width: 100, padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none' }} />
+                <input value={cfgPort} onChange={e => setCfgPort(e.target.value.replace(/\D/g, ''))} placeholder="3000" style={{ width: 100, padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none' }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                 <span style={{ width: 90, flexShrink: 0, color: 'var(--fg-3)', paddingTop: 6 }}>Start-Befehl</span>
@@ -450,13 +335,13 @@ function ProjectHeader() {
                     disabled={detecting}
                     placeholder="npm run dev"
                     rows={2}
-                    style={{ flex: 1, padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none', resize: 'none', lineHeight: 1.6 }}
+                    style={{ flex: 1, padding: '5px 8px', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)', fontSize: 11, outline: 'none', resize: 'none', lineHeight: 1.6 }}
                   />
                   <button
                     onClick={detectWithAI}
                     disabled={detecting || aiProviders.length === 0}
                     title={aiProviders.length === 0 ? 'Kein AI-Anbieter konfiguriert' : 'Start-Befehl per AI ermitteln'}
-                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-1)', color: detecting ? 'var(--accent)' : aiProviders.length === 0 ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || aiProviders.length === 0) ? 'not-allowed' : 'pointer', opacity: aiProviders.length === 0 ? 0.4 : 1 }}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-1)', color: detecting ? 'var(--accent)' : aiProviders.length === 0 ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || aiProviders.length === 0) ? 'not-allowed' : 'pointer', opacity: aiProviders.length === 0 ? 0.4 : 1 }}
                   >
                     <ISpark className={detecting ? 'anim-pulse' : ''} style={{ width: 12, height: 12 }} />
                   </button>
@@ -464,8 +349,8 @@ function ProjectHeader() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setConfigOpen(false)} style={{ background: 'none', border: '1px solid var(--line-strong)', borderRadius: 5, color: 'var(--fg-2)', padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Abbrechen</button>
-              <button onClick={saveConfig} style={{ background: 'var(--accent)', border: 'none', borderRadius: 5, color: 'var(--accent-fg)', padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Speichern</button>
+              <button onClick={() => setConfigOpen(false)} style={{ background: 'none', border: '1px solid var(--line-strong)', borderRadius: 6, color: 'var(--fg-2)', padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Abbrechen</button>
+              <button onClick={saveConfig} style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, color: 'var(--accent-fg)', padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Speichern</button>
             </div>
           </div>
         </>
@@ -486,50 +371,53 @@ export function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTa
   onCloseFileTab: (path: string) => void
 }) {
   const { activeProjectId, removeSession, aliases } = useAppStore()
+
   return (
-    <div style={{ height: 34, flexShrink: 0, display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 4, gap: 1, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none' }} className="hide-scrollbar">
+    <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 6, paddingRight: 4, gap: 2, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none' }} className="hide-scrollbar">
       {sessions.map(s => {
         const active = s.id === activeId && activeFilePath === null
         const alias = aliases.find(a => a.name === s.alias)
-        const isCrew = s.kind === 'crew'
-        const isDangerous = !isCrew && (s.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous')
+        const isOrbit = s.kind === 'orbit'
+        const isDangerous = !isOrbit && (s.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous')
         const isExited = s.status === 'exited'
-        const topBorderColor = isCrew ? (active ? '#3b82f6' : 'transparent') : isDangerous ? 'var(--err)' : active ? 'var(--accent)' : 'transparent'
-        const dotColor = isDangerous ? 'var(--err)' : s.status === 'active' ? 'var(--ok)' : s.status === 'error' ? 'var(--err)' : 'var(--fg-3)'
+        const accentColor = isOrbit ? 'var(--orbit)' : isDangerous ? 'var(--err)' : 'var(--accent)'
+        const dotColor = isDangerous ? 'var(--err)' : isOrbit ? 'var(--orbit)' : s.status === 'active' ? 'var(--ok)' : s.status === 'error' ? 'var(--err)' : 'var(--fg-3)'
         return (
           <div
             key={s.id}
             onClick={() => onSelectSession(s.id)}
             style={{
-              height: 30, padding: '0 10px 0 12px',
-              display: 'flex', alignItems: 'center', gap: 7,
-              borderRadius: 0,
-              background: active ? (isDangerous ? 'rgba(239,122,122,0.07)' : 'var(--bg-0)') : 'transparent',
-              borderTop: `2px solid ${topBorderColor}`,
-              borderLeft: active ? '1px solid var(--line)' : 'none',
-              borderRight: active ? '1px solid var(--line)' : 'none',
+              height: 28, padding: '0 12px',
+              display: 'flex', alignItems: 'center', gap: 6,
+              borderRadius: 99,
+              margin: '0 1px',
+              background: active ? (isDangerous ? 'rgba(239,122,122,0.12)' : isOrbit ? 'rgba(139,108,247,0.12)' : 'var(--bg-0)') : 'transparent',
+              border: active ? `1px solid ${accentColor}` : '1px solid transparent',
               color: isExited ? 'var(--fg-3)' : isDangerous ? (active ? '#ef7a7a' : 'var(--fg-2)') : active ? 'var(--fg-0)' : 'var(--fg-2)',
-              fontSize: 11.5, cursor: 'pointer', position: 'relative', marginBottom: -1, maxWidth: 240,
+              fontSize: 11.5, cursor: 'pointer', maxWidth: 220,
               opacity: isExited && !active ? 0.6 : 1,
+              transition: 'background 0.12s, border-color 0.12s',
             }}
+            onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--bg-2)' }}
+            onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
-            {/* Left badges: shield (if dangerous), crew icon (if crew) */}
+            {/* Left badges: shield (if dangerous), orbit icon */}
             {isDangerous && (
               <IShieldPlus title="--dangerously-skip-permissions" style={{ width: 10, height: 10, color: 'var(--err)', flexShrink: 0 }} />
             )}
-            {isCrew && (
-              <ICrew style={{ width: 10, height: 10, color: active ? '#3b82f6' : 'var(--fg-3)', flexShrink: 0 }} />
+            {isOrbit && (
+              <IOrbit style={{ width: 10, height: 10, color: active ? 'var(--orbit)' : 'var(--fg-3)', flexShrink: 0 }} />
             )}
 
             {/* Name */}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isExited ? 'line-through' : 'none', flex: 1 }}>{s.name}</span>
 
             {/* Right side: alias sub-label, status dot */}
-            {!isCrew && s.alias && s.alias !== s.name && (
-              <span className="mono" style={{ fontSize: 9.5, color: active ? '#3b82f6' : 'var(--fg-3)', flexShrink: 0 }}>{s.alias}</span>
+            {s.alias && s.alias !== s.name && (
+              <span className="mono" style={{ fontSize: 9.5, color: active ? 'var(--accent)' : 'var(--fg-3)', flexShrink: 0 }}>{s.alias}</span>
             )}
             {isExited && <span style={{ fontSize: 8.5, color: 'var(--fg-3)', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 3, padding: '1px 4px', flexShrink: 0 }}>ended</span>}
-            {!isExited && !isCrew && (
+            {!isExited && (
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0, ...(s.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}) }} />
             )}
             <IClose
@@ -550,15 +438,14 @@ export function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTa
             onClick={() => onSelectFileTab(path)}
             title={path}
             style={{
-              height: 30, padding: '0 8px 0 10px',
+              height: 28, padding: '0 10px',
               display: 'flex', alignItems: 'center', gap: 6,
-              borderRadius: 0,
-              background: active ? 'rgba(212,163,72,0.07)' : 'transparent',
-              borderTop: `2px solid ${active ? '#d4a348' : 'transparent'}`,
-              borderLeft: active ? '1px solid var(--line)' : 'none',
-              borderRight: active ? '1px solid var(--line)' : 'none',
+              borderRadius: 99,
+              margin: '0 1px',
+              background: active ? 'rgba(212,163,72,0.10)' : 'transparent',
+              border: active ? '1px solid #d4a348' : '1px solid transparent',
               color: active ? '#d4a348' : 'var(--fg-3)',
-              fontSize: 11.5, cursor: 'pointer', position: 'relative', marginBottom: -1, maxWidth: 200, flexShrink: 0,
+              fontSize: 11.5, cursor: 'pointer', maxWidth: 200, flexShrink: 0,
             }}
           >
             <IFile style={{ color: active ? '#d4a348' : 'var(--fg-3)', width: 11, height: 11, flexShrink: 0 }} />
@@ -571,7 +458,7 @@ export function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTa
         )
       })}
 
-      <button onClick={onNew} title="Neue Session (⌘T)" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', margin: '0 4px', marginBottom: 4, background: 'none', border: 'none', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0, alignSelf: 'flex-end' }}>
+      <button onClick={onNew} title="Neue Session (⌘T)" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', margin: '0 4px', background: 'none', border: 'none', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }}>
         <IPlus style={{ width: 12, height: 12, strokeWidth: 2.5 }} /><span>New</span>
       </button>
     </div>
@@ -587,7 +474,7 @@ function DangerBanner() {
       <span style={{ color: 'var(--fg-1)' }}>permission prompts skipped — agent can write & execute without confirmation</span>
       <span style={{ flex: 1 }} />
       <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)' }}>--dangerously-skip-permissions</span>
-      <button onClick={() => setDangerMode(false)} style={{ background: 'transparent', border: '1px solid var(--danger-line)', color: 'var(--danger)', padding: '2px 8px', borderRadius: 4, fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit' }}>Disarm</button>
+      <button onClick={() => setDangerMode(false)} style={{ background: 'transparent', border: '1px solid var(--danger-line)', color: 'var(--danger)', padding: '2px 8px', borderRadius: 6, fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit' }}>Disarm</button>
     </div>
   )
 }
@@ -595,11 +482,6 @@ function DangerBanner() {
 function EmptyState({ onNew }: { onNew: () => void }) {
   const { aliases, setNewSessionPreKind, setNewSessionOpen } = useAppStore()
   const top4 = aliases.slice(0, 4)
-
-  const startWithKind = (kind: 'single' | 'crew') => {
-    setNewSessionPreKind(kind)
-    setNewSessionOpen(true)
-  }
 
   return (
     <div style={{
@@ -610,30 +492,6 @@ function EmptyState({ onNew }: { onNew: () => void }) {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
         <img src={simpleLogo} alt="Codera AI" style={{ width: 52, height: 52, opacity: 0.85 }} />
         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-0)' }}>Keine aktive Session</div>
-      </div>
-
-      {/* Session type picker */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={() => startWithKind('single')}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, padding: '10px 14px', borderRadius: 7, border: '1px solid var(--line-strong)', background: 'var(--bg-1)', cursor: 'pointer', width: 148, textAlign: 'left', transition: 'border-color 0.15s, background 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.background = 'var(--accent-soft)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line-strong)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-1)' }}
-        >
-          <ITerminal style={{ color: 'var(--accent)', width: 13, height: 13 }} />
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-0)' }}>Terminal Session</span>
-          <span style={{ fontSize: 10, color: 'var(--fg-3)', lineHeight: 1.4 }}>Ein Agent, ein Terminal</span>
-        </button>
-        <button
-          onClick={() => startWithKind('crew')}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, padding: '10px 14px', borderRadius: 7, border: '1px solid var(--line-strong)', background: 'var(--bg-1)', cursor: 'pointer', width: 148, textAlign: 'left', transition: 'border-color 0.15s, background 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.background = 'var(--accent-soft)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line-strong)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-1)' }}
-        >
-          <ISpark style={{ color: 'var(--accent)', width: 13, height: 13 }} />
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-0)' }}>Agenten-Crew</span>
-          <span style={{ fontSize: 10, color: 'var(--fg-3)', lineHeight: 1.4 }}>Multi-Agent Team</span>
-        </button>
       </div>
 
       {/* Quick-start alias cards */}
@@ -651,7 +509,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           background: 'var(--accent)', color: 'var(--accent-fg, #1a1410)',
-          border: 'none', borderRadius: 4, padding: '5px 14px',
+          border: 'none', borderRadius: 6, padding: '5px 14px',
           width: 304, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
         }}
       >
@@ -679,7 +537,7 @@ function AliasCard({ alias, onStart }: { alias: { id: string; name: string; cmd:
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <div style={{
-          width: 20, height: 20, borderRadius: 4, background: hovered ? 'var(--accent)' : 'var(--bg-3)',
+          width: 20, height: 20, borderRadius: 6, background: hovered ? 'var(--accent)' : 'var(--bg-3)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           transition: 'background 0.15s',
         }}>
@@ -724,7 +582,7 @@ function Turn({ turn, onAllow, onDeny }: { turn: TurnMessage; onAllow: (id: stri
           {turn.attachments && turn.attachments.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
               {turn.attachments.map(a => (
-                <span key={a} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 4, fontSize: 10.5, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)' }}>
+                <span key={a} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 10.5, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)' }}>
                   <IFile style={{ color: 'var(--fg-3)' }} />{a}
                 </span>
               ))}
@@ -757,7 +615,7 @@ function Turn({ turn, onAllow, onDeny }: { turn: TurnMessage; onAllow: (id: stri
 
   if (turn.kind === 'tool') {
     return (
-      <div style={{ marginLeft: 32, marginBottom: 10, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: turn.tone === 'accent' ? 'var(--accent-soft)' : 'var(--bg-1)', border: `1px solid ${turn.tone === 'accent' ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 5, fontSize: 11 }}>
+      <div style={{ marginLeft: 32, marginBottom: 10, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: turn.tone === 'accent' ? 'var(--accent-soft)' : 'var(--bg-1)', border: `1px solid ${turn.tone === 'accent' ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 6, fontSize: 11 }}>
         <IChev style={{ color: 'var(--fg-3)', transform: 'rotate(90deg)' }} />
         <span style={{ color: turn.tone === 'accent' ? 'var(--accent)' : 'var(--ok)', fontWeight: 600 }}>{turn.toolName}</span>
         <span style={{ color: 'var(--fg-1)' }}>{turn.toolArgs}</span>
@@ -821,7 +679,7 @@ function EditTemplateModal({ template, onClose }: { template: Template; onClose:
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, boxShadow: '0 16px 48px rgba(0,0,0,0.4)', width: 440, padding: 24 }}>
+      <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, boxShadow: '0 16px 48px rgba(0,0,0,0.4)', width: 440, padding: 24 }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)', marginBottom: 18 }}>Template bearbeiten</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
           <div>
@@ -850,7 +708,7 @@ function EditTemplateModal({ template, onClose }: { template: Template; onClose:
   )
 }
 
-function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
+function InputArea() {
   const {
     inputValue, setInputValue, sendMessage, templates, updateTemplate,
     projects, activeProjectId, activeSessionId,
@@ -859,10 +717,17 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     aiProviders, activeAiProvider, aiFunctionMap,
     terminalShortcuts, docTemplates,
     terminalTheme, theme: appTheme,
+    currentUser,
+    orbitCtxBefore, orbitCtxAfter,
+    supabaseUrl, supabaseAnonKey,
+    pendingWorkshopTransfer, clearWorkshopTransfer,
   } = useAppStore()
   const [attachments, setAttachments]   = useState<string[]>([])
   const [picking, setPicking]           = useState(false)
   const [recording, setRecording]       = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const mediaRef  = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
   const [editTemplate, setEditTemplate] = useState<Template | null>(null)
   const [tplMenu, setTplMenu]           = useState<{ x: number; y: number; tpl: Template } | null>(null)
   const [aiRefining, setAiRefining]     = useState(false)
@@ -872,21 +737,144 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   const [pathInputVal, setPathInputVal] = useState('')
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [focused, setFocused] = useState(false)
+  const isOrbit = projects.flatMap(p => p.sessions).find(s => s.id === activeSessionId)?.kind === 'orbit'
+  const [attachPreviewSrc, setAttachPreviewSrc] = useState<string | null>(null)
+  const borderWrapRef = useRef<HTMLDivElement>(null)
+  // ── Chat history (ArrowUp/Down to cycle through last 20 sent messages) ───────
+  const chatHistoryRef  = useRef<string[]>([])
+  const historyIndexRef = useRef(-1)   // -1 = not navigating
+
+
+  // ── R2 file attachments ────────────────────────────────────────────────────
+  const userId = currentUser?.id
+  const { files: pendingFiles, addFiles, removeFile: removePendingFile, replaceFile, clearFiles, buildUrlSuffix, hasUploading } = useFileAttachments(userId, 'image-text-context')
+  const [annotatingFileId, setAnnotatingFileId] = useState<string | null>(null)
+  const annotatingFile = annotatingFileId ? pendingFiles.find(f => f.id === annotatingFileId) ?? null : null
+  const isDragOver = useDragDrop(addFiles, 6, pendingFiles.length)
+  usePasteFiles(addFiles)
+
+  // Derived session state — computed early so the ref-detection useEffect can use them
+  const project       = projects.find(p => p.id === activeProjectId)
+  const activeSession = project?.sessions.find(s => s.id === activeSessionId)
+  const isTerminal    = !!activeSession
+
+  // ── Orbit reference detection ──────────────────────────────────────────────
+  type RefStatus = 'checking' | 'found' | 'missing'
+  const [orbitRefs, setOrbitRefs] = useState<Map<string, RefStatus>>(new Map())
+  const refTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    // Ref detection runs for orbit and agent sessions — skip only for PTY terminal sessions
+    if (isTerminal && !isOrbit) return
+    const REF_RE = /#(msg|chat|amsg):([a-z0-9-]{6,})/gi
+    const matches = [...inputValue.matchAll(REF_RE)]
+    const found = matches.map(m => `${m[1]}:${m[2]}`)
+    const unique = [...new Set(found)]
+
+    // Trim refs no longer in text
+    setOrbitRefs(prev => {
+      const next = new Map<string, RefStatus>()
+      for (const ref of unique) next.set(ref, prev.get(ref) ?? 'checking')
+      return next
+    })
+
+    // Debounced resolution for any 'checking' refs
+    if (refTimerRef.current) clearTimeout(refTimerRef.current)
+    refTimerRef.current = setTimeout(async () => {
+      for (const ref of unique) {
+        const [type, id] = ref.split(':')
+        try {
+          const body: Record<string, unknown> = { ref: `${type}:${id}`, ctxBefore: 0, ctxAfter: 0 }
+          if (type === 'amsg' && supabaseUrl && supabaseAnonKey && currentUser?.id) {
+            body.supabaseUrl = supabaseUrl
+            body.supabaseKey = supabaseAnonKey
+            body.userId      = currentUser.id
+          }
+          const r = await fetch('/api/orbit/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          const data = await r.json() as { ok: boolean }
+          setOrbitRefs(prev => {
+            const next = new Map(prev)
+            next.set(ref, data.ok ? 'found' : 'missing')
+            return next
+          })
+        } catch {
+          setOrbitRefs(prev => { const n = new Map(prev); n.set(ref, 'missing'); return n })
+        }
+      }
+    }, 450)
+
+    return () => { if (refTimerRef.current) clearTimeout(refTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputValue, isTerminal, isOrbit, supabaseUrl, supabaseAnonKey, currentUser?.id])
+
   const taRef      = useRef<HTMLTextAreaElement>(null)
   const termBg = (TERMINAL_THEMES.find(t => t.id === terminalTheme)?.theme.background)
     ?? (appTheme === 'dark' ? '#0e0d0b' : '#faf8f4')
   const recRef     = useRef<SpeechRecognition | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const project = projects.find(p => p.id === activeProjectId)
-  const activeSession = project?.sessions.find(s => s.id === activeSessionId)
-  const isTerminal = !!activeSession
 
-  // Grow/shrink the outer container based on content
+  // drag-drop + paste handled by useDragDrop / usePasteFiles hooks above
+
+  const imageFiles = pendingFiles.filter(f => f.isImage)
   useEffect(() => {
-    const lines = (inputValue.match(/\n/g) ?? []).length + 1
-    const h = lines > 3 ? Math.min(400, lines * 20 + 160) : 130
-    onRequestH?.(h)
-  }, [inputValue, onRequestH])
+    if (!attachPreviewSrc) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setAttachPreviewSrc(null) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [attachPreviewSrc])
+
+  // Insert a #msg: / #chat: reference into the input (fired by clicking ID badges in AgentView / OrbitView)
+  useEffect(() => {
+    const onInsertRef = (e: Event) => {
+      const ref = (e as CustomEvent<string>).detail
+      if (!ref) return
+      setInputValue(prev => prev ? prev + ' ' + ref : ref)
+    }
+    window.addEventListener('cc:insert-ref', onInsertRef)
+    return () => window.removeEventListener('cc:insert-ref', onInsertRef)
+  }, [])
+
+  // Auto-grow textarea + sync outer container (re-runs when files are added/removed)
+  useEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    const next = Math.min(Math.max(ta.scrollHeight, 68), 600)
+    ta.style.height = next + 'px'
+  }, [inputValue, pendingFiles.length])
+
+  // ── Workshop transfer: inject text + element refs + images on return ────────
+  useEffect(() => {
+    if (!pendingWorkshopTransfer) return
+    const { text, elementRefs, imageDataUrls } = pendingWorkshopTransfer
+    // Build element-ref appendix
+    const refLines = elementRefs.map(r =>
+      `• <${r.tag}${r.id ? '#'+r.id : r.classes[0] ? '.'+r.classes[0] : ''}>` +
+      (r.component ? `  Komp: ${r.component}` : '') +
+      (r.text ? `  "${r.text}"` : '')
+    )
+    const appendix = refLines.length
+      ? `\n\n── Erfasste Elemente ──\n${refLines.join('\n')}`
+      : ''
+    setInputValue(text + appendix)
+
+    // Convert dataUrls to File objects and add them as pending files
+    if (imageDataUrls.length > 0) {
+      void Promise.all(
+        imageDataUrls.map(async (url, i) => {
+          const res  = await fetch(url)
+          const blob = await res.blob()
+          return new File([blob], `workshop_${i+1}.png`, { type: 'image/png' })
+        })
+      ).then(files => addFiles(files))
+    }
+
+    clearWorkshopTransfer()
+  }, [pendingWorkshopTransfer]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -916,20 +904,98 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
   }
 
+  const toBase64 = (file: File): Promise<string> => new Promise((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => res(r.result as string)
+    r.onerror = rej
+    r.readAsDataURL(file)
+  })
+
+  const dispatchOrbit = (fullMsg: string, images: { dataUrl: string; mimeType: string }[]) => {
+    window.dispatchEvent(new CustomEvent('cc:orbit-send', { detail: { sessionId: activeSessionId, text: fullMsg, images } }))
+    setInputValue('')
+    setAttachments([])
+    clearFiles()
+  }
+
   const send = () => {
     const favBodies = templates.filter(t => t.favorite).map(t => t.body)
-    if (!inputValue.trim() && attachments.length === 0 && favBodies.length === 0) return
+    if (!inputValue.trim() && attachments.length === 0 && favBodies.length === 0 && pendingFiles.length === 0) return
+    if (hasUploading) return  // wait for uploads to finish
+
+    // Save to history (max 20, no duplicates at top)
+    if (inputValue.trim()) {
+      const h = chatHistoryRef.current
+      if (h[0] !== inputValue.trim()) {
+        chatHistoryRef.current = [inputValue.trim(), ...h].slice(0, 20)
+      }
+      historyIndexRef.current = -1
+    }
 
     let fullMsg = inputValue
     if (favBodies.length > 0) fullMsg += (fullMsg ? '\n\n' : '') + favBodies.join('\n\n')
 
-    if (isTerminal) {
-      window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: { sessionId: activeSessionId, data: fullMsg } }))
+    if (activeSession?.kind === 'orbit') {
+      // Orbit: send images as base64 directly so the AI can see them
+      // Also append R2 URLs for non-image files
+      const imageFiles = pendingFiles.filter(f => f.isImage && f.file)
+      const docFiles   = pendingFiles.filter(f => !f.isImage && f.status === 'done' && f.url)
+      if (docFiles.length > 0) {
+        fullMsg += '\n\n' + docFiles.map(f => `[Datei: ${f.name}](${f.url})`).join('\n')
+      }
+      if (imageFiles.length === 0) {
+        dispatchOrbit(fullMsg, [])
+      } else {
+        Promise.all(imageFiles.map(img =>
+          toBase64(img.file).then(dataUrl => ({ dataUrl, mimeType: img.mimeType }))
+        )).then(images => dispatchOrbit(fullMsg, images))
+      }
+    } else if (isTerminal) {
+      // Terminal: write images to local temp files → --image "/tmp/..." (CLI needs a local path)
+      // Docs keep their proxy URL as reference text
+      const imageFiles = pendingFiles.filter(f => f.isImage && f.file)
+      const doneDocs   = pendingFiles.filter(f => !f.isImage && f.status === 'done' && f.url)
+      if (doneDocs.length > 0) fullMsg += '\n' + doneDocs.map(f => `[${f.name}]: ${f.url}`).join('\n')
+
+      const writeTempAndSend = async () => {
+        let msg = await resolveRefs(fullMsg, orbitCtxBefore, orbitCtxAfter)
+        if (imageFiles.length > 0) {
+          const paths = await Promise.all(imageFiles.map(async f => {
+            try {
+              const res = await fetch('/api/write-temp-image', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': f.mimeType || 'application/octet-stream',
+                  'X-File-Name': encodeURIComponent(f.name),
+                },
+                body: f.file,
+              })
+              const data = await res.json() as { ok: boolean; path?: string }
+              return data.ok && data.path ? data.path : null
+            } catch { return null }
+          }))
+          const valid = paths.filter(Boolean) as string[]
+          if (valid.length > 0) msg += ' ' + valid.map(p => `--image "${p}"`).join(' ')
+        }
+        window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: { sessionId: activeSessionId, data: msg } }))
+        setInputValue('')
+        clearFiles()
+      }
+
+      void writeTempAndSend()
+      return // async path handles setInputValue/clearFiles
     } else {
-      sendMessage(attachments)
-      setAttachments([])
+      // Agent session: resolve any embedded #msg:/#chat:/#amsg: refs before sending
+      const sendWithRefs = async () => {
+        const resolved = await resolveRefs(fullMsg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id)
+        sendMessage(attachments, resolved)
+        setAttachments([])
+        setInputValue('')
+        clearFiles()
+      }
+      void sendWithRefs()
+      return // async path handles setInputValue/clearFiles
     }
-    setInputValue('')
   }
 
   const refineWithAI = async () => {
@@ -985,29 +1051,59 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     setAiAnalysing(false)
   }
 
-  const toggleVoice = () => {
+  const toggleVoice = async () => {
+    if (recording) {
+      mediaRef.current?.stop()
+      recRef.current?.stop()
+      setRecording(false)
+      return
+    }
+
+    // Prefer Whisper via Groq (free) or OpenAI
+    const openAiProv = aiProviders.find(p => (p.provider === 'groq' || p.provider === 'openai') && p.apiKey)
+
+    if (openAiProv) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus' : 'audio/webm'
+        const recorder = new MediaRecorder(stream, { mimeType })
+        chunksRef.current = []
+        recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+        recorder.onstop = async () => {
+          stream.getTracks().forEach(t => t.stop())
+          setTranscribing(true)
+          try {
+            const blob = new Blob(chunksRef.current, { type: mimeType })
+            const r = await fetch('/api/transcribe', {
+              method: 'POST', body: blob,
+              headers: { 'x-api-key': openAiProv.apiKey, 'x-provider': openAiProv.provider, 'x-language': 'de', 'Content-Type': mimeType },
+            })
+            const d = await r.json() as { ok: boolean; text?: string }
+            if (d.ok && d.text) setInputValue(prev => prev ? prev + ' ' + d.text : d.text!)
+          } catch {}
+          setTranscribing(false)
+        }
+        recorder.start()
+        mediaRef.current = recorder
+        setRecording(true)
+      } catch { setRecording(false) }
+      return
+    }
+
+    // Fallback: Web Speech API
     const SR = (window as unknown as { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition
       ?? (window as unknown as { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition
     if (!SR) return
-
-    if (recording) {
-      recRef.current?.stop()
-      setRecording(false)
-    } else {
-      const rec = new SR()
-      rec.continuous = false
-      rec.interimResults = false
-      rec.lang = 'de-DE'
-      rec.onresult = (e: SpeechRecognitionEvent) => {
-        const t = Array.from(e.results).map(r => r[0].transcript).join('')
-        setInputValue(prev => prev ? prev + ' ' + t : t)
-      }
-      rec.onend = () => setRecording(false)
-      rec.onerror = () => setRecording(false)
-      rec.start()
-      recRef.current = rec
-      setRecording(true)
+    const rec = new SR()
+    rec.continuous = false; rec.interimResults = false; rec.lang = 'de-DE'
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      const t = Array.from(e.results).map(r => r[0].transcript).join('')
+      setInputValue(prev => prev ? prev + ' ' + t : t)
     }
+    rec.onend = () => setRecording(false)
+    rec.onerror = () => setRecording(false)
+    rec.start(); recRef.current = rec; setRecording(true)
   }
 
   const sendRaw = (signal: string) => {
@@ -1027,6 +1123,27 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
     if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && tabSc) {
       e.preventDefault()
       sendRaw(tabSc.signal)
+      return
+    }
+
+    // Arrow Up/Down → chat message history (when input is empty or navigating)
+    if (e.key === 'ArrowUp' && !e.ctrlKey && !e.metaKey && !isTerminal) {
+      const h = chatHistoryRef.current
+      if (h.length > 0 && (ta.value === '' || historyIndexRef.current >= 0)) {
+        e.preventDefault()
+        const next = Math.min(historyIndexRef.current + 1, h.length - 1)
+        historyIndexRef.current = next
+        setInputValue(h[next])
+        setTimeout(() => { ta.selectionStart = ta.selectionEnd = ta.value.length }, 0)
+        return
+      }
+    }
+    if (e.key === 'ArrowDown' && !e.ctrlKey && !e.metaKey && !isTerminal && historyIndexRef.current >= 0) {
+      e.preventDefault()
+      const next = historyIndexRef.current - 1
+      historyIndexRef.current = next
+      setInputValue(next < 0 ? '' : chatHistoryRef.current[next])
+      setTimeout(() => { ta.selectionStart = ta.selectionEnd = ta.value.length }, 0)
       return
     }
 
@@ -1060,12 +1177,108 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0px 18px 20px', background: 'var(--bg-0)', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0px 100px 36px', background: 'var(--bg-0)', position: 'relative' }}>
+      <style>{`
+        @property --orbit-angle {
+          syntax: '<angle>';
+          initial-value: 0deg;
+          inherits: false;
+        }
+        @keyframes orbit-angle-spin {
+          to { --orbit-angle: 360deg; }
+        }
+      `}</style>
       <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleAttach} />
+
+      {/* Drag overlay — always in DOM so drop events always fire; visibility toggled via opacity/pointer-events */}
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 999,
+          background: 'rgba(249,115,22,0.07)',
+          border: '2px dashed rgba(249,115,22,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12,
+          opacity: isDragOver ? 1 : 0,
+          pointerEvents: 'none',
+          transition: 'opacity 0.15s',
+        }}
+      >
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(249,115,22,0.85)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <span style={{ fontSize: 14, color: 'rgba(249,115,22,0.9)', fontWeight: 600 }}>Bilder hier ablegen</span>
+      </div>
+
+      {/* Attachment image preview — floats above textbox, not fullscreen */}
+      {attachPreviewSrc && (() => {
+        const rect = borderWrapRef.current?.getBoundingClientRect()
+        const bottom = rect ? window.innerHeight - rect.top + 8 : 200
+        const previewFile = pendingFiles.find(f => f.previewUrl === attachPreviewSrc || f.url === attachPreviewSrc)
+        return (
+          <div
+            onClick={() => setAttachPreviewSrc(null)}
+            style={{
+              position: 'fixed', left: 0, right: 0,
+              bottom, zIndex: 200,
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              cursor: 'zoom-out',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: 'relative', borderRadius: 8,
+                boxShadow: '0 8px 40px rgba(0,0,0,0.55)',
+                overflow: 'hidden', cursor: 'default', maxWidth: '80vw',
+              }}
+            >
+              <img
+                src={attachPreviewSrc}
+                style={{ display: 'block', maxWidth: '80vw', maxHeight: '62vh', objectFit: 'contain' }}
+                alt=""
+              />
+              {/* Top bar with buttons */}
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 10px',
+                background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 100%)',
+              }}>
+                {/* Bild bearbeiten — only if it's a pending file */}
+                {previewFile ? (
+                  <button
+                    onClick={() => { setAttachPreviewSrc(null); setAnnotatingFileId(previewFile.id) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '5px 12px', borderRadius: 6,
+                      background: 'var(--accent)', border: 'none',
+                      cursor: 'pointer', color: '#fff',
+                      fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-ui)',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                    }}
+                  >
+                    <IEdit style={{ width: 12, height: 12 }} />
+                    Bild bearbeiten
+                  </button>
+                ) : <div />}
+                {/* Close */}
+                <button
+                  onClick={() => setAttachPreviewSrc(null)}
+                  style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.2)',
+                    cursor: 'pointer', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                  }}
+                >
+                  <IClose style={{ width: 12, height: 12 }} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Inline path input — shown when Pfad/Bild button is active */}
       {isTerminal && pathInput && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, padding: '5px 8px', background: 'var(--bg-3)', border: '1px solid var(--accent)', borderRadius: 7 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, padding: '5px 8px', background: 'var(--bg-3)', border: '1px solid var(--accent)', borderRadius: 6 }}>
           <IFile style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} />
           <input
             autoFocus
@@ -1077,7 +1290,7 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
             placeholder={pathInput === 'image' ? 'Pfad eintippen oder Bild aus Finder hier reinziehen…' : 'Pfad eintippen oder Datei aus Finder hier reinziehen…'}
             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 11.5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)' }}
           />
-          <button onClick={confirmPathInput} disabled={!pathInputVal.trim()} style={{ background: 'var(--accent)', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, fontWeight: 600, color: 'var(--accent-fg, #1a1410)', cursor: pathInputVal.trim() ? 'pointer' : 'default', opacity: pathInputVal.trim() ? 1 : 0.4 }}>
+          <button onClick={confirmPathInput} disabled={!pathInputVal.trim()} style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600, color: 'var(--accent-fg, #1a1410)', cursor: pathInputVal.trim() ? 'pointer' : 'default', opacity: pathInputVal.trim() ? 1 : 0.4 }}>
             Einfügen
           </button>
           <button onClick={() => { setPathInput(null); setPathInputVal(''); setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 2 }}>
@@ -1086,14 +1299,28 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
         </div>
       )}
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: `1px solid ${focused ? 'var(--accent)' : 'var(--line-strong)'}`, borderRadius: 8, background: 'var(--bg-1)', padding: '16px 18px 10px', boxShadow: focused ? '0 0 0 2px var(--accent-soft), 0 4px 16px rgba(0,0,0,0.12)' : '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+      {/* ── Border wrapper ── */}
+      <div ref={borderWrapRef} style={{
+        flexShrink: 0, borderRadius: 6, padding: isOrbit ? 1 : 0,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)', position: 'relative', overflow: 'hidden',
+        border: isOrbit ? 'none' : `1px solid ${focused ? 'var(--accent)' : 'var(--line-strong)'}`,
+        ...(isOrbit ? {
+          background: 'conic-gradient(from var(--orbit-angle), #3b82f6, #8b5cf6, #a855f7, #6366f1, #818cf8, #60a5fa, #7c3aed, #3b82f6)',
+          animation: 'orbit-angle-spin 3s linear infinite',
+        } : {}),
+      }}>
+        {/* Inner content */}
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', borderRadius: isOrbit ? 6 : 6, background: 'var(--bg-1)', padding: '8px 12px 6px', overflow: 'visible' }}>
+        {/* File attachments (images + documents) */}
+        <DragOverlay visible={isDragOver} maxReached={pendingFiles.length >= 6} />
+        <FileAttachmentBar files={pendingFiles} onRemove={removePendingFile} onPreview={setAttachPreviewSrc} onAnnotate={setAnnotatingFileId} />
         {attachments.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
             {attachments.map(p => {
               const label = isTerminal ? p.split('/').pop() ?? p : p
               const title = isTerminal ? p : undefined
               return (
-                <span key={p} title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 7px', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 4, fontSize: 10.5, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', maxWidth: 280 }}>
+                <span key={p} title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 7px', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 10.5, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', maxWidth: 280 }}>
                   <IFile style={{ color: 'var(--accent)', flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
                   <IClose style={{ color: 'var(--fg-3)', cursor: 'pointer', marginLeft: 2, flexShrink: 0 }} onClick={() => removeAttachment(p)} />
@@ -1106,17 +1333,42 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
         <textarea
           ref={taRef}
           value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
+          onChange={e => { historyIndexRef.current = -1; setInputValue(e.target.value) }}
           onKeyDown={handleKey}
           // Prevent binary file drops into the terminal — they cause xterm to go black
           onDragOver={isTerminal ? e => e.preventDefault() : undefined}
           onDrop={isTerminal ? e => e.preventDefault() : undefined}
-          placeholder={isTerminal ? 'Befehl oder Text ans Terminal senden…' : 'Nachricht senden… (⏎ senden, ⇧⏎ neue Zeile)'}
+          placeholder={isTerminal ? 'Befehl eingeben oder Text tippen…' : isOrbit ? 'Schreib etwas an Orbit… · ⏎ Senden · ⇧⏎ Neue Zeile' : 'Nachricht an den Agenten… · ⏎ Senden · ⇧⏎ Neue Zeile'}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'none', width: '100%', flex: 1, minHeight: 0 }}
+          style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'vertical', width: '100%', minHeight: 68, maxHeight: 600 }}
         />
 
+
+        {/* ── Reference pills (orbit + agent sessions, not PTY terminal) ── */}
+        {!(isTerminal && !isOrbit) && orbitRefs.size > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '5px 0 2px' }}>
+            {[...orbitRefs.entries()].map(([ref, status]) => {
+              const [type, id] = ref.split(':')
+              const short = id.slice(-8)
+              const isChecking = status === 'checking'
+              const isFound    = status === 'found'
+              const color      = isChecking ? 'var(--fg-3)' : isFound ? 'var(--ok)' : 'var(--err)'
+              const bg         = isChecking ? 'var(--bg-3)' : isFound ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)'
+              const border     = isChecking ? 'var(--line-strong)' : isFound ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)'
+              const dot        = isChecking ? '···' : isFound ? '✓' : '✗'
+              const typeColor  = type === 'chat' ? 'var(--orbit)' : type === 'amsg' ? 'var(--fg-2)' : 'var(--accent)'
+              return (
+                <span key={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px 2px 7px', background: bg, border: `1px solid ${border}`, borderRadius: 99, fontSize: 10, fontFamily: 'var(--font-mono)', color, transition: 'background 0.2s, border-color 0.2s, color 0.2s', whiteSpace: 'nowrap' }}>
+                  <span style={{ opacity: 0.6 }}>#</span>
+                  <span style={{ color: typeColor, opacity: 0.9 }}>{type}:</span>
+                  <span>{short}</span>
+                  <span style={{ marginLeft: 2, fontFamily: 'var(--font-ui)', fontWeight: isChecking ? 400 : 600, opacity: isChecking ? 0.5 : 1 }}>{dot}</span>
+                </span>
+              )
+            })}
+          </div>
+        )}
 
         {/* Favorite templates — always auto-included on send */}
         {templates.some(t => t.favorite) && (
@@ -1164,25 +1416,15 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 5, borderTop: '1px solid var(--line)' }}>
-          {isTerminal ? (
+          {isTerminal && !isOrbit ? (
             <>
               <button
-                style={{ ...chip, background: pathInput === 'file' ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${pathInput === 'file' ? 'var(--accent)' : 'var(--line)'}`, color: pathInput === 'file' ? 'var(--accent)' : 'var(--fg-1)' }}
-                onClick={() => { setPathInput(p => p === 'file' ? null : 'file'); setPathInputVal('') }}
-                title="Pfad einfügen — Datei aus dem Finder hier reinziehen oder Pfad eintippen"
+                style={{ ...chip, background: pathInput ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${pathInput ? 'var(--accent)' : 'var(--line)'}`, color: pathInput ? 'var(--accent)' : 'var(--fg-2)', padding: '3px 7px' }}
+                onClick={() => { setPathInput(p => p ? null : 'file'); setPathInputVal('') }}
+                title="Datei oder Pfad einfügen"
               >
-                <IFile style={{ color: pathInput === 'file' ? 'var(--accent)' : 'var(--accent)', flexShrink: 0 }} />
-                Pfad einfügen
+                <IPaperclip style={{ width: 13, height: 13, flexShrink: 0 }} />
               </button>
-              <button
-                style={{ ...chip, background: pathInput === 'image' ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${pathInput === 'image' ? 'var(--accent)' : 'var(--line)'}`, color: pathInput === 'image' ? 'var(--accent)' : 'var(--fg-1)' }}
-                onClick={() => { setPathInput(p => p === 'image' ? null : 'image'); setPathInputVal('') }}
-                title="Bild einfügen — fügt --image &quot;/pfad&quot; ein"
-              >
-                <IImage style={{ width: 11, height: 11, flexShrink: 0 }} />
-                Bild einfügen
-              </button>
-              {/* Shortcuts reference button */}
               <button
                 style={{ ...chip, background: showShortcuts ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${showShortcuts ? 'var(--accent)' : 'var(--line)'}`, color: showShortcuts ? 'var(--accent)' : 'var(--fg-2)', padding: '3px 7px' }}
                 onClick={() => setShowShortcuts(v => !v)}
@@ -1192,18 +1434,28 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
               </button>
             </>
           ) : (
-            <button style={chip} onClick={() => fileInputRef.current?.click()}>
-              <IFile style={{ color: 'var(--accent)', flexShrink: 0 }} />
-              Anhang
+            <button
+              style={{ ...chip, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--fg-2)', padding: '3px 7px' }}
+              onClick={() => fileInputRef.current?.click()}
+              title="Datei oder Bild anhängen"
+            >
+              <IPaperclip style={{ width: 13, height: 13, flexShrink: 0 }} />
             </button>
           )}
           <span style={{ flex: 1 }} />
           <button
-            onClick={toggleVoice}
-            title={recording ? 'Aufnahme stoppen' : 'Spracheingabe starten'}
-            style={{ ...chip, padding: '4px 7px', color: recording ? 'var(--err)' : 'var(--fg-2)', border: `1px solid ${recording ? 'var(--err)' : 'var(--line)'}`, background: recording ? 'rgba(239,122,122,0.1)' : 'var(--bg-2)' }}
+            onClick={transcribing ? undefined : toggleVoice}
+            disabled={transcribing}
+            title={transcribing ? 'Transkribiere…' : recording ? 'Aufnahme stoppen' : 'Spracheingabe starten'}
+            style={{ ...chip, padding: '4px 7px',
+              color:      transcribing ? 'var(--accent)' : recording ? 'var(--err)' : 'var(--fg-2)',
+              border:     `1px solid ${transcribing ? 'var(--accent)' : recording ? 'var(--err)' : 'var(--line)'}`,
+              background: transcribing ? 'var(--accent-soft)' : recording ? 'rgba(239,122,122,0.1)' : 'var(--bg-2)',
+            }}
           >
-            <IMic style={{ color: recording ? 'var(--err)' : 'var(--fg-3)', flexShrink: 0, ...(recording ? { animation: 'cc-pulse 1s ease-in-out infinite' } : {}) }} />
+            {transcribing
+              ? <ISpinner size={14} />
+              : <IMic style={{ color: recording ? 'var(--err)' : 'var(--fg-3)', flexShrink: 0, ...(recording ? { animation: 'cc-pulse 1s ease-in-out infinite' } : {}) }} />}
           </button>
           <button
             onClick={refineWithAI}
@@ -1231,10 +1483,24 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
           >
             <IBolt style={{ flexShrink: 0, width: 13, height: 13, ...(aiAnalysing ? { animation: 'cc-pulse 0.5s ease-in-out infinite' } : {}) }} />
           </button>
-          <button onClick={send} style={{ ...primaryBtn, display: 'flex', alignItems: 'center', gap: 5 }}>
-            {isTerminal ? <ITerminal style={{ color: 'var(--accent-fg)' }} /> : <ISend style={{ color: 'var(--accent-fg)' }} />}
-            Senden
-          </button>
+          {(() => {
+            const canSend = !!(inputValue.trim() || pendingFiles.length > 0 || attachments.length > 0 || templates.some(t => t.favorite))
+            const sendDisabled = hasUploading || !canSend
+            return (
+              <button
+                onClick={send}
+                disabled={sendDisabled}
+                title={hasUploading ? 'Dateien werden hochgeladen…' : !canSend ? 'Nachricht eingeben' : undefined}
+                style={{ ...primaryBtn, display: 'flex', alignItems: 'center', gap: 5, opacity: sendDisabled ? 0.45 : 1, ...(isOrbit ? { background: 'var(--orbit)', color: '#fff' } : {}) }}
+              >
+                {hasUploading
+                  ? <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid #fff4', borderTopColor: isOrbit ? '#fff' : 'var(--accent-fg)', animation: 'cc-spin 0.7s linear infinite', display: 'inline-block', flexShrink: 0 }} />
+                  : isOrbit ? <ISend style={{ color: '#fff' }} /> : <ITerminal style={{ color: 'var(--accent-fg)' }} />
+                }
+                {hasUploading ? 'Uploading…' : 'Senden'}
+              </button>
+            )
+          })()}
         </div>
         {aiError && (
           <div style={{ padding: '4px 10px 6px', fontSize: 10.5, color: 'var(--err)', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1242,11 +1508,25 @@ function InputArea({ onRequestH }: { onRequestH?: (h: number) => void }) {
             <span onClick={() => setAiError('')} style={{ marginLeft: 'auto', cursor: 'pointer', opacity: 0.6 }}>×</span>
           </div>
         )}
-      </div>
+        </div>{/* end inner content */}
+      </div>{/* end animated border wrapper */}
 
       {/* Terminal shortcuts reference modal */}
       {showShortcuts && isTerminal && (
         <TerminalShortcutsModal shortcuts={terminalShortcuts} onClose={() => setShowShortcuts(false)} />
+      )}
+
+      {/* Image annotation modal */}
+      {annotatingFile && (
+        <ImageAnnotator
+          src={annotatingFile.previewUrl ?? annotatingFile.url ?? ''}
+          fileName={annotatingFile.name}
+          onDone={(newFile) => {
+            replaceFile(annotatingFileId!, newFile)
+            setAnnotatingFileId(null)
+          }}
+          onCancel={() => setAnnotatingFileId(null)}
+        />
       )}
 
     </div>
@@ -1272,7 +1552,7 @@ function TerminalShortcutsModal({ shortcuts, onClose }: { shortcuts: TerminalSho
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', width: 380, maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+        style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', width: 380, maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)', flexShrink: 0 }}>
@@ -1293,7 +1573,7 @@ function TerminalShortcutsModal({ shortcuts, onClose }: { shortcuts: TerminalSho
                 </div>
                 {items.map(sc => (
                   <div key={sc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 16px', opacity: sc.enabled ? 1 : 0.38 }}>
-                    <span style={{ minWidth: 64, fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: sc.enabled ? 'var(--accent)' : 'var(--fg-3)', background: sc.enabled ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${sc.enabled ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 4, padding: '2px 7px', textAlign: 'center', flexShrink: 0 }}>
+                    <span style={{ minWidth: 64, fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: sc.enabled ? 'var(--accent)' : 'var(--fg-3)', background: sc.enabled ? 'var(--accent-soft)' : 'var(--bg-3)', border: `1px solid ${sc.enabled ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 6, padding: '2px 7px', textAlign: 'center', flexShrink: 0 }}>
                       {sc.label}
                     </span>
                     <span style={{ fontSize: 11.5, color: 'var(--fg-1)', flex: 1 }}>{sc.description}</span>
@@ -1310,7 +1590,7 @@ function TerminalShortcutsModal({ shortcuts, onClose }: { shortcuts: TerminalSho
           <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Aktivieren / deaktivieren unter:</span>
           <button
             onClick={() => { onClose(); setScreen('settings') }}
-            style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', borderRadius: 5, padding: '3px 10px', fontSize: 11, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
+            style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', borderRadius: 6, padding: '3px 10px', fontSize: 11, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
           >
             Einstellungen →
           </button>
@@ -1464,7 +1744,7 @@ function FileTabViewer({ path }: { path: string }) {
 
         {/* Line numbers + search */}
         <button onClick={() => setShowLineNums(v => !v)} title="Zeilennummern" style={{ ...ftBtn, background: showLineNums ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${showLineNums ? 'var(--accent-line)' : 'var(--line)'}`, color: showLineNums ? 'var(--accent)' : 'var(--fg-3)' }}>#</button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '2px 7px', flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', padding: '2px 7px', flex: 1, minWidth: 0 }}>
           <ISearch style={{ color: 'var(--fg-3)', width: 11, height: 11, flexShrink: 0 }} />
           <input
             value={search}
@@ -1496,11 +1776,11 @@ function FileTabViewer({ path }: { path: string }) {
       {/* Row 3 — Search & Replace (visible when S&E active) */}
       {showReplace && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderBottom: '1px solid var(--line)', flexShrink: 0, background: 'var(--bg-0)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '3px 8px', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', padding: '3px 8px', flex: 1 }}>
             <ISearch style={{ color: 'var(--fg-3)', width: 11, height: 11, flexShrink: 0 }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Suchen…" style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 11, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', width: '100%' }} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '3px 8px', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', padding: '3px 8px', flex: 1 }}>
             <input value={replaceStr} onChange={e => setReplaceStr(e.target.value)} placeholder="Ersetzen durch…" style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 11, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', width: '100%' }} />
           </div>
           <button onClick={() => { autoEnterEdit(); replaceFirst() }} disabled={!search} style={{ ...ftBtn, opacity: !search ? 0.4 : 1 }}>Ersetzen</button>
@@ -1628,7 +1908,115 @@ function FtvTextViewer({ content, search, showLineNums, ext }: { content: string
   )
 }
 
-const primaryBtn: React.CSSProperties = { background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
-const ghostBtn: React.CSSProperties = { background: 'transparent', color: 'var(--fg-1)', border: '1px solid var(--line-strong)', padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+const primaryBtn: React.CSSProperties = { background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+const ghostBtn: React.CSSProperties = { background: 'transparent', color: 'var(--fg-1)', border: '1px solid var(--line-strong)', padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
-const ftBtn: React.CSSProperties = { background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, color: 'var(--fg-1)', fontSize: 10.5, padding: '2px 7px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }
+
+// ── PopupDialog ───────────────────────────────────────────────────────────────
+// Shown as a centered floating modal when a PTY session dispatches cc:popup.
+// The [POPUP_REQUIRED] marker format is detected in XTermPane / AgentView.
+
+interface PopupPrompt {
+  sessionId: string
+  title:    string
+  message:  string
+  type:     string
+  buttons:  string[]
+}
+
+function PopupDialog({ popup, onClose }: { popup: PopupPrompt; onClose: () => void }) {
+  const sendRaw = (btn: string) => {
+    window.dispatchEvent(new CustomEvent('cc:terminal-send-raw', {
+      detail: { sessionId: popup.sessionId, data: btn + '\r' },
+    }))
+    onClose()
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        animation: 'cc-slide-in 0.15s ease-out',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-1)',
+          border: '1px solid var(--line-strong)',
+          borderRadius: 6,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+          width: 360,
+          maxWidth: 'calc(100vw - 40px)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '12px 16px 10px',
+          borderBottom: '1px solid var(--line)',
+        }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: 'var(--accent)', flexShrink: 0,
+            animation: 'cc-pulse 1.4s ease-in-out infinite',
+          }} />
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)' }}>
+            {popup.title}
+          </span>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', lineHeight: 1 }}
+          >
+            <IClose style={{ width: 10, height: 10 }} />
+          </button>
+        </div>
+
+        {/* Message */}
+        {popup.message && (
+          <div style={{
+            padding: '12px 16px 8px',
+            fontSize: 13, lineHeight: 1.55,
+            color: 'var(--fg-1)', fontFamily: 'var(--font-ui)',
+          }}>
+            {popup.message}
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div style={{
+          padding: '10px 16px 14px',
+          display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap',
+        }}>
+          {popup.buttons.map((btn, i) => {
+            const isFirst = i === 0
+            const isLast  = i === popup.buttons.length - 1 && popup.buttons.length > 1
+            return (
+              <button
+                key={btn + i}
+                onClick={() => sendRaw(btn)}
+                style={{
+                  padding: '7px 18px',
+                  borderRadius: 6,
+                  fontSize: 12, fontWeight: 600,
+                  fontFamily: 'var(--font-ui)',
+                  cursor: 'pointer',
+                  border: isFirst ? 'none' : isLast ? 'none' : '1px solid var(--line-strong)',
+                  background: isFirst ? 'var(--accent)' : isLast ? 'var(--bg-3)' : 'transparent',
+                  color: isFirst ? 'var(--accent-fg)' : 'var(--fg-0)',
+                }}
+              >
+                {btn}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+const ftBtn: React.CSSProperties = { background: 'transparent', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--fg-1)', fontSize: 10.5, padding: '2px 7px', cursor: 'pointer', fontFamily: 'var(--font-ui)', flexShrink: 0 }

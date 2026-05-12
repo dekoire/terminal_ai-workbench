@@ -1,173 +1,242 @@
 // ── Accent Presets ────────────────────────────────────────────────────────────
-// Each preset sets: accent colour, text-on-accent, and sidebar background tint.
-// The main workspace bg (--bg-0) is NOT changed — only menu/sidebar colours shift.
+// Every colour the preset touches is declared directly on the object.
+// Nothing is hidden in a lookup table — edit a preset here and it takes effect.
 
 export interface AccentPreset {
-  id: string
-  name: string
-  accent: string      // primary highlight colour
-  accentFg: string    // text colour on accent (e.g. on buttons)
-  // Sidebar tint: overrides --bg-1 / --bg-2 / --bg-3 / --line
-  sidebarBg: string
-  sidebarBg2: string
-  sidebarLine: string
-  dark: boolean       // true = designed for dark mode, false = light mode
+  id:      string
+  name:    string
+  dark:    boolean
+
+  // ── Accent ──────────────────────────────────────────────────────────────────
+  accent:   string   // primary highlight colour
+  accentFg: string   // text on accent (e.g. buttons)
+
+  // ── Backgrounds (bg-0 = darkest/lightest, bg-4 = most elevated) ─────────────
+  bg0: string   // main workspace
+  bg1: string   // sidebar
+  bg2: string   // cards / panels
+  bg3: string   // elevated surfaces
+  bg4: string   // tooltips / popovers
+
+  // ── Lines & borders ─────────────────────────────────────────────────────────
+  line:      string  // subtle dividers
+  lineStrong: string // prominent borders
+
+  // ── Text ────────────────────────────────────────────────────────────────────
+  fg0: string   // primary text
+  fg1: string   // secondary text
+  fg2: string   // muted text
+  fg3: string   // very muted / placeholders
+
+  // ── Status colours ──────────────────────────────────────────────────────────
+  ok:   string
+  warn: string
+  err:  string
+  info: string
+
+  // ── Brand ───────────────────────────────────────────────────────────────────
+  orbit: string   // orbit / AI chat accent
 }
 
 export const ACCENT_PRESETS: AccentPreset[] = [
-  // ── Dark variants ──────────────────────────────────────────────────────────
+
+  // ── Dark themes ─────────────────────────────────────────────────────────────
+
   {
-    id: 'ember',       name: 'Ember',      dark: true,
-    accent: '#ff8a5b', accentFg: '#1a1410',
-    sidebarBg: '#15130f', sidebarBg2: '#1c1a16', sidebarLine: '#2a2722',
+    id: 'ember', name: 'Ember', dark: true,
+    accent: '#ff7f4d', accentFg: '#ffffff',
+    bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
+    line: '#333333', lineStrong: '#444444',
+    fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
+    ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
+    orbit: '#8b6cf7',
   },
+
   {
-    id: 'cobalt',      name: 'Cobalt',     dark: true,
-    accent: '#10a37f', accentFg: '#ffffff',
-    sidebarBg: '#171717', sidebarBg2: '#212121', sidebarLine: '#383838',
+    id: 'cobalt', name: 'Cobalt', dark: true,
+    accent: '#0073ff', accentFg: '#ffffff',
+    bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
+    line: '#333333', lineStrong: '#444444',
+    fg0: '#eceef8', fg1: '#c0c8e8', fg2: '#8898c8', fg3: '#848ca4',
+    ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
+    orbit: '#8b6cf7',
   },
+
   {
-    id: 'forest',      name: 'Forest',     dark: true,
-    accent: '#4ecf8a', accentFg: '#061008',
-    sidebarBg: '#0d1510', sidebarBg2: '#111c15', sidebarLine: '#1a2e20',
+    id: 'midnight', name: 'Midnight', dark: true,
+    accent: '#9d6fff', accentFg: '#0a0a14',
+    bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
+    line: '#333333', lineStrong: '#444444',
+    fg0: '#ffffff', fg1: '#b5a8ff', fg2: '#b8adff', fg3: '#918e9f',
+    ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
+    orbit: '#8b6cf7',
   },
+
   {
-    id: 'amethyst',    name: 'Amethyst',   dark: true,
-    accent: '#9d6fff', accentFg: '#0a0614',
-    sidebarBg: '#120e18', sidebarBg2: '#1a1424', sidebarLine: '#221a38',
+    id: 'forest', name: 'Forest', dark: true,
+    accent: '#00e229', accentFg: '#ffffff',
+    bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
+    line: '#333333', lineStrong: '#444444',
+    fg0: '#e6f4ec', fg1: '#b8d8c4', fg2: '#7aaa8a', fg3: '#8db9a2',
+    ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
+    orbit: '#8b6cf7',
   },
+
   {
-    id: 'rose',        name: 'Rose',       dark: true,
-    accent: '#ff6b8a', accentFg: '#140408',
-    sidebarBg: '#170d10', sidebarBg2: '#201318', sidebarLine: '#2e1820',
+    id: 'rose', name: 'Rose', dark: true,
+    accent: '#ff47a6', accentFg: '#FFFFFFF',
+    bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
+    line: '#333333', lineStrong: '#444444',
+    fg0: '#ffffff', fg1: '#ffccee', fg2: '#ffc2e9', fg3: '#9c778d',
+    ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
+    orbit: '#8b6cf7',
   },
+
+  // ── Light themes ─────────────────────────────────────────────────────────────
+
   {
-    id: 'amber',       name: 'Amber',      dark: true,
-    accent: '#f0b830', accentFg: '#120c00',
-    sidebarBg: '#151108', sidebarBg2: '#1d170a', sidebarLine: '#2a2210',
+    id: 'ember-light', name: 'Ember Light', dark: false,
+    accent: '#d95f2a', accentFg: '#ffffff',
+    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    line: '#D5D5D5', lineStrong: '#cccccc',
+    fg0: '#1a1510', fg1: '#3a2f26', fg2: '#6a5e52', fg3: '#545454',
+    ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
+    orbit: '#7c5cf0',
   },
+
   {
-    id: 'slate',       name: 'Slate',      dark: true,
-    accent: '#40d0c0', accentFg: '#041414',
-    sidebarBg: '#10121a', sidebarBg2: '#181a24', sidebarLine: '#1e2030',
+    id: 'cobalt-light', name: 'Cobalt Light', dark: false,
+    accent: '#0073ff', accentFg: '#ffffff',
+    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    line: '#D5D5D5', lineStrong: '#cccccc',
+    fg0: '#0a1428', fg1: '#1a2e50', fg2: '#3a5480', fg3: '#6a80aa',
+    ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
+    orbit: '#7c5cf0',
   },
+
   {
-    id: 'carbon',      name: 'Carbon',     dark: true,
-    accent: '#e8e8e8', accentFg: '#0a0a0a',
-    sidebarBg: '#111111', sidebarBg2: '#1a1a1a', sidebarLine: '#222222',
+    id: 'midnight-light', name: 'Midnight Light', dark: false,
+    accent: '#8249ff', accentFg: '#ffffff',
+    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    line: '#D5D5D5', lineStrong: '#cccccc',
+    fg0: '#0f0a1e', fg1: '#2a1a50', fg2: '#504080', fg3: '#806898',
+    ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
+    orbit: '#6a38d4',
   },
-  // ── Light variants ─────────────────────────────────────────────────────────
+
   {
-    id: 'light-ember', name: 'Ember Light', dark: false,
-    accent: '#d96a3a', accentFg: '#fff8f4',
-    sidebarBg: '#f3efe7', sidebarBg2: '#ece7dc', sidebarLine: '#e1dbcd',
+    id: 'forest-light', name: 'Forest Light', dark: false,
+    accent: '#44ff98', accentFg: '#ffffff',
+    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    line: '#D5D5D5', lineStrong: '#cccccc',
+    fg0: '#091c10', fg1: '#163824', fg2: '#306848', fg3: '#66706b',
+    ok: '#2e8a58', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
+    orbit: '#7c5cf0',
   },
+
   {
-    id: 'light-cobalt', name: 'Cobalt Light', dark: false,
-    accent: '#2277cc', accentFg: '#f0f6ff',
-    sidebarBg: '#eef3fc', sidebarBg2: '#e4edf8', sidebarLine: '#d0dcf0',
+    id: 'rose-light', name: 'Rose Light', dark: false,
+    accent: '#ff54b2', accentFg: '#ffffff',
+    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    line: '#D5D5D5', lineStrong: '#cccccc',
+    fg0: '#1f0818', fg1: '#3c1430', fg2: '#70305a', fg3: '#9a6080',
+    ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
+    orbit: '#7c5cf0',
   },
-  {
-    id: 'light-forest', name: 'Forest Light', dark: false,
-    accent: '#1e9a5e', accentFg: '#f0fff8',
-    sidebarBg: '#edf8f2', sidebarBg2: '#e0f2e9', sidebarLine: '#c8e8d8',
-  },
-  {
-    id: 'light-amethyst', name: 'Amethyst Light', dark: false,
-    accent: '#7744cc', accentFg: '#f8f0ff',
-    sidebarBg: '#f4eefc', sidebarBg2: '#ece0f8', sidebarLine: '#d8c8f0',
-  },
-  {
-    id: 'light-rose', name: 'Rose Light', dark: false,
-    accent: '#d04468', accentFg: '#fff0f4',
-    sidebarBg: '#fceff3', sidebarBg2: '#f8e4ea', sidebarLine: '#f0ccd8',
-  },
-  {
-    id: 'light-amber', name: 'Amber Light', dark: false,
-    accent: '#b88425', accentFg: '#fff8e8',
-    sidebarBg: '#fdf5e0', sidebarBg2: '#f8ecd0', sidebarLine: '#eeddb0',
-  },
+
   {
     id: 'light-slate', name: 'Slate Light', dark: false,
-    accent: '#d97757', accentFg: '#ffffff',
-    sidebarBg: '#f5f5f5', sidebarBg2: '#ececec', sidebarLine: '#e0e0e0',
+    accent: '#ff7734', accentFg: '#ffffff',
+    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    line: '#D5D5D5', lineStrong: '#cccccc',
+    fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
+    ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
+    orbit: '#7c5cf0',
   },
+
   {
-    id: 'light-carbon', name: 'Carbon Light', dark: false,
-    accent: '#444444', accentFg: '#ffffff',
-    sidebarBg: '#f0f0f0', sidebarBg2: '#e4e4e4', sidebarLine: '#d4d4d4',
+    id: 'light-blue', name: 'Blue Light', dark: false,
+    accent: '#1e40ff', accentFg: '#ffffff',
+    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    line: '#D5D5D5', lineStrong: '#cccccc',
+    fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
+    ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
+    orbit: '#7c5cf0',
   },
+
+
 ]
 
 // ── Apply preset to DOM ───────────────────────────────────────────────────────
-// Sets the FULL colour palette inline (no CSS-class dependency).
+// Reads all colour fields directly from the preset — no hidden lookup tables.
 export function applyPreset(preset: AccentPreset, accentOverride?: string, accentFgOverride?: string) {
-  const root = document.documentElement
+  const root     = document.documentElement
   const accent   = accentOverride   ?? preset.accent
   const accentFg = accentFgOverride ?? preset.accentFg
 
-  // Full bg/fg palette for dark vs. light
-  if (preset.dark) {
-    // ChatGPT-style neutral palette for cobalt, warm palette for all others
-    const isCobalt = preset.id === 'cobalt'
-    root.style.setProperty('--bg-0',         isCobalt ? '#212121' : '#0e0d0b')
-    root.style.setProperty('--bg-3',         isCobalt ? '#3f3f3f' : '#24211c')
-    root.style.setProperty('--bg-4',         isCobalt ? '#4a4a4a' : '#2d2924')
-    root.style.setProperty('--line-strong',  isCobalt ? '#565656' : '#3a3631')
-    root.style.setProperty('--fg-0',         isCobalt ? '#ececec' : '#f3ece2')
-    root.style.setProperty('--fg-1',         isCobalt ? '#c4c4c4' : '#c9c0b3')
-    root.style.setProperty('--fg-2',         isCobalt ? '#8e8e8e' : '#8a8478')
-    root.style.setProperty('--fg-3',         isCobalt ? '#5e5e5e' : '#5e5950')
-    root.style.setProperty('--ok',           '#7cd9a8')
-    root.style.setProperty('--warn',         '#f4c365')
-    root.style.setProperty('--err',          '#ef7a7a')
-    root.style.setProperty('--info',         '#8ab4ff')
-    root.style.setProperty('--danger',       '#e25c5c')
-    root.style.setProperty('--danger-soft',  'rgba(226,92,92,0.12)')
-    root.style.setProperty('--danger-line',  'rgba(226,92,92,0.45)')
-  } else {
-    const isSlate = preset.id === 'light-slate'
-    root.style.setProperty('--bg-0',         isSlate ? '#fafafa' : '#faf8f4')
-    root.style.setProperty('--bg-3',         isSlate ? '#e8e8e8' : '#e3ddcf')
-    root.style.setProperty('--bg-4',         isSlate ? '#dedede' : '#d8d1c0')
-    root.style.setProperty('--line-strong',  isSlate ? '#d2d2d2' : '#c8c0ad')
-    root.style.setProperty('--fg-0',         isSlate ? '#1c1c1e' : '#1c1814')
-    root.style.setProperty('--fg-1',         isSlate ? '#3c3c3e' : '#4a443c')
-    root.style.setProperty('--fg-2',         isSlate ? '#6b6b6b' : '#7a7368')
-    root.style.setProperty('--fg-3',         isSlate ? '#9a9a9a' : '#a09889')
-    root.style.setProperty('--ok',           '#3d9b6c')
-    root.style.setProperty('--warn',         '#b88425')
-    root.style.setProperty('--err',          '#c0463f')
-    root.style.setProperty('--info',         '#4a7bce')
-    root.style.setProperty('--danger',       '#c0463f')
-    root.style.setProperty('--danger-soft',  'rgba(192,70,63,0.08)')
-    root.style.setProperty('--danger-line',  'rgba(192,70,63,0.40)')
+  root.style.setProperty('--bg-0',        preset.bg0)
+  root.style.setProperty('--bg-1',        preset.bg1)
+  root.style.setProperty('--bg-2',        preset.bg2)
+  root.style.setProperty('--bg-3',        preset.bg3)
+  root.style.setProperty('--bg-4',        preset.bg4)
+  root.style.setProperty('--line',        preset.line)
+  root.style.setProperty('--line-strong', preset.lineStrong)
+  root.style.setProperty('--fg-0',        preset.fg0)
+  root.style.setProperty('--fg-1',        preset.fg1)
+  root.style.setProperty('--fg-2',        preset.fg2)
+  root.style.setProperty('--fg-3',        preset.fg3)
+  root.style.setProperty('--ok',          preset.ok)
+  root.style.setProperty('--warn',        preset.warn)
+  root.style.setProperty('--err',         preset.err)
+  root.style.setProperty('--info',        preset.info)
+  root.style.setProperty('--orbit',       preset.orbit)
+  root.style.setProperty('--accent',      accent)
+  root.style.setProperty('--accent-fg',   accentFg)
+
+  // Danger (derives from err)
+  root.style.setProperty('--danger',      preset.err)
+
+  // Derived rgba variants
+  const hexToRgba = (hex: string, alpha: number) => {
+    const m = hex.match(/^#(..)(..)(..)$/)
+    if (!m) return hex
+    const [r, g, b] = m.slice(1).map(h => parseInt(h, 16))
+    return `rgba(${r},${g},${b},${alpha})`
   }
+  root.style.setProperty('--accent-soft', hexToRgba(accent,       preset.dark ? 0.14 : 0.10))
+  root.style.setProperty('--accent-line', hexToRgba(accent,       0.45))
+  root.style.setProperty('--orbit-soft',  hexToRgba(preset.orbit, 0.14))
+  root.style.setProperty('--orbit-line',  hexToRgba(preset.orbit, 0.45))
+  root.style.setProperty('--danger-soft', hexToRgba(preset.err,   preset.dark ? 0.12 : 0.08))
+  root.style.setProperty('--danger-line', hexToRgba(preset.err,   0.40))
 
-  // Preset-specific sidebar + accent
-  root.style.setProperty('--bg-1',      preset.sidebarBg)
-  root.style.setProperty('--bg-2',      preset.sidebarBg2)
-  root.style.setProperty('--line',      preset.sidebarLine)
-  root.style.setProperty('--accent',    accent)
-  root.style.setProperty('--accent-fg', accentFg)
-
-  // Derive soft/line variants from accent hex
-  const m = accent.match(/^#(..)(..)(..)$/)
-  if (m) {
-    const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16))
-    root.style.setProperty('--accent-soft', `rgba(${r},${g},${b},0.14)`)
-    root.style.setProperty('--accent-line', `rgba(${r},${g},${b},0.45)`)
+  // Syntax token defaults (dark / light) — only if NOT already overridden by customUiColors
+  // (customUiColors are re-applied after this call in App.tsx, so these are safe to set here)
+  if (preset.dark) {
+    root.style.setProperty('--tok-keyword', '#df8ff4')
+    root.style.setProperty('--tok-string',  '#8cf2b2')
+    root.style.setProperty('--tok-number',  '#f8ca86')
+    root.style.setProperty('--tok-comment', '#d8e2ff')
+    root.style.setProperty('--tok-type',    '#59ffde')
+    root.style.setProperty('--tok-fn',      '#fff9b6')
+  } else {
+    root.style.setProperty('--tok-keyword', '#8036ff')
+    root.style.setProperty('--tok-string',  '#00ae40')
+    root.style.setProperty('--tok-number',  '#ff8325')
+    root.style.setProperty('--tok-comment', '#656a76')
+    root.style.setProperty('--tok-type',    '#008cb3')
+    root.style.setProperty('--tok-fn',      '#fc7623')
   }
 
   // Update Safari/browser toolbar color
-  const bgColor = preset.dark ? '#0e0d0b' : '#faf8f4'
+  const metaBg = preset.dark ? preset.bg0 : preset.bg0
   let metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
   if (!metaTheme) {
     metaTheme = document.createElement('meta')
     metaTheme.name = 'theme-color'
     document.head.appendChild(metaTheme)
   }
-  metaTheme.content = bgColor
+  metaTheme.content = metaBg
 
   // Keep CSS class in sync for any selectors that still rely on it
   root.classList.toggle('theme-light', !preset.dark)

@@ -117,7 +117,7 @@ export function MultiCombobox({
         zIndex:   9999,
         background: 'var(--bg-1)',
         border: '1px solid var(--line-strong)',
-        borderRadius: 10,
+        borderRadius: 6,
         boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
         minWidth: dropPos.minWidth,
         maxHeight: 320,
@@ -168,7 +168,7 @@ export function MultiCombobox({
           >
             {/* Checkbox */}
             <div style={{
-              width: 14, height: 14, borderRadius: 4, flexShrink: 0,
+              width: 14, height: 14, borderRadius: 6, flexShrink: 0,
               border: `1.5px solid ${active ? c : 'var(--fg-3)'}`,
               background: active ? c : 'transparent',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -221,7 +221,7 @@ export function MultiCombobox({
           onClick={handleOpen}
           style={{
             display: 'flex', alignItems: 'center', gap: 5,
-            padding: '5px 9px', borderRadius: 7,
+            padding: '5px 9px', borderRadius: 6,
             border: `1px solid ${hasValue ? 'var(--accent)' : 'var(--line)'}`,
             background: hasValue ? 'var(--accent-soft)' : 'var(--bg-2)',
             color: hasValue ? 'var(--accent)' : 'var(--fg-2)',

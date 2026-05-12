@@ -5,7 +5,7 @@ import logoBlack from '../../assets/codera_logo_black.png'
 import { ProjectSidebar } from './ProjectSidebar'
 import { CenterPane } from './CenterPane'
 import { UtilityPanel } from './UtilityPanel'
-import { IMoon, ISun, ILogout, ITerminal, IPlay, ICpu, IScrollText, ITrophy } from '../primitives/Icons'
+import { IMoon, ISun, ILogout, ITerminal, IPlay, ICpu, IScrollText, ITrophy, IWeb } from '../primitives/Icons'
 import { ModelBrowserModal } from '../modals/ModelBrowserModal'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
@@ -66,12 +66,13 @@ function VDivider({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void 
 
 export function Workspace() {
   const {
-    theme, setTheme, setScreen, preset, setPreset, setAccent, setAccentFg,
+    theme, setTheme, setScreen, openWorkshop, preset, setPreset, setAccent, setAccentFg,
     terminalTheme, setTerminalTheme,
     projects, activeProjectId, activeSessionId, setActiveSession, setNewSessionOpen, showTitleBar,
     logoSize,
   } = useAppStore()
 
+  const isElectron = navigator.userAgent.includes('Electron')
   const activeProject = projects.find(p => p.id === activeProjectId)
   const sessions = activeProject?.sessions ?? []
 
@@ -183,17 +184,10 @@ export function Workspace() {
     >
       {/* Window chrome */}
       {(showTitleBar ?? true) && (
-        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 88px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
-          {/* Logo — no-drag so it doesn't interfere */}
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: isElectron ? '10px 12px 10px 88px' : '10px 12px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
+          {/* Logo — links, kein Drag */}
           <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: 10, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <img src={theme === 'light' ? logoBlack : logoWhite} alt="Codera AI" style={{ height: 42, width: 'auto', display: 'block' }} />
-          </div>
-
-          {/* Project name — centered */}
-          <div style={{ position: 'absolute', left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' }}>
-            {activeProject && (
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{activeProject.name}</span>
-            )}
           </div>
 
           <div style={{ flex: 1 }} />
@@ -201,6 +195,10 @@ export function Workspace() {
           {/* Action icons — right (no-drag so buttons stay clickable) */}
           {activeProject && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+              <button onClick={openWorkshop} title="UI Workshop — Browser, Inspect & Annotate"
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
+                <IWeb style={{ width: 15, height: 15 }} />
+              </button>
               <button onClick={triggerPlay} title="Dev Server starten"
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: playBlink ? '#22c55e' : 'var(--fg-2)', display: 'flex', alignItems: 'center', transition: 'color 0.15s', animation: playBlink ? 'cc-blink-green 0.4s ease-in-out 3' : 'none' }}>
                 <IPlay style={{ width: 15, height: 15 }} />

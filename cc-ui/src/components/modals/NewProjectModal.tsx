@@ -206,7 +206,8 @@ export function NewProjectModal() {
     if (!name.trim() || !path.trim()) return
     setApplying(true)
     try {
-      const id = `p${Date.now()}`
+      const { newProjectId } = await import('../../lib/ids')
+      const id = newProjectId()
       const port = await findFreePort()
       addProject({ id, name: name.trim(), path: path.trim(), branch: '', sessions: [], appPort: port, appStartCmd: startCmd.trim() || undefined })
       setLastProjectPath(path.trim())
@@ -225,14 +226,14 @@ export function NewProjectModal() {
     <Backdrop onClick={() => setNewProjectOpen(false)}>
       <div
         onClick={e => e.stopPropagation()}
-        style={{ width: '70vw', height: '70vh', maxWidth: 900, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 12, boxShadow: '0 28px 72px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        style={{ width: '70vw', height: '70vh', maxWidth: 900, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, boxShadow: '0 28px 72px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
         {/* Header */}
         <div style={{ padding: '16px 20px 14px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 4 }}>
-                {step === 1 && 'Projekt einrichten'}
+                {step === 1 && 'Workspace einrichten'}
                 {step === 2 && 'Dokumentation & Tools'}
                 {step === 3 && 'Git-Konfiguration'}
               </div>
@@ -258,13 +259,13 @@ export function NewProjectModal() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* Name */}
               <div>
-                <label style={fl}>Projektname</label>
+                <label style={fl}>Workspace-Name</label>
                 <input autoFocus style={fi} value={name} onChange={e => setName(e.target.value)} placeholder="z.B. payments-api" />
               </div>
 
               {/* Path */}
               <div>
-                <label style={fl}>Projektordner</label>
+                <label style={fl}>Workspace-Ordner</label>
                 <div style={{ display: 'flex', alignItems: 'stretch', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', overflow: 'hidden' }}>
                   <div style={{ display: 'flex', alignItems: 'center', padding: '0 10px', color: 'var(--fg-3)', borderRight: '1px solid var(--line)' }}>
                     <IFolderOpen />
@@ -341,7 +342,7 @@ export function NewProjectModal() {
                     </div>
                     <button
                       onClick={() => { setEditingDoc(tpl); setEditContent(tpl.content) }}
-                      style={{ fontSize: 10, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 4, fontFamily: 'var(--font-ui)', flexShrink: 0 }}
+                      style={{ fontSize: 10, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 6, fontFamily: 'var(--font-ui)', flexShrink: 0 }}
                     >
                       Bearbeiten
                     </button>
@@ -407,7 +408,7 @@ export function NewProjectModal() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {hasGit ? (
-                <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(124,217,168,0.08)', border: '1px solid rgba(124,217,168,0.25)', fontSize: 12, color: 'var(--ok)' }}>
+                <div style={{ padding: '10px 14px', borderRadius: 6, background: 'rgba(124,217,168,0.08)', border: '1px solid rgba(124,217,168,0.25)', fontSize: 12, color: 'var(--ok)' }}>
                   ✓ Git-Repository bereits im Ordner vorhanden.
                 </div>
               ) : (
@@ -464,7 +465,7 @@ export function NewProjectModal() {
                           + Token hinterlegen
                         </button>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--bg-2)', borderRadius: 7, border: '1px solid var(--line-strong)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line-strong)' }}>
                           <div style={{ display: 'flex', gap: 8 }}>
                             <div style={{ flex: 1 }}>
                               <label style={fl}>Bezeichnung</label>
@@ -561,7 +562,7 @@ export function NewProjectModal() {
                 disabled={applying}
                 onClick={create}
               >
-                {applying ? 'Wird angelegt…' : 'Projekt anlegen'}
+                {applying ? 'Wird angelegt…' : 'Workspace anlegen'}
               </button>
             </>
           )}
@@ -574,7 +575,7 @@ export function NewProjectModal() {
 function FolderPreview({ path }: { path: string }) {
   const parts = path.replace(/^\/Users\/[^/]+/, '~').split('/')
   return (
-    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 4, background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
+    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
       <IDrive style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
       <span style={{ fontSize: 10.5, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {parts.join(' / ')}

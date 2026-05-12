@@ -24,6 +24,7 @@ interface SingleComboboxProps {
   disabled?:    boolean
   loading?:     boolean
   style?:       React.CSSProperties
+  triggerStyle?: React.CSSProperties
   maxHeight?:   number
 }
 
@@ -42,6 +43,7 @@ export function SingleCombobox({
   disabled = false,
   loading = false,
   style,
+  triggerStyle,
   maxHeight = 280,
 }: SingleComboboxProps) {
   const [open, setOpen]     = useState(false)
@@ -143,7 +145,7 @@ export function SingleCombobox({
         zIndex:    9999,
         background: 'var(--bg-1)',
         border:    '1px solid var(--line-strong)',
-        borderRadius: 10,
+        borderRadius: 6,
         boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
         overflow:  'hidden',
         display:   'flex', flexDirection: 'column',
@@ -161,7 +163,7 @@ export function SingleCombobox({
               style={{
                 width: '100%', paddingLeft: 26, paddingRight: 8,
                 paddingTop: 4, paddingBottom: 4,
-                border: '1px solid var(--line)', borderRadius: 5,
+                border: '1px solid var(--line)', borderRadius: 6,
                 background: 'var(--bg-2)', color: 'var(--fg-1)',
                 fontSize: 11, fontFamily: 'var(--font-ui)', outline: 'none',
                 boxSizing: 'border-box',
@@ -235,8 +237,8 @@ export function SingleCombobox({
           style={{
             width: '100%',
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '5px 9px', borderRadius: 7,
-            border: `1px solid ${open ? 'var(--accent)' : 'var(--line)'}`,
+            padding: '5px 9px', borderRadius: 6,
+            border: `1px solid ${open ? 'var(--accent)' : 'var(--line-strong)'}`,
             background: 'var(--bg-2)',
             color: selected ? 'var(--fg-0)' : 'var(--fg-3)',
             cursor: disabled ? 'default' : 'pointer',
@@ -244,6 +246,7 @@ export function SingleCombobox({
             textAlign: 'left',
             transition: 'border-color 0.15s',
             opacity: disabled ? 0.5 : 1,
+            ...triggerStyle,
           }}
         >
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>

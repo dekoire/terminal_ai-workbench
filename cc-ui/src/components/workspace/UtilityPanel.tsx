@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { useAppStore, DEFAULT_AGENT_ROLES } from '../../store/useAppStore'
-import type { AgentRole } from '../../store/useAppStore'
-import { SingleCombobox } from '../primitives/SingleCombobox'
-import { IMore, IEdit, IChev, IChevDown, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, IPlus, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileText, ISearch, ICrew, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IShipWheel, ICircleCheckBig, IWarn, IBug, IStar } from '../primitives/Icons'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useAppStore } from '../../store/useAppStore'
+import type { OrbitMessage } from '../../store/useAppStore'
+import { buildUserStoryPrompt } from '../../lib/projectBrain'
+import { getSupabase } from '../../lib/supabase'
+import { loadLastProjectMessages } from '../../lib/agentSync'
+import { IMore, IEdit, IChev, IChevDown, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
 import { Pill } from '../primitives/Pill'
 
@@ -286,7 +288,7 @@ function LiveTreeNode({ node, depth }: { node: LiveNode; depth: number }) {
         style={{
           display: 'flex', alignItems: 'center', gap: 5,
           padding: `3px 8px 3px ${indent}px`,
-          cursor: 'pointer', userSelect: 'none', borderRadius: 4,
+          cursor: 'pointer', userSelect: 'none', borderRadius: 6,
           background: flash ? 'var(--accent-soft)' : 'transparent',
           color: flash ? 'var(--accent)' : 'var(--fg-1)',
           transition: 'background 0.2s',
@@ -432,7 +434,7 @@ function GitInfoBar({ projectPath }: { projectPath?: string }) {
   return (
     <div style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, justifyContent: 'flex-end' }}>
       {lastCommit && <span style={{ fontSize: 10, color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{lastCommit}</span>}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 5, background: 'var(--bg-2)', border: '1px solid var(--line)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--line)', flexShrink: 0 }}>
         <IGitFork style={{ color: 'var(--accent)', flexShrink: 0 }} />
         <span className="mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>{branch}</span>
       </div>
@@ -462,9 +464,9 @@ function DeleteModal({ path, onCancel, onDeleted }: { path: string; onCancel: ()
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }}
       onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
-      <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, boxShadow: '0 16px 48px rgba(0,0,0,0.4)', width: 380, padding: 24 }}>
+      <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, boxShadow: '0 16px 48px rgba(0,0,0,0.4)', width: 380, padding: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <span style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--danger-soft)', border: '1px solid var(--danger-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--danger-soft)', border: '1px solid var(--danger-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <ITrash style={{ width: 15, height: 15, color: 'var(--danger)' }} />
           </span>
           <div>
@@ -551,7 +553,7 @@ function FilesTab({ projectPath }: { projectName: string; projectPath: string })
           <div style={{ padding: '12px 14px', color: 'var(--fg-3)', fontSize: 11, lineHeight: 1.6 }}>
             <div style={{ color: 'var(--warn)', fontWeight: 600, marginBottom: 4 }}>Ordner nicht gefunden</div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--fg-3)', wordBreak: 'break-all', marginBottom: 6 }}>{projectPath}</div>
-            <div>Erstelle das Projekt mit einem echten Pfad oder stelle sicher, dass der Ordner existiert.</div>
+            <div>Erstelle den Workspace mit einem echten Pfad oder stelle sicher, dass der Ordner existiert.</div>
           </div>
         )}
         {!error && !notFound && !root && (
@@ -673,7 +675,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
             <div
               key={b.name}
               onClick={() => !b.current && run('checkout', { branch: b.name })}
-              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 6px', borderRadius: 4, cursor: b.current ? 'default' : 'pointer', background: b.current ? 'var(--accent-soft)' : 'transparent', marginBottom: 1 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 6px', borderRadius: 6, cursor: b.current ? 'default' : 'pointer', background: b.current ? 'var(--accent-soft)' : 'transparent', marginBottom: 1 }}
             >
               <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: b.current ? 'var(--accent)' : 'var(--fg-3)' }} />
               <span className="mono" style={{ flex: 1, fontSize: 11, color: b.current ? 'var(--accent)' : 'var(--fg-1)', fontWeight: b.current ? 600 : 400 }}>{b.name}</span>
@@ -685,7 +687,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
             <input
               value={newBranch} onChange={e => setNewBranch(e.target.value)}
               placeholder="new-branch-name"
-              style={{ flex: 1, padding: '4px 7px', border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', outline: 'none' }}
+              style={{ flex: 1, padding: '4px 7px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', outline: 'none' }}
             />
             <button
               onClick={() => { if (newBranch.trim()) { run('new-branch', { branch: newBranch.trim() }); setNewBranch('') } }}
@@ -723,7 +725,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
             onChange={e => setCommitMsg(e.target.value)}
             placeholder="Commit message…"
             rows={2}
-            style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
           />
           <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
             <button onClick={() => run('stage')} disabled={!!busy} style={smallBtn}>
@@ -758,7 +760,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
         {log && (
           <section>
             <SectionLabel>Output</SectionLabel>
-            <pre style={{ margin: 0, padding: '6px 8px', background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 4, fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 80, overflowY: 'auto' }}>{log}</pre>
+            <pre style={{ margin: 0, padding: '6px 8px', background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 80, overflowY: 'auto' }}>{log}</pre>
           </section>
         )}
 
@@ -790,60 +792,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 const smallBtn: React.CSSProperties = {
-  padding: '4px 9px', border: '1px solid var(--line-strong)', borderRadius: 4,
+  padding: '4px 9px', border: '1px solid var(--line-strong)', borderRadius: 6,
   background: 'var(--bg-3)', color: 'var(--fg-1)', fontSize: 10.5,
   cursor: 'pointer', fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap',
-}
-
-// ── Crew Agents card (live status) ───────────────────────────────────────────
-
-type AgentLiveStatus = 'idle' | 'active' | 'done'
-const AGENT_PALETTE = ['#ef4444','#3b82f6','#22c55e','#a855f7','#eab308','#ec4899','#06b6d4','#6366f1','#14b8a6','#e879f9']
-
-function CrewAgentsCard({ session, agentStatus, startTimes }: {
-  session: { id: string; crew?: { agents: { id: string; name: string; model: string }[]; orchestration?: string } }
-  agentStatus: Record<string, AgentLiveStatus>
-  startTimes: React.MutableRefObject<Record<string, number>>
-}) {
-  if (!session.crew) return null
-
-  const agents = [...session.crew.agents].sort((a, b) => {
-    const rank = (s: AgentLiveStatus) => s === 'active' ? 0 : s === 'idle' ? 1 : 2
-    return rank(agentStatus[a.name] ?? 'idle') - rank(agentStatus[b.name] ?? 'idle')
-  })
-
-  return (
-    <Card title="Agenten" collapsible>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {agents.map((agent) => {
-          const origIdx = session.crew!.agents.findIndex(a => a.name === agent.name)
-          const color = AGENT_PALETTE[Math.max(0, origIdx) % AGENT_PALETTE.length]
-          const status = agentStatus[agent.name] ?? 'idle'
-          const isActive = status === 'active'
-          const isDone = status === 'done'
-          const elapsed = isActive && startTimes.current[agent.name]
-            ? Math.floor((Date.now() - startTimes.current[agent.name]) / 1000)
-            : null
-          return (
-            <div key={agent.id} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 5,
-              background: isActive ? `color-mix(in srgb, ${color} 14%, var(--bg-2))` : isDone ? 'color-mix(in srgb, var(--fg-3) 8%, var(--bg-2))' : 'var(--bg-2)',
-              border: `1px solid ${isActive ? color : isDone ? 'color-mix(in srgb, var(--fg-3) 20%, var(--line))' : 'var(--line)'}`,
-              boxShadow: isActive ? `0 0 8px 1px ${color}55` : 'none',
-              opacity: isDone ? 0.55 : 1,
-              transition: 'all 0.3s',
-            }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: isActive ? color : isDone ? 'var(--fg-3)' : color, flexShrink: 0, opacity: isDone ? 0.5 : 1, boxShadow: isActive ? `0 0 6px 2px ${color}` : 'none', animation: isActive ? 'cc-pulse 1.2s ease-in-out infinite' : 'none' }} />
-              <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? color : isDone ? 'var(--fg-3)' : 'var(--fg-1)', flex: 1 }}>{agent.name}</span>
-              {!isActive && <span className="mono" style={{ fontSize: 9, color: 'var(--fg-3)' }}>{agent.model.split('/').pop()}</span>}
-              {isActive && elapsed !== null && <span className="mono" style={{ fontSize: 9, color: color, opacity: 0.85 }}>{elapsed}s</span>}
-              {isDone && <span style={{ fontSize: 9, color: 'var(--fg-3)' }}>✓</span>}
-            </div>
-          )
-        })}
-      </div>
-    </Card>
-  )
 }
 
 // ── User Stories card ─────────────────────────────────────────────────────────
@@ -861,7 +812,43 @@ function StoryTypeIcon({ type }: { type?: string }) {
   return <IUser style={{ ...s, color: storyTypeColor(type) }} />
 }
 
-function UserStoriesCard({ projectId: _projectId }: { projectId?: string }) {
+function GenerateStoryButton({ projectId, sessionId }: { projectId?: string; sessionId: string }) {
+  const { projectBrains, openrouterKey, orbitMessages, activeOrbitChatId, projects } = useAppStore()
+  const [loading, setLoading] = useState(false)
+
+  const generate = async () => {
+    if (!openrouterKey) return
+    setLoading(true)
+    try {
+      const brain = projectId ? projectBrains[projectId] : undefined
+      const projectName = projects.find(p => p.id === projectId)?.name ?? projectId ?? 'Projekt'
+      const chatId = activeOrbitChatId[sessionId]
+      const recentMsgs: OrbitMessage[] = chatId ? (orbitMessages[chatId] ?? []).filter(m => !m.id?.endsWith('-err')).slice(-6) : []
+      const prompt = buildUserStoryPrompt(brain, projectName, recentMsgs)
+      window.dispatchEvent(new CustomEvent('cc:orbit-send', { detail: { sessionId, text: prompt } }))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={generate}
+      disabled={loading || !openrouterKey}
+      title={openrouterKey ? 'User Story aus Projekt-Kontext generieren' : 'OpenRouter-Key erforderlich'}
+      style={{
+        background: 'none', border: 'none', cursor: openrouterKey ? 'pointer' : 'default',
+        color: openrouterKey ? 'var(--accent)' : 'var(--fg-3)',
+        display: 'flex', alignItems: 'center', padding: '0 2px',
+        opacity: loading ? 0.5 : 1,
+      }}
+    >
+      <ISpark style={{ width: 12, height: 12 }} />
+    </button>
+  )
+}
+
+function UserStoriesCard({ projectId: _projectId, sessionId }: { projectId?: string; sessionId: string }) {
   const { kanban, projects } = useAppStore()
   const [openTicket, setOpenTicket] = useState<{ projectId: string; projectName: string; projectPath: string; ticketId: string } | null>(null)
 
@@ -884,8 +871,11 @@ function UserStoriesCard({ projectId: _projectId }: { projectId?: string }) {
           onClose={() => setOpenTicket(null)}
         />
       )}
-      <Card title={`User Stories${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible action={
-        <IKanban style={{ color: 'var(--fg-3)', width: 12, height: 12 }} />
+      <Card title={`User Stories${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false} action={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <GenerateStoryButton projectId={_projectId} sessionId={sessionId} />
+          <IKanban style={{ color: 'var(--fg-3)', width: 12, height: 12 }} />
+        </div>
       }>
         {allTickets.length === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>Keine User Stories</div>
@@ -928,7 +918,7 @@ function NotesCard({ sessionId }: { sessionId: string }) {
           minHeight: 100,
           background: 'var(--bg-2)',
           border: '1px solid var(--line)',
-          borderRadius: 4,
+          borderRadius: 6,
           color: 'var(--fg-0)',
           fontSize: 11.5,
           fontFamily: 'var(--font-ui)',
@@ -947,6 +937,40 @@ function NotesCard({ sessionId }: { sessionId: string }) {
 
 type ExportFmt = 'txt' | 'md' | 'json'
 
+const EXPORT_OPTIONS: { value: ExportFmt; label: string; ext: string }[] = [
+  { value: 'txt',  label: 'Terminal',  ext: '.txt' },
+  { value: 'md',   label: 'Markdown',  ext: '.md'  },
+  { value: 'json', label: 'JSON',      ext: '.json' },
+]
+
+function ExportPopover({ onSelect, onClose }: { onSelect: (fmt: ExportFmt) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
+    setTimeout(() => window.addEventListener('mousedown', h), 0)
+    return () => window.removeEventListener('mousedown', h)
+  }, [onClose])
+
+  return (
+    <div ref={ref} style={{ position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, zIndex: 200, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.35)', overflow: 'hidden', minWidth: 148 }}>
+      <div style={{ padding: '8px 12px 5px', fontSize: 9.5, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Exportieren als</div>
+      {EXPORT_OPTIONS.map(opt => (
+        <div
+          key={opt.value}
+          onClick={() => onSelect(opt.value)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 12px', cursor: 'pointer', fontSize: 12, color: 'var(--fg-0)', gap: 12 }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        >
+          <span>{opt.label}</span>
+          <span style={{ fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace', fontSize: 10, color: 'var(--fg-3)' }}>{opt.ext}</span>
+        </div>
+      ))}
+      <div style={{ height: 6 }} />
+    </div>
+  )
+}
+
 function triggerDownload(content: string, filename: string) {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -957,143 +981,490 @@ function triggerDownload(content: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-// ── AgentTab ─────────────────────────────────────────────────────────────────
+// ── Chat history tab (for Orbit sessions) ─────────────────────────────────────
+function formatChatDate(ts: number): string {
+  const d = new Date(ts)
+  const now = new Date()
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr'
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1)
+  if (d.toDateString() === yesterday.toDateString()) return 'Gestern'
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+}
 
-function AgentTab() {
-  const { agentRoles, addAgentRole, updateAgentRole, removeAgentRole, openrouterKey, setOpenrouterKey } = useAppStore()
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [editingKey, setEditingKey] = useState(false)
-  const [keyDraft, setKeyDraft] = useState(openrouterKey)
+function ChatTab({ projectId, sessionId }: { projectId: string; sessionId: string }) {
+  const {
+    orbitChats, orbitMessages, orbitMeta, setOrbitMeta,
+    setActiveOrbitChat, activeOrbitChatId, removeOrbitChat,
+    orbitFavorites, removeOrbitFavorite,
+  } = useAppStore()
 
-  const fl: React.CSSProperties = { display: 'block', fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 4 }
-  const inp: React.CSSProperties = { width: '100%', padding: '5px 8px', border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' }
+  const [pill, setPill] = useState<'chats' | 'favoriten'>('chats')
+  const [query, setQuery] = useState('')
+  const [hovered, setHovered] = useState<string | null>(null)
 
-  const handleAddRole = () => {
-    const newRole: AgentRole = {
-      id: `ar-${Date.now()}`,
-      name: 'Neuer Agent',
-      model: 'anthropic/claude-sonnet-4-6',
-      strengths: [],
-      systemPrompt: '',
-      tools: ['Read', 'Bash'],
-    }
-    addAgentRole(newRole)
-    setExpandedId(newRole.id)
+  const chatIds    = orbitChats[projectId] ?? []
+  const activeChatId = activeOrbitChatId[sessionId] ?? ''
+  const allFavs    = orbitFavorites[projectId] ?? []
+  const favCount   = allFavs.length
+
+  // Strip #chat: / #msg: prefix so copied IDs also match
+  const normalizeQuery = (raw: string) =>
+    raw.trim().toLowerCase().replace(/^#(?:chat|msg):/, '')
+
+  const q = normalizeQuery(query)
+
+  // ── Chats list ────────────────────────────────────────────────────────────
+  const byRecent = [...chatIds].sort((a, b) => {
+    const aLast = orbitMessages[a]?.at(-1)?.ts ?? orbitMeta[a]?.lastTs ?? 0
+    const bLast = orbitMessages[b]?.at(-1)?.ts ?? orbitMeta[b]?.lastTs ?? 0
+    return bLast - aLast
+  })
+
+  const filteredChats = q ? byRecent.filter(id => {
+    const meta  = orbitMeta[id]
+    const title = (meta?.title ?? orbitMessages[id]?.[0]?.content ?? '').toLowerCase()
+    const body  = (orbitMessages[id] ?? []).map(m => m.content + (m.id ?? '')).join(' ').toLowerCase()
+    const idStr = id.toLowerCase()
+    return title.includes(q) || body.includes(q) || idStr.includes(q)
+  }) : byRecent
+
+  const pinnedChats   = filteredChats.filter(id => orbitMeta[id]?.pinned)
+  const unpinnedChats = filteredChats.filter(id => !orbitMeta[id]?.pinned)
+
+  // ── Favorites list ────────────────────────────────────────────────────────
+  const chatFavs = allFavs.filter(f => f.kind === 'chat').sort((a, b) => b.ts - a.ts)
+  const msgFavs  = allFavs.filter(f => f.kind === 'message').sort((a, b) => b.ts - a.ts)
+
+  const filteredChatFavs = q ? chatFavs.filter(f => {
+    const title = (f.chatTitle ?? orbitMeta[f.chatId]?.title ?? '').toLowerCase()
+    return title.includes(q) || f.chatId.toLowerCase().includes(q)
+  }) : chatFavs
+
+  const filteredMsgFavs = q ? msgFavs.filter(f => {
+    const content = (f.messageContent ?? '').toLowerCase()
+    const id      = (f.messageId ?? '').toLowerCase()
+    return content.includes(q) || id.includes(q) || (f.messageModel ?? '').toLowerCase().includes(q)
+  }) : msgFavs
+
+  // ── Render helpers ────────────────────────────────────────────────────────
+  const renderChatItem = (chatId: string) => {
+    const msgs: OrbitMessage[] = orbitMessages[chatId] ?? []
+    const meta      = orbitMeta[chatId]
+    const title     = meta?.title ?? msgs[0]?.content ?? 'Neuer Chat'
+    const lastTs    = msgs.at(-1)?.ts ?? 0
+    const isActive  = chatId === activeChatId
+    const isHov     = hovered === chatId
+    const isPinned  = meta?.pinned ?? false
+    const modelLbl  = msgs.findLast(m => m.role === 'assistant')?.model
+
+    return (
+      <div
+        key={chatId}
+        onMouseEnter={() => setHovered(chatId)}
+        onMouseLeave={() => setHovered(null)}
+        onClick={() => setActiveOrbitChat(sessionId, chatId)}
+        style={{ padding: '8px 10px', background: isActive ? 'var(--orbit)' : isHov ? 'rgba(0,0,0,0.04)' : 'transparent', borderRadius: 6, cursor: 'pointer', transition: 'background 0.1s', marginInline: 6 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: isActive ? 600 : 400, color: isActive ? '#fff' : 'var(--fg-1)', overflow: 'hidden', whiteSpace: 'nowrap', maskImage: 'linear-gradient(to right, black 75%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to right, black 75%, transparent 100%)' }}>
+              {title}
+            </div>
+            <div style={{ fontSize: 10, color: isActive ? 'rgba(255,255,255,0.7)' : 'var(--fg-3)', marginTop: 3 }}>
+              <div>{lastTs ? formatChatDate(lastTs) : 'Neu'}</div>
+              {modelLbl && <div style={{ marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{modelLbl}</div>}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center', flexShrink: 0, opacity: isHov ? 1 : 0, transition: 'opacity 0.1s' }} onClick={e => e.stopPropagation()}>
+            <button onClick={() => setOrbitMeta(chatId, { pinned: !isPinned })} title={isPinned ? 'Losgelöst' : 'Anpinnen'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isPinned ? 'var(--orbit)' : 'var(--fg-3)', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: 6 }}>
+              <IBookmark style={{ width: 11, height: 11 }} />
+            </button>
+            <button onClick={() => removeOrbitChat(projectId, chatId)} title="Chat löschen" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: 6 }}>
+              <ITrash style={{ width: 11, height: 11 }} />
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* OpenRouter key */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-          <ISpark style={{ color: 'var(--accent)', marginRight: 5 }} />
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-0)' }}>OpenRouter API Key</span>
-          <span style={{ flex: 1 }} />
-          {!editingKey && (
-            <button onClick={() => { setEditingKey(true); setKeyDraft(openrouterKey) }} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>
-              {openrouterKey ? 'Ändern' : 'Hinterlegen'}
-            </button>
-          )}
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+
+      {/* Search */}
+      <div style={{ padding: '8px 10px 5px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '5px 8px' }}>
+          <ISearch style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder={pill === 'chats' ? 'Titel, Inhalt, ID…' : 'Inhalt, ID, Modell…'}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 11.5, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)' }}
+          />
+          {query && <IClose style={{ width: 10, height: 10, color: 'var(--fg-3)', cursor: 'pointer', flexShrink: 0 }} onClick={() => setQuery('')} />}
         </div>
-        {editingKey ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <input style={inp} type="password" value={keyDraft} onChange={e => setKeyDraft(e.target.value)} placeholder="sk-or-v1-..." autoFocus />
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => { setOpenrouterKey(keyDraft); setEditingKey(false) }} style={{ padding: '4px 10px', background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 5, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: 600 }}>Speichern</button>
-              <button onClick={() => setEditingKey(false)} style={{ padding: '4px 10px', background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--line-strong)', borderRadius: 5, fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>Abbrechen</button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ padding: '6px 8px', background: 'var(--bg-2)', borderRadius: 5, border: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            {openrouterKey
-              ? <><ICheck style={{ color: 'var(--ok)', flexShrink: 0 }} /><span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)' }}>{openrouterKey.slice(0, 12)}···</span></>
-              : <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Nicht hinterlegt — für Agenten-Crew benötigt</span>
-            }
-          </div>
-        )}
       </div>
 
-      {/* Agent roles list */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-0)' }}>Agenten-Rollen</span>
-          <span style={{ flex: 1 }} />
-          <button
-            onClick={() => { if (confirm('Standard-Rollen wiederherstellen? Eigene Änderungen gehen verloren.')) { agentRoles.forEach(r => removeAgentRole(r.id)); DEFAULT_AGENT_ROLES.forEach(r => addAgentRole({ ...r })) } }}
-            style={{ background: 'none', border: 'none', color: 'var(--fg-3)', fontSize: 10, cursor: 'pointer', fontFamily: 'var(--font-ui)', marginRight: 8 }}
-          >
-            Zurücksetzen
-          </button>
-          <button onClick={handleAddRole} style={{ background: 'none', border: '1px solid var(--line-strong)', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', color: 'var(--accent)', fontSize: 10.5, display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-ui)' }}>
-            <IPlus /> Hinzufügen
-          </button>
-        </div>
-        <p style={{ fontSize: 10.5, color: 'var(--fg-3)', margin: '0 0 10px', lineHeight: 1.5 }}>
-          Standard-Rollen für neue Agenten-Crew-Sessions. Beim Anlegen einer Session anpassbar.
-        </p>
-        {agentRoles.map(role => (
-          <div key={role.id} style={{ border: '1px solid var(--line-strong)', borderRadius: 6, marginBottom: 6, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg-2)', cursor: 'pointer' }} onClick={() => setExpandedId(expandedId === role.id ? null : role.id)}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-0)', minWidth: 72 }}>{role.name}</span>
-              <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{role.model.split('/').pop()}</span>
-              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                {role.strengths.slice(0, 2).map(s => (
-                  <span key={s} style={{ fontSize: 9, color: 'var(--accent)', background: 'var(--accent-soft)', borderRadius: 3, padding: '1px 4px' }}>{s}</span>
-                ))}
-              </div>
-              <button onClick={e => { e.stopPropagation(); removeAgentRole(role.id) }} style={{ background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', padding: '2px', borderRadius: 3, flexShrink: 0 }}>
-                <ITrash />
-              </button>
-            </div>
-            {expandedId === role.id && (
-              <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 7, background: 'var(--bg-1)', borderTop: '1px solid var(--line)' }}>
-                <div style={{ display: 'flex', gap: 7 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={fl}>Name</label>
-                    <input style={inp} value={role.name} onChange={e => updateAgentRole(role.id, { name: e.target.value })} />
-                  </div>
-                  <div style={{ flex: 2 }}>
-                    <label style={fl}>Modell</label>
-                    <select
-                      style={{ ...inp, cursor: 'pointer' }}
-                      value={OPENROUTER_MODELS.find(m => m.value === role.model) ? role.model : '__custom__'}
-                      onChange={e => updateAgentRole(role.id, { model: e.target.value })}
-                    >
-                      {OPENROUTER_MODELS.map(m => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
-                      {!OPENROUTER_MODELS.find(m => m.value === role.model) && (
-                        <option value={role.model}>{role.model}</option>
-                      )}
-                    </select>
-                  </div>
+      {/* Pill bar */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 5, padding: '6px 10px 8px', flexShrink: 0 }}>
+        {(['chats', 'favoriten'] as const).map(p => {
+          const active = pill === p
+          return (
+            <button
+              key={p}
+              onClick={() => setPill(p)}
+              style={{ position: 'relative', padding: '3px 14px', borderRadius: 99, border: active ? '1px solid #a78bfa' : '1px solid rgba(167,139,250,0.25)', background: active ? 'rgba(167,139,250,0.18)' : 'transparent', color: active ? '#c4b5fd' : 'rgba(167,139,250,0.5)', fontSize: 10.5, fontWeight: active ? 600 : 400, cursor: 'pointer', fontFamily: 'var(--font-ui)', transition: 'all 0.12s' }}
+            >
+              {p === 'chats' ? 'Chats' : 'Favoriten'}
+              {p === 'favoriten' && favCount > 0 && (
+                <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 7.5, fontWeight: 700, minWidth: 13, height: 13, borderRadius: 99, background: active ? 'rgba(167,139,250,0.35)' : 'rgba(245,158,11,0.15)', border: active ? '1px solid rgba(167,139,250,0.6)' : '1px solid rgba(245,158,11,0.35)', color: active ? '#e9d5ff' : '#f59e0b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{favCount}</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Content */}
+      {pill === 'chats' ? (
+        chatIds.length === 0 ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--fg-3)', fontSize: 12, padding: 24, textAlign: 'center' }}>
+            <IOrbit style={{ width: 28, height: 28, opacity: 0.3 }} />
+            <span>Noch keine Orbit-Chats</span>
+          </div>
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingTop: 2 }}>
+            {pinnedChats.length > 0 && (
+              <>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '4px 16px 6px' }}>Pinned</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 10 }}>
+                  {pinnedChats.map(renderChatItem)}
                 </div>
-                <div>
-                  <label style={fl}>Stärken (kommagetrennt)</label>
-                  <input style={inp} value={role.strengths.join(', ')} onChange={e => updateAgentRole(role.id, { strengths: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="TypeScript, React, Bugfixes" />
+              </>
+            )}
+            {unpinnedChats.length > 0 && (
+              <>
+                {pinnedChats.length > 0 && <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '4px 16px 6px' }}>Chats</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {unpinnedChats.map(renderChatItem)}
                 </div>
-                <div>
-                  <label style={fl}>System-Prompt</label>
-                  <textarea style={{ ...inp, height: 60, resize: 'vertical', fontFamily: 'var(--font-mono)' }} value={role.systemPrompt} onChange={e => updateAgentRole(role.id, { systemPrompt: e.target.value })} />
-                </div>
-              </div>
+              </>
+            )}
+            {filteredChats.length === 0 && q && (
+              <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--fg-3)', fontSize: 11 }}>Keine Treffer für „{query}"</div>
             )}
           </div>
-        ))}
+        )
+      ) : (
+        allFavs.length === 0 ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--fg-3)', fontSize: 12, padding: 24, textAlign: 'center' }}>
+            <IBookmark style={{ width: 26, height: 26, opacity: 0.3 }} />
+            <span>Noch keine Favoriten</span>
+            <span style={{ fontSize: 10.5, lineHeight: 1.6, maxWidth: 180 }}>Nachrichten mit dem Stern-Symbol im Orbit-Chat markieren</span>
+          </div>
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingTop: 2 }}>
+            {filteredChatFavs.length > 0 && (
+              <>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '4px 16px 6px' }}>Chats</div>
+                {filteredChatFavs.map(fav => {
+                  const title = fav.chatTitle ?? orbitMeta[fav.chatId]?.title ?? fav.chatId.slice(-8)
+                  return (
+                    <div key={fav.id} onClick={() => setActiveOrbitChat(sessionId, fav.chatId)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', marginInline: 6, cursor: 'pointer', borderRadius: 6, borderBottom: '1px solid var(--line)' }}>
+                      <IOrbit style={{ width: 11, height: 11, color: 'var(--orbit)', flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: 11.5, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+                      <button onClick={e => { e.stopPropagation(); removeOrbitFavorite(projectId, fav.id) }} title="Aus Favoriten entfernen" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a78bfa', padding: '2px 3px', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                        <IBookmark style={{ width: 11, height: 11 }} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </>
+            )}
+            {filteredMsgFavs.length > 0 && (
+              <>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '4px 16px 6px', marginTop: filteredChatFavs.length > 0 ? 8 : 0 }}>Nachrichten</div>
+                {filteredMsgFavs.map(fav => (
+                  <div key={fav.id} onClick={() => setActiveOrbitChat(sessionId, fav.chatId)} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '7px 10px', marginInline: 6, cursor: 'pointer', borderRadius: 6, borderBottom: '1px solid var(--line)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 9.5, color: 'var(--fg-3)', marginBottom: 2, display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <span style={{ color: fav.messageRole === 'user' ? 'var(--orbit)' : 'var(--accent)', fontWeight: 600, textTransform: 'uppercase' }}>{fav.messageRole}</span>
+                        {fav.messageModel && <><span style={{ opacity: 0.4 }}>·</span><span>{fav.messageModel}</span></>}
+                        {fav.msgTs && <><span style={{ opacity: 0.4 }}>·</span><span>{formatChatDate(fav.msgTs)}</span></>}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--fg-1)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                        {fav.messageContent}
+                      </div>
+                    </div>
+                    <button onClick={e => { e.stopPropagation(); removeOrbitFavorite(projectId, fav.id) }} title="Aus Favoriten entfernen" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a78bfa', padding: '2px 3px', display: 'flex', alignItems: 'center', flexShrink: 0, marginTop: 2 }}>
+                      <IBookmark style={{ width: 11, height: 11 }} />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+            {filteredChatFavs.length === 0 && filteredMsgFavs.length === 0 && q && (
+              <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--fg-3)', fontSize: 11 }}>Keine Treffer für „{query}"</div>
+            )}
+          </div>
+        )
+      )}
+    </div>
+  )
+}
+
+// ── AI Search Tab ─────────────────────────────────────────────────────────────
+// Approximate token cost per 1K output tokens (for known models)
+const CS_PRICE_1K: Record<string, number> = {
+  'claude-sonnet-4-6': 0.003, 'claude-opus-4': 0.015, 'claude-haiku-4-5': 0.00025,
+  'gpt-4o': 0.005, 'gpt-4o-mini': 0.00015, 'deepseek-chat': 0.00028, 'deepseek-r1': 0.00219,
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--fg-3)', marginBottom: 7, marginTop: 2 }}>
+      {label}
+    </div>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400) }).catch(() => {})
+  }
+  return (
+    <button onClick={copy} title={copied ? 'Kopiert!' : 'Kopieren'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: copied ? 'var(--ok)' : 'var(--fg-3)', padding: '2px 4px', display: 'flex', alignItems: 'center', gap: 3, fontSize: 10 }}>
+      <ICopy style={{ width: 10, height: 10 }} />
+      {copied && <span>Kopiert</span>}
+    </button>
+  )
+}
+
+type SearchResult = { humanSummary: string; detailed: string; agentContext: string; inputTokens: number; outputTokens: number }
+
+function AiSearchTab({ projectId }: { projectId: string }) {
+  const { aiProviders, activeAiProvider, aiFunctionMap, supabaseUrl, supabaseAnonKey, currentUser, setInputValue, docTemplates } = useAppStore()
+  const [query, setQuery]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [result, setResult]     = useState<SearchResult | null>(null)
+  const [error, setError]       = useState('')
+  const [msgCount, setMsgCount] = useState(0)
+  const taRef    = useRef<HTMLTextAreaElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  // Auto-grow textarea
+  useEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
+  }, [query])
+
+  // Esc → abort running search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && loading) stopSearch() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
+
+  const stopSearch = () => {
+    abortRef.current?.abort()
+    setLoading(false)
+  }
+
+  const search = async () => {
+    if (!query.trim() || loading) return
+    const providerId = aiFunctionMap['contextSearch'] || activeAiProvider || aiProviders[0]?.id
+    const provider   = aiProviders.find(p => p.id === providerId) ?? aiProviders[0]
+    if (!provider) { setError('Kein KI-Provider konfiguriert. Bitte unter Einstellungen → LLMs → KI Funktionen einrichten.'); return }
+
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+
+    setLoading(true); setError(''); setResult(null)
+    try {
+      // 1. Load agent messages from Supabase
+      type Msg = { role: string; content: string; ts: number; model?: string; source: 'agent' | 'orbit' }
+      const msgs: Msg[] = []
+      const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+      if (sb && currentUser?.id) {
+        const agentMsgs = await loadLastProjectMessages(sb, currentUser.id, projectId, 200).catch(() => [])
+        for (const m of agentMsgs) msgs.push({ role: m.role, content: m.content, ts: m.ts, model: m.model, source: 'agent' })
+      }
+
+      // 2. Load orbit chat messages from JSONL
+      const listRes = await fetch(`/api/orbit/list-chats?projectId=${encodeURIComponent(projectId)}`, { signal: ctrl.signal }).catch(() => null)
+      if (listRes?.ok) {
+        const listData = await listRes.json() as { ok: boolean; chats: { chatId: string }[] }
+        if (listData.ok) {
+          for (const chat of (listData.chats ?? []).slice(0, 30)) {
+            if (ctrl.signal.aborted) break
+            const chatRes = await fetch(`/api/orbit/load-chat?projectId=${encodeURIComponent(projectId)}&chatId=${encodeURIComponent(chat.chatId)}`, { signal: ctrl.signal }).catch(() => null)
+            if (!chatRes?.ok) continue
+            const chatData = await chatRes.json() as { ok: boolean; messages: Array<{ role: string; content: string; ts: number; model?: string }> }
+            if (chatData.ok) {
+              for (const m of (chatData.messages ?? [])) msgs.push({ role: m.role, content: m.content, ts: m.ts, model: m.model, source: 'orbit' })
+            }
+          }
+        }
+      }
+
+      if (ctrl.signal.aborted) return
+
+      // Deduplicate + sort + truncate to 300 messages
+      const sorted = msgs
+        .filter((m, i, a) => a.findIndex(x => x.ts === m.ts && x.role === m.role && x.source === m.source) === i)
+        .sort((a, b) => a.ts - b.ts)
+        .slice(-300)
+      setMsgCount(sorted.length)
+
+      // 3. Call backend
+      const customPrompt = docTemplates.find(t => t.id === 'ai-prompt-context-search')?.content
+      const r = await fetch('/api/context-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim(), messages: sorted, provider: provider.provider, apiKey: provider.apiKey, model: provider.model, systemPromptOverride: customPrompt }),
+        signal: ctrl.signal,
+      })
+      const d = await r.json() as SearchResult & { ok: boolean; error?: string }
+      if (!d.ok) { setError(d.error ?? 'Unbekannter Fehler'); return }
+      setResult(d)
+    } catch (e) {
+      if ((e as { name?: string }).name !== 'AbortError') setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const insertToChatbox = () => {
+    if (!result?.agentContext) return
+    setInputValue(result.agentContext)
+  }
+
+  const costStr = (() => {
+    if (!result) return null
+    const provider = aiProviders.find(p => p.id === (aiFunctionMap['contextSearch'] || activeAiProvider || aiProviders[0]?.id))
+    if (!provider) return null
+    const key = Object.keys(CS_PRICE_1K).find(k => provider.model.includes(k))
+    if (!key) return null
+    const cost = (result.outputTokens / 1000) * CS_PRICE_1K[key]
+    return cost < 0.0001 ? '<$0.0001' : `~$${cost.toFixed(4)}`
+  })()
+
+  const pill: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 99, fontSize: 10, background: 'var(--bg-3)', border: '1px solid var(--line)', color: 'var(--fg-3)' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 12, gap: 10, minHeight: 0 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 6, borderBottom: '1px solid var(--line)' }}>
+        <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <ISearch style={{ width: 13, height: 13, color: 'var(--accent)' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Kontext Research</div>
+          <div style={{ fontSize: 9.5, color: 'var(--fg-3)', lineHeight: 1.2 }}>Durchsucht Agent + Orbit Chat-Verlauf</div>
+        </div>
       </div>
+
+      {/* Query input + button stacked */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <textarea
+          ref={taRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void search() } }}
+          placeholder="Frage stellen… (z.B. chatbox, login, welche html seiten wurden aufgerufen)"
+          style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none', resize: 'none', lineHeight: 1.5, minHeight: 36, overflow: 'hidden' }}
+        />
+        <button
+          onClick={loading ? stopSearch : () => void search()}
+          disabled={!loading && !query.trim()}
+          title={loading ? 'Abbrechen (Esc)' : 'Suchen (Enter)'}
+          style={{ width: '100%', background: loading ? 'rgba(239,122,122,0.12)' : !query.trim() ? 'var(--bg-3)' : 'var(--accent)', border: loading ? '1px solid rgba(239,122,122,0.3)' : 'none', borderRadius: 6, padding: '8px 10px', cursor: loading || query.trim() ? 'pointer' : 'default', color: loading ? 'var(--err)' : !query.trim() ? 'var(--fg-3)' : 'var(--accent-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, fontFamily: 'var(--font-ui)', transition: 'background 0.15s' }}
+        >
+          {loading ? <><IX style={{ width: 13, height: 13 }} /> Stopp</> : <><ISearch style={{ width: 13, height: 13 }} /> Suchen</>}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ padding: '7px 10px', background: 'rgba(239,122,122,0.07)', border: '1px solid rgba(239,122,122,0.25)', borderRadius: 6, fontSize: 11, color: 'var(--err)' }}>
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--fg-3)', fontSize: 11, padding: '4px 0' }}>
+          <ISpinner size={12} />
+          <span>Durchsuche {msgCount > 0 ? `${msgCount} Nachrichten` : 'Projekt-Historie'}…</span>
+          <span style={{ marginLeft: 'auto', fontSize: 9.5, opacity: 0.6 }}>Esc = Stopp</span>
+        </div>
+      )}
+
+      {result && (
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}>
+
+          {/* Human Summary */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 7 }}>
+              <SectionHeader label="Zusammenfassung" />
+              <span style={{ flex: 1 }} />
+              <CopyButton text={result.humanSummary} />
+            </div>
+            <div style={{ fontSize: 12, lineHeight: 1.7, color: 'var(--fg-1)', whiteSpace: 'pre-wrap' }}>{result.humanSummary}</div>
+          </div>
+
+          {/* Detailed */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 7 }}>
+              <SectionHeader label="Detailliert" />
+              <span style={{ flex: 1 }} />
+              <CopyButton text={result.detailed} />
+            </div>
+            <div style={{ fontSize: 11.5, lineHeight: 1.7, color: 'var(--fg-2)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-ui)' }}>{result.detailed}</div>
+          </div>
+
+          {/* Agent Context */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
+              <SectionHeader label="Für KI-Agent" />
+              <span style={{ flex: 1 }} />
+              <CopyButton text={result.agentContext} />
+              <button
+                onClick={insertToChatbox}
+                title="Als Entwurf in Chatbox einfügen"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 99, border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
+              >
+                <ISend style={{ width: 10, height: 10 }} />
+                Chatbox
+              </button>
+            </div>
+            <div style={{ padding: '8px 10px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 11, lineHeight: 1.65, color: 'var(--fg-1)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
+              {result.agentContext}
+            </div>
+          </div>
+
+          {/* Token stats */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 4 }}>
+            <span style={pill}>↑ {result.inputTokens.toLocaleString('de-DE')} tk</span>
+            <span style={pill}>↓ {result.outputTokens.toLocaleString('de-DE')} tk</span>
+            {costStr && <span style={{ ...pill, color: 'var(--ok)' }}>{costStr}</span>}
+            <span style={{ ...pill, color: 'var(--fg-3)' }}>{msgCount} Nachrichten durchsucht</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 export function UtilityPanel() {
   const [tab, setTab] = useState(0)
-  const [exportFmt, setExportFmt] = useState<ExportFmt>('txt')
   const [exporting, setExporting]  = useState(false)
-  const { aliases, activeSessionId, projects, activeProjectId } = useAppStore()
+  const [exportOpen, setExportOpen] = useState(false)
+  const { aliases, activeSessionId, projects, activeProjectId, createOrbitChat } = useAppStore()
   const project = projects.find(p => p.id === activeProjectId)
   const session = project?.sessions.find(s => s.id === activeSessionId)
-  // Find the crew session to mirror: prefer the active session if it's a crew session,
-  // otherwise fall back to the most recently started crew session in this project
   const activeAlias = aliases.find(a => a.name === session?.alias)
 
   const modelLabel = (() => {
@@ -1107,7 +1478,7 @@ export function UtilityPanel() {
     : '—'
 
   // ── Export ────────────────────────────────────────────────────────────────
-  const handleExport = () => {
+  const handleExport = (fmt: ExportFmt) => {
     if (!session) return
     setExporting(true)
 
@@ -1119,9 +1490,9 @@ export function UtilityPanel() {
       const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-')
       const base = `${session.name.replace(/[^a-z0-9]/gi, '_')}_${ts}`
 
-      if (exportFmt === 'txt') {
+      if (fmt === 'txt') {
         triggerDownload(raw, `${base}.txt`)
-      } else if (exportFmt === 'md') {
+      } else if (fmt === 'md') {
         const md = `# Terminal: ${session.name}\n\n_Alias: ${session.alias} · Exported: ${new Date().toLocaleString()}_\n\n\`\`\`\n${raw}\n\`\`\`\n`
         triggerDownload(md, `${base}.md`)
       } else {
@@ -1141,50 +1512,11 @@ export function UtilityPanel() {
     window.addEventListener('cc:terminal-text', onText)
     window.dispatchEvent(new CustomEvent('cc:terminal-export', { detail: session.id }))
 
-    // Timeout fallback — if no terminal responds within 2 s
     setTimeout(() => {
       window.removeEventListener('cc:terminal-text', onText)
       setExporting(false)
     }, 2000)
   }
-
-  // ── Live crew agent status (lifted so it survives tab switches) ──────────────
-  const [liveAgentStatus, setLiveAgentStatus] = useState<Record<string, AgentLiveStatus>>({})
-  const [, setLiveTick] = useState(0)
-  const liveStartTimes = useRef<Record<string, number>>({})
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { sessionId: sid, agent, status } = (e as CustomEvent<{ sessionId: string; agent: string; model: string; status: string }>).detail
-      if (sid !== activeSessionId) return
-      setLiveAgentStatus(prev => {
-        const next = { ...prev }
-        if (status === 'start') {
-          Object.keys(next).forEach(k => { if (next[k] === 'active') next[k] = 'done' })
-          next[agent] = 'active'
-          liveStartTimes.current[agent] = Date.now()
-        } else {
-          next[agent] = 'done'
-        }
-        return next
-      })
-    }
-    window.addEventListener('cc:crew-event', handler)
-    return () => window.removeEventListener('cc:crew-event', handler)
-  }, [activeSessionId])
-
-  // Reset status when session changes
-  useEffect(() => {
-    setLiveAgentStatus({})
-    liveStartTimes.current = {}
-  }, [activeSessionId])
-
-  const liveHasActive = Object.values(liveAgentStatus).some(s => s === 'active')
-  useEffect(() => {
-    if (!liveHasActive) return
-    const id = setInterval(() => setLiveTick(t => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [liveHasActive])
 
   // Data Viewer state — per project: map of projectId → list of open file paths
   const [dataFilesByProject, setDataFilesByProject] = useState<Record<string, string[]>>({})
@@ -1205,7 +1537,7 @@ export function UtilityPanel() {
       setDataActiveByProject(p => ({ ...p, [projId]: next.length - 1 }))
       return { ...prev, [projId]: next }
     })
-    setTab(3)
+    setTab(isOrbitSession ? 4 : 3)
   }
 
   const closeDataFile = (i: number) => {
@@ -1230,174 +1562,10 @@ export function UtilityPanel() {
 
   // Jump to Git tab when sidebar git icon is clicked
   useEffect(() => {
-    const handler = () => setTab(1)
+    const handler = () => setTab(isOrbitSession ? 2 : 1)
     window.addEventListener('cc:goto-git-tab', handler)
     return () => window.removeEventListener('cc:goto-git-tab', handler)
   }, [])
-
-  // Crew monitor state: runs per session (newest appended, displayed reversed)
-  type CrewAgentStatus = { agent: string; model: string; status: 'idle' | 'active' | 'done'; startedAt?: number; doneAt?: number }
-  type DelegationEntry = { agent: string; model: string; startedAt: number; doneAt: number; tokens?: number; output?: string; task?: string }
-  type CrewRun = { id: string; title: string; startedAt: number; goal?: string; managerModel?: string; collapsed: boolean; agents: CrewAgentStatus[]; history: DelegationEntry[]; totalTokens?: number; error?: string; errorTraceback?: string }
-  const AGENT_PALETTE = ['#ef4444','#3b82f6','#22c55e','#a855f7','#eab308','#ec4899','#06b6d4','#6366f1','#14b8a6','#e879f9']
-  const crewAgentList = project?.sessions.find(s => s.id === activeSessionId && s.kind === 'crew')?.crew?.agents ?? []
-  const [crewRunsBySession, setCrewRunsBySession] = useState<Record<string, CrewRun[]>>({})
-  const [expandedHistoryIdx, setExpandedHistoryIdx] = useState<Set<string>>(new Set())
-  const [expandedSummaryIds, setExpandedSummaryIds] = useState<Set<string>>(new Set())
-  const currentRuns = crewRunsBySession[activeSessionId ?? ''] ?? []
-  const latestRun = currentRuns[currentRuns.length - 1]
-  const agentColor = (name: string) => {
-    const idx = crewAgentList.findIndex(a => a.name === name)
-    const fallback = latestRun?.agents.findIndex(a => a.agent === name) ?? -1
-    return AGENT_PALETTE[Math.max(0, idx >= 0 ? idx : fallback) % AGENT_PALETTE.length]
-  }
-  const crewActiveCount = latestRun?.agents.filter(a => a.status === 'active').length ?? 0
-
-  const generateTitleRef = useRef<((runId: string, sid: string, context: string) => Promise<void>) | null>(null)
-  generateTitleRef.current = async (runId: string, sid: string, context: string) => {
-    const { openrouterKey: key, crewRunTitleModel: model } = useAppStore.getState()
-    if (!key) return
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: 'Gib dieser Crew-AI-Anfrage einen prägnanten Titel auf Deutsch. Maximal 6 Wörter, kein Punkt. Antworte NUR mit dem Titel.' },
-            { role: 'user', content: context },
-          ],
-          max_tokens: 40,
-        }),
-      })
-      const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
-      const title = data.choices?.[0]?.message?.content?.trim()
-      if (title) {
-        setCrewRunsBySession(prev => ({
-          ...prev,
-          [sid]: (prev[sid] ?? []).map(r => r.id === runId ? { ...r, title } : r),
-        }))
-      }
-    } catch { /* ignore */ }
-  }
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { sessionId: sid, agent, model, status, tokens, output, task } = (e as CustomEvent<{ sessionId: string; agent: string; model: string; status: string; tokens?: number; output?: string; task?: string }>).detail
-      const crewSess = useAppStore.getState().projects.flatMap(p => p.sessions).find(s => s.id === sid && s.kind === 'crew')
-      const goal = crewSess?.crew?.goal
-      const managerModel = crewSess?.crew?.managerModel
-      setCrewRunsBySession(prev => {
-        const runs = prev[sid] ?? []
-        const latest = runs[runs.length - 1]
-        if (status === 'start') {
-          if (!latest) {
-            // Fallback: no run yet (cc:crew-run-start wasn't detected) — create one
-            const newRun: CrewRun = {
-              id: `run-${Date.now()}`,
-              title: '',
-              startedAt: Date.now(),
-              goal,
-              managerModel,
-              collapsed: false,
-              agents: [{ agent, model, status: 'active', startedAt: Date.now() }],
-              history: [],
-            }
-            return { ...prev, [sid]: [newRun] }
-          }
-          // Always add to the latest run — cc:crew-run-start is the sole new-run signal
-          const agentIdx = latest.agents.findIndex(a => a.agent === agent)
-          const updatedAgent: CrewAgentStatus = { agent, model, status: 'active', startedAt: Date.now() }
-          const updatedAgents = agentIdx !== -1
-            ? latest.agents.map((a, i) => i === agentIdx ? updatedAgent : a)
-            : [...latest.agents, updatedAgent]
-          return { ...prev, [sid]: [...runs.slice(0, -1), { ...latest, agents: updatedAgents }] }
-        } else {
-          if (!latest) return prev
-          const existingAgent = latest.agents.find(a => a.agent === agent)
-          const histEntry: DelegationEntry | null = existingAgent?.startedAt
-            ? { agent, model, startedAt: existingAgent.startedAt, doneAt: Date.now(), tokens, output, task }
-            : null
-          const updatedAgents = latest.agents.map(a => a.agent === agent ? { ...a, status: 'done' as const, doneAt: Date.now() } : a)
-          const updatedHistory = histEntry ? [...latest.history, histEntry] : latest.history
-          const updatedRun = { ...latest, agents: updatedAgents, history: updatedHistory }
-          const allDone = updatedAgents.length > 0 && updatedAgents.every(a => a.status === 'done')
-          if (allDone) {
-            const ctx = goal || task || agent
-            void generateTitleRef.current?.(updatedRun.id, sid, ctx)
-          }
-          return { ...prev, [sid]: [...runs.slice(0, -1), updatedRun] }
-        }
-      })
-      setTab(4)
-    }
-    window.addEventListener('cc:crew-event', handler)
-    return () => window.removeEventListener('cc:crew-event', handler)
-  }, [])
-
-  // New run starts unconditionally when ###CREW_RUN_START### marker is detected
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { sessionId: sid, userInput } = (e as CustomEvent<{ sessionId: string; userInput?: string }>).detail
-      const crewSess = useAppStore.getState().projects.flatMap(p => p.sessions).find(s => s.id === sid && s.kind === 'crew')
-      setCrewRunsBySession(prev => {
-        const runs = prev[sid] ?? []
-        const newRun: CrewRun = {
-          id: `run-${Date.now()}`,
-          title: '',
-          startedAt: Date.now(),
-          goal: userInput || crewSess?.crew?.goal,
-          managerModel: crewSess?.crew?.managerModel,
-          collapsed: false,
-          agents: [],
-          history: [],
-        }
-        const updated = runs.map(r => ({ ...r, collapsed: true }))
-        const trimmed = updated.length >= 29 ? updated.slice(updated.length - 29) : updated
-        return { ...prev, [sid]: [...trimmed, newRun] }
-      })
-      setTab(4)
-    }
-    window.addEventListener('cc:crew-run-start', handler)
-    return () => window.removeEventListener('cc:crew-run-start', handler)
-  }, [])
-
-  // Total tokens (from Python after kickoff) → derive manager tokens
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { sessionId: sid, totalTokens } = (e as CustomEvent<{ sessionId: string; totalTokens: number }>).detail
-      setCrewRunsBySession(prev => {
-        const runs = prev[sid]
-        if (!runs?.length) return prev
-        const latest = runs[runs.length - 1]
-        return { ...prev, [sid]: [...runs.slice(0, -1), { ...latest, totalTokens }] }
-      })
-    }
-    window.addEventListener('cc:crew-total-tokens', handler)
-    return () => window.removeEventListener('cc:crew-total-tokens', handler)
-  }, [])
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { sessionId: sid, message, traceback } = (e as CustomEvent<{ sessionId: string; message: string; traceback: string }>).detail
-      setCrewRunsBySession(prev => {
-        const runs = prev[sid]
-        if (!runs?.length) return prev
-        const latest = runs[runs.length - 1]
-        return { ...prev, [sid]: [...runs.slice(0, -1), { ...latest, error: message, errorTraceback: traceback }] }
-      })
-    }
-    window.addEventListener('cc:crew-error', handler)
-    return () => window.removeEventListener('cc:crew-error', handler)
-  }, [])
-
-  // Tick every second so active-agent elapsed timers update live
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    if (crewActiveCount === 0) return
-    const id = setInterval(() => setTick(t => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [crewActiveCount])
 
   // Dirty file count for Git tab badge
   const [gitDirty, setGitDirty] = useState(0)
@@ -1413,29 +1581,26 @@ export function UtilityPanel() {
 
   // Auto-switch away from Data tab when files are closed
   useEffect(() => {
-    if (tab === 3 && dataFiles.length === 0) setTab(0)
+    if (tab === (isOrbitSession ? 4 : 3) && dataFiles.length === 0) setTab(0)
   }, [dataFiles.length, tab])
 
-  // Auto-switch away from Crew tab when active session is not a crew session
-  useEffect(() => {
-    if (tab === 4 && session?.kind !== 'crew') setTab(0)
-  }, [tab, session?.kind])
+  // Check if active session is orbit
+  const isOrbitSession = session?.kind === 'orbit'
 
-  // Tab order: Session | Git | Files | Data (only if files open) | Agenten
-  const tabs = ['Session', 'Git', 'Files', 'Data', 'Agenten']
-  const noPadding = [1, 2, 3, 4]
+  // Tab order: Session | Chat (orbit only) | Git | Files | Data (only if files open)
+  const tabs = isOrbitSession ? ['Chat', 'Session', 'Git', 'Files', 'Data', 'Research'] : ['Session', 'Git', 'Files', 'Data', 'Research']
+  const noPadding = isOrbitSession ? [0, 2, 3, 4] : [1, 2, 3]
 
   return (
     <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-1)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', flexShrink: 0 }}>
         {tabs.map((t, i) => {
           if (t === 'Data' && dataFiles.length === 0) return null
-          if (t === 'Agenten' && session?.kind !== 'crew') return null
           return (
             <div key={t} onClick={() => setTab(i)} style={{
               flex: 1, padding: '8px 0', textAlign: 'center', fontSize: 10.5,
               color: i === tab ? 'var(--fg-0)' : 'var(--fg-2)',
-              borderBottom: i === tab ? '2px solid var(--accent)' : '2px solid transparent',
+              borderBottom: i === tab ? `2px solid ${isOrbitSession ? 'var(--orbit)' : 'var(--accent)'}` : '2px solid transparent',
               cursor: 'pointer', fontWeight: i === tab ? 600 : 400, marginBottom: -1,
               position: 'relative',
             }}>
@@ -1452,10 +1617,12 @@ export function UtilityPanel() {
 
       <div style={{ flex: 1, overflowY: noPadding.includes(tab) ? 'hidden' : 'auto', padding: noPadding.includes(tab) ? 0 : 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
-        {/* ── Tab 0: Session ── */}
-        {tab === 0 && (
+        {/* ── Tab 0: Chat (orbit only) ── */}
+        {isOrbitSession && tab === 0 && project && session && <ChatTab projectId={project.id} sessionId={session.id} />}
+
+        {/* ── Tab Session ── */}
+        {tab === (isOrbitSession ? 1 : 0) && (
           <>
-            {session?.kind === 'crew' && <CrewAgentsCard session={session} agentStatus={liveAgentStatus} startTimes={liveStartTimes} />}
             <div style={{ marginBottom: 14, paddingTop: 14 }}>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 3 }}>
@@ -1467,24 +1634,24 @@ export function UtilityPanel() {
               <Field label="Pfad" value={project?.path ?? '—'} mono />
               <Field label="Branch" value={project?.branch ?? '—'} mono accent />
             </div>
-            <UserStoriesCard projectId={project?.id} />
+            <UserStoriesCard projectId={project?.id} sessionId={session?.id ?? ''} />
           </>
         )}
 
-        {/* ── Tab 1: Git ── */}
-        {tab === 1 && project && <GitTab projectPath={project.path} />}
-        {tab === 1 && !project && (
-          <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Projekt ausgewählt</div>
+        {/* ── Tab Git ── */}
+        {tab === (isOrbitSession ? 2 : 1) && project && <GitTab projectPath={project.path} />}
+        {tab === (isOrbitSession ? 2 : 1) && !project && (
+          <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
         )}
 
-        {/* ── Tab 2: Files ── */}
-        {tab === 2 && project && <FilesTab projectName={project.name} projectPath={project.path} />}
-        {tab === 2 && !project && (
-          <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Projekt ausgewählt</div>
+        {/* ── Tab Files ── */}
+        {tab === (isOrbitSession ? 3 : 2) && project && <FilesTab projectName={project.name} projectPath={project.path} />}
+        {tab === (isOrbitSession ? 3 : 2) && !project && (
+          <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
         )}
 
-        {/* ── Tab 3: Data Viewer ── */}
-        {tab === 3 && (
+        {/* ── Tab Data Viewer ── */}
+        {tab === (isOrbitSession ? 4 : 3) && (
           <DataViewer
             files={dataFiles}
             activeIdx={dataActive}
@@ -1493,564 +1660,17 @@ export function UtilityPanel() {
           />
         )}
 
-        {/* ── Tab 4: Crew Verlauf — run history ── */}
-        {tab === 4 && (() => {
-          const hasAny = currentRuns.length > 0
-          const displayRuns = [...currentRuns].reverse()
-
-          const PRICE_PER_1M: Record<string, number> = {
-            'claude-opus-4': 15.0, 'claude-3-opus': 15.0,
-            'claude-sonnet-4-6': 3.0, 'claude-3-5-sonnet': 3.0, 'claude-3-sonnet': 3.0,
-            'claude-3-5-haiku': 0.8, 'claude-3-haiku': 0.4,
-            'gpt-4o': 5.0, 'gpt-4o-mini': 0.15, 'gpt-4-turbo': 10.0,
-            'o3-mini': 2.0, 'o3': 10.0, 'o1-mini': 1.5, 'o1': 15.0,
-            'gemini-2.5-pro': 7.0, 'gemini-2.0-flash': 0.1, 'gemini-1.5-pro': 3.5,
-            'deepseek-r1': 0.5, 'deepseek-chat': 0.3,
-          }
-          const modelRate = (mdl: string) => {
-            const k = Object.keys(PRICE_PER_1M).find(key => mdl.toLowerCase().includes(key))
-            return k ? PRICE_PER_1M[k] : 3.0
-          }
-          const entryCost = (h: { model: string; tokens?: number }) =>
-            ((h.tokens ?? 0) / 1_000_000) * modelRate(h.model)
-
-          const fmtSecs = (s: number) => s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`
-          const fmtTok  = (t: number) => t > 9999 ? `${(t / 1000).toFixed(0)}k` : t > 999 ? `${(t / 1000).toFixed(1)}k` : `${t}`
-          const fmtCost = (c: number) => c < 0.0005 ? '<$0.001' : c < 0.01 ? `$${c.toFixed(4)}` : `$${c.toFixed(3)}`
-          const fmtDateTime = (ts: number) => {
-            const d = new Date(ts)
-            return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
-              + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-          }
-
-          const GY1 = '#e2e2e2'
-          const GY2 = '#b8b8b8'
-          const line = <div style={{ flex: 1, width: 1, background: 'var(--line)', margin: '2px 0 0' }} />
-          const dot = (icon: React.ReactNode, withLine = true) => (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 18, flexShrink: 0 }}>
-              {icon}
-              {withLine && line}
-            </div>
-          )
-          const agentCircle = (color: string, animated = false, size = 10) => (
-            <div style={{
-              width: size, height: size, borderRadius: '50%', background: color, flexShrink: 0,
-              ...(animated ? { animation: 'cc-pulse 1.2s ease-in-out infinite' } : {}),
-            }} />
-          )
-
-          const toggleCollapse = (runId: string) =>
-            setCrewRunsBySession(prev => ({
-              ...prev,
-              [activeSessionId ?? '']: (prev[activeSessionId ?? ''] ?? []).map(r =>
-                r.id === runId ? { ...r, collapsed: !r.collapsed } : r
-              ),
-            }))
-
-          const deleteRun = (runId: string) =>
-            setCrewRunsBySession(prev => ({
-              ...prev,
-              [activeSessionId ?? '']: (prev[activeSessionId ?? ''] ?? []).filter(r => r.id !== runId),
-            }))
-
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-
-              {/* Header */}
-              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px 6px' }}>
-                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-3)', letterSpacing: 0.5, textTransform: 'uppercase' }}>Agenten Verlauf</span>
-                {hasAny && (
-                  <button
-                    onClick={() => setCrewRunsBySession(prev => ({ ...prev, [activeSessionId ?? '']: [] }))}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--fg-3)', display: 'flex', alignItems: 'center' }}
-                  ><IClose style={{ width: 11, height: 11 }} /></button>
-                )}
-              </div>
-
-              {/* Body */}
-              {!hasAny ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 10, opacity: 0.5 }}>
-                    <ICrew style={{ width: 20, height: 20, display: 'block', margin: '0 auto 8px', opacity: 0.35 }} />
-                    Keine Crew-Session aktiv
-                  </div>
-                </div>
-              ) : (
-                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                  {displayRuns.map((run, displayIdx) => {
-                    const runNumber      = currentRuns.length - displayIdx
-                    const sortedHistory  = [...run.history].sort((a, b) => a.startedAt - b.startedAt)
-                    const activeAgents   = run.agents.filter(a => a.status === 'active')
-                    const allDone        = run.agents.length > 0 && run.agents.every(a => a.status === 'done')
-                    const isRunning      = activeAgents.length > 0
-                    const currentActive  = activeAgents[0]
-                    const activeColor    = currentActive ? agentColor(currentActive.agent) : 'var(--accent)'
-                    const totalTokens    = sortedHistory.reduce((s, h) => s + (h.tokens ?? 0), 0)
-                    const totalCost      = sortedHistory.reduce((s, h) => s + entryCost(h), 0)
-                    const totalSecs      = sortedHistory.reduce((s, h) => s + Math.floor((h.doneAt - h.startedAt) / 1000), 0)
-                    const lastHistory    = sortedHistory[sortedHistory.length - 1]
-                    const summaryExpanded = expandedSummaryIds.has(run.id)
-                    const toggleSummary   = () => setExpandedSummaryIds(prev => {
-                      const next = new Set(prev); next.has(run.id) ? next.delete(run.id) : next.add(run.id); return next
-                    })
-                    const orchColor = 'var(--accent)'
-                    const cardColor = isRunning ? activeColor : orchColor
-                    const cardBg    = allDone ? 'rgba(255,255,255,0.03)' : isRunning ? `${activeColor}14` : 'var(--accent-soft)'
-                    const cardBorder = allDone ? '1px solid var(--line-strong)' : isRunning ? `1px solid ${activeColor}44` : '1px solid var(--accent-line)'
-                    const numColor  = allDone ? GY2 : cardColor
-                    const elapsedSecs = isRunning && currentActive?.startedAt
-                      ? totalSecs + Math.floor((Date.now() - currentActive.startedAt) / 1000)
-                      : totalSecs
-
-                    const pillTextColor = '#fff'
-                    const stripColor   = allDone ? GY1 : isRunning ? activeColor : 'var(--accent)'
-
-                    return (
-                      <div key={run.id} style={{ padding: '8px 8px 0' }}>
-                        {displayIdx > 0 && (
-                          <div style={{ borderTop: '1px solid var(--line-strong)', margin: '4px 4px 12px', opacity: 0.7 }} />
-                        )}
-
-                        {/* ── Run header card ── */}
-                        <div style={{
-                          background: cardBg, border: cardBorder, borderRadius: 8,
-                          overflow: 'hidden', transition: 'background 0.4s, border-color 0.4s',
-                        }}>
-                          {/* Info row */}
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '11px 12px 10px' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              {/* Row 1: #N pill + title or live status */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                                <span style={{
-                                  fontSize: 9, fontWeight: 800, color: pillTextColor,
-                                  background: numColor, borderRadius: 4, padding: '2px 6px',
-                                  flexShrink: 0, letterSpacing: 0.2,
-                                }}>#{runNumber}</span>
-                                {run.title || run.goal ? (
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {run.title || run.goal}
-                                  </div>
-                                ) : isRunning && currentActive ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeColor, flexShrink: 0, animation: 'cc-pulse 1.2s ease-in-out infinite' }} />
-                                    <span style={{ fontSize: 13, fontWeight: 700, color: activeColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentActive.agent} arbeitet</span>
-                                  </div>
-                                ) : (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <IShipWheel style={{ width: 12, height: 12, flexShrink: 0, animation: 'cc-orch-pulse 1.2s ease-in-out infinite' }} />
-                                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-2)' }}>Orchestrator arbeitet</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Model row */}
-                              {(isRunning && currentActive) || (!allDone && !isRunning && run.agents.length > 0) || (!allDone && run.agents.length === 0) ? (
-                                <div style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', paddingLeft: 30, marginBottom: 3 }}>
-                                  {isRunning && currentActive
-                                    ? currentActive.model.split('/').pop()
-                                    : run.managerModel ? run.managerModel.split('/').pop() : null}
-                                </div>
-                              ) : null}
-
-                              {/* Orchestrator koordiniert (between delegations) */}
-                              {!allDone && !isRunning && run.agents.length > 0 && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 30, marginBottom: 3 }}>
-                                  <IShipWheel style={{ width: 11, height: 11, flexShrink: 0, animation: 'cc-orch-pulse 1.2s ease-in-out infinite' }} />
-                                  <span style={{ fontSize: 11, color: 'var(--fg-2)' }}>Orchestrator koordiniert</span>
-                                </div>
-                              )}
-
-                              {/* Date + elapsed */}
-                              <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 30 }}>
-                                <span style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)' }}>{fmtDateTime(run.startedAt)}</span>
-                                {elapsedSecs > 0 && (
-                                  <span style={{ marginLeft: 'auto', fontSize: 10, color: GY1, fontFamily: 'var(--font-mono)' }}>{fmtSecs(elapsedSecs)}</span>
-                                )}
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => deleteRun(run.id)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 2px', color: 'var(--fg-3)', display: 'flex', borderRadius: 3, marginTop: 2 }}
-                            ><IClose style={{ width: 10, height: 10 }} /></button>
-                          </div>
-
-                          {/* Expand/collapse strip */}
-                          <div
-                            onClick={() => toggleCollapse(run.id)}
-                            style={{ cursor: 'pointer', borderTop: '1px solid rgba(255,255,255,0.07)', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 4, userSelect: 'none' }}
-                          >
-                            <IChevDown style={{ width: 9, height: 9, color: stripColor, transform: run.collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s' }} />
-                            <span style={{ fontSize: 10, color: stripColor }}>{run.collapsed ? 'Details anzeigen' : 'Details ausblenden'}</span>
-                          </div>
-                        </div>
-
-                        {/* ── Run body (expanded) ── */}
-                        {!run.collapsed && (
-                          <div style={{ padding: '14px 12px 18px' }}>
-
-                            {/* Anfrage gestartet */}
-                            {(() => {
-                              const aKey = `${run.id}-anfrage`
-                              const aExp = expandedHistoryIdx.has(aKey)
-                              const toggleA = () => setExpandedHistoryIdx(prev => {
-                                const next = new Set(prev); next.has(aKey) ? next.delete(aKey) : next.add(aKey); return next
-                              })
-                              return (
-                                <div style={{ marginBottom: 16, borderRadius: 7, border: '1px solid var(--line)', overflow: 'hidden' }}>
-                                  <div
-                                    onClick={run.goal ? toggleA : undefined}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px', cursor: run.goal ? 'pointer' : 'default', userSelect: 'none' }}
-                                  >
-                                    <IPlay style={{ width: 12, height: 12, color: GY1, flexShrink: 0 }} />
-                                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--fg-0)' }}>Anfrage gestartet</span>
-                                    {run.goal && (
-                                      <IChevDown style={{ width: 9, height: 9, color: GY1, marginLeft: 'auto', transform: aExp ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
-                                    )}
-                                  </div>
-                                  {run.goal && aExp && (
-                                    <div style={{ padding: '8px 12px 10px', borderTop: '1px solid var(--line)' }}>
-                                      <pre style={{ margin: 0, fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{run.goal}</pre>
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })()}
-
-                            {/* Orchestrator */}
-                            {(() => {
-                              const agentTok = sortedHistory.reduce((s, h) => s + (h.tokens ?? 0), 0)
-                              const managerTok = run.totalTokens != null ? Math.max(0, run.totalTokens - agentTok) : undefined
-                              const orchKey = `${run.id}-orch-start`
-                              const orchExpanded = expandedHistoryIdx.has(orchKey)
-                              const toggleOrch = () => setExpandedHistoryIdx(prev => {
-                                const next = new Set(prev); next.has(orchKey) ? next.delete(orchKey) : next.add(orchKey); return next
-                              })
-                              const orchPlanning = !allDone && sortedHistory.length === 0 && activeAgents.length === 0
-                              return (
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                  {dot(<IShipWheel style={{ width: 20, height: 20, ...(orchPlanning ? { animation: 'cc-orch-pulse 1.2s ease-in-out infinite' } : { color: 'var(--accent)' }) }} />)}
-                                  <div style={{ flex: 1, paddingBottom: 16 }}>
-                                    <div style={{ borderRadius: 8, background: 'var(--accent-soft)', overflow: 'hidden' }}>
-                                      <div style={{ padding: '8px 10px' }}>
-                                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--fg-0)' }}>Orchestrator</div>
-                                        {run.managerModel && <div style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', marginTop: 1 }}>{run.managerModel.split('/').pop()}</div>}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                                          <span style={{ fontSize: 10.5, color: 'var(--accent)' }}>Auftrag erhalten · plant Delegation</span>
-                                          {sortedHistory[0] && (
-                                            <span style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', marginLeft: 'auto' }}>
-                                              {fmtSecs(Math.floor((sortedHistory[0].startedAt - run.startedAt) / 1000))}
-                                            </span>
-                                          )}
-                                        </div>
-                                        {managerTok != null && managerTok > 0 && (() => {
-                                          const mCost = run.managerModel ? entryCost({ model: run.managerModel, tokens: managerTok }) : 0
-                                          return (
-                                            <div style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', marginTop: 4 }}>
-                                              {fmtTok(managerTok)} tok{mCost > 0 ? ` · ${fmtCost(mCost)}` : ''}
-                                            </div>
-                                          )
-                                        })()}
-                                      </div>
-                                      {run.goal && (
-                                        <div onClick={toggleOrch} style={{ cursor: 'pointer', borderTop: '1px solid rgba(255,138,91,0.18)', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4, userSelect: 'none' }}>
-                                          <IChevDown style={{ width: 9, height: 9, color: 'var(--accent)', transform: orchExpanded ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
-                                          <span style={{ fontSize: 10, color: 'var(--accent)' }}>{orchExpanded ? 'Details ausblenden' : 'Details anzeigen'}</span>
-                                        </div>
-                                      )}
-                                      {orchExpanded && run.goal && (
-                                        <div style={{ padding: '8px 10px', borderTop: '1px solid var(--accent-line)' }}>
-                                          <div style={{ fontSize: 9, fontWeight: 700, color: GY1, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Aufgabe</div>
-                                          <pre style={{ margin: 0, fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{run.goal}</pre>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            })()}
-
-                            {/* Completed agents */}
-                            {sortedHistory.map((h, i) => {
-                              const color   = agentColor(h.agent)
-                              const dur     = Math.floor((h.doneAt - h.startedAt) / 1000)
-                              const cost    = entryCost(h)
-                              const eKey    = `${run.id}-hist-${i}`
-                              const expanded = expandedHistoryIdx.has(eKey)
-                              const toggle  = () => setExpandedHistoryIdx(prev => {
-                                const next = new Set(prev); next.has(eKey) ? next.delete(eKey) : next.add(eKey); return next
-                              })
-                              const isLast = i === sortedHistory.length - 1 && activeAgents.length === 0 && allDone
-                              return (
-                                <React.Fragment key={`${run.id}-${i}`}>
-                                  <div style={{ display: 'flex', gap: 8 }}>
-                                    {dot(<span style={{ width: 7, height: 7, borderRadius: '50%', background: GY2, flexShrink: 0, display: 'block' }} />)}
-                                    <div style={{ paddingBottom: 16 }}>
-                                      <div style={{ fontSize: 11, color: GY2 }}>Orchestrator delegiert</div>
-                                      {h.task && (
-                                        <div style={{ fontSize: 10, color: GY2, marginTop: 1, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 186 }}>
-                                          „{h.task.length > 70 ? h.task.slice(0, 70) + '…' : h.task}"
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div style={{ display: 'flex', gap: 8 }}>
-                                    {dot(agentCircle(color), !isLast)}
-                                    <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : 16 }}>
-                                      <div style={{ borderRadius: 8, background: `${color}10`, overflow: 'hidden' }}>
-                                        {/* Card header — info only, no expand control */}
-                                        <div style={{ padding: '8px 10px' }}>
-                                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{h.agent}</div>
-                                          <div style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', marginTop: 1 }}>{h.model.split('/').pop()}</div>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                                            <span style={{ fontSize: 11, color }}>erledigt</span>
-                                            <span style={{ marginLeft: 'auto', fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)' }}>{fmtSecs(dur)}</span>
-                                          </div>
-                                          {h.tokens ? (
-                                            <div style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                                              {fmtTok(h.tokens)} tok{cost > 0 ? ` · ${fmtCost(cost)}` : ''}
-                                            </div>
-                                          ) : null}
-                                        </div>
-                                        {/* Details toggle — only when there is content */}
-                                        {(h.task || h.output) && (
-                                          <div
-                                            onClick={toggle}
-                                            style={{ cursor: 'pointer', borderTop: `1px solid ${color}22`, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4, userSelect: 'none' }}
-                                          >
-                                            <IChevDown style={{ width: 9, height: 9, color, transform: expanded ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
-                                            <span style={{ fontSize: 10, color }}>{expanded ? 'Details ausblenden' : 'Details anzeigen'}</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                      {expanded && (
-                                        <div style={{ marginTop: 6, borderRadius: 6, border: `1px solid ${color}44`, overflow: 'hidden', background: 'var(--bg-1)' }}>
-                                          {h.task && (
-                                            <div style={{ padding: '8px 10px', borderBottom: `1px solid ${color}22` }}>
-                                              <div style={{ fontSize: 9, fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Anweisung</div>
-                                              <pre style={{ margin: 0, fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{h.task}</pre>
-                                            </div>
-                                          )}
-                                          <div style={{ padding: '8px 10px', maxHeight: 200, overflowY: 'auto' }}>
-                                            <div style={{ fontSize: 9, fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Ergebnis</div>
-                                            {h.output
-                                              ? <pre style={{ margin: 0, fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{h.output}</pre>
-                                              : <span style={{ fontSize: 10, color: GY2, fontStyle: 'italic' }}>Kein Output aufgezeichnet</span>
-                                            }
-                                          </div>
-                                          <div style={{ padding: '5px 10px 7px', display: 'flex', gap: 12, flexWrap: 'wrap', borderTop: `1px solid ${color}22` }}>
-                                            <span style={{ fontSize: 9, color: GY2 }}>Dauer <span style={{ color: 'var(--fg-1)', fontFamily: 'var(--font-mono)' }}>{fmtSecs(dur)}</span></span>
-                                            {h.tokens ? <span style={{ fontSize: 9, color: GY2 }}>Token <span style={{ color, fontFamily: 'var(--font-mono)' }}>{fmtTok(h.tokens)}</span></span> : null}
-                                            {cost > 0 ? <span style={{ fontSize: 9, color: GY2 }}>Kosten <span style={{ color: 'var(--fg-1)', fontFamily: 'var(--font-mono)' }}>{fmtCost(cost)}</span></span> : null}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {!isLast && i < sortedHistory.length - 1 && (() => {
-                                    const bKey = `${run.id}-orch-${i}`
-                                    const bExp = expandedHistoryIdx.has(bKey)
-                                    const toggleB = () => setExpandedHistoryIdx(prev => {
-                                      const next = new Set(prev); next.has(bKey) ? next.delete(bKey) : next.add(bKey); return next
-                                    })
-                                    const nextAgent = sortedHistory[i + 1]
-                                    return (
-                                      <div style={{ display: 'flex', gap: 8 }}>
-                                        {dot(<IShipWheel style={{ width: 20, height: 20, color: 'var(--accent)' }} />)}
-                                        <div style={{ flex: 1, paddingBottom: 16 }}>
-                                          <div style={{ borderRadius: 8, background: 'var(--accent-soft)', overflow: 'hidden' }}>
-                                            <div style={{ padding: '8px 10px' }}>
-                                              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--fg-0)' }}>Orchestrator</div>
-                                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                                                <span style={{ fontSize: 10.5, color: GY1 }}>koordiniert nächsten Schritt</span>
-                                                {nextAgent && (
-                                                  <span style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', marginLeft: 'auto' }}>
-                                                    {fmtSecs(Math.floor((nextAgent.startedAt - h.doneAt) / 1000))}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            </div>
-                                            {nextAgent?.task && (
-                                              <div onClick={toggleB} style={{ cursor: 'pointer', borderTop: '1px solid rgba(255,138,91,0.18)', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4, userSelect: 'none' }}>
-                                                <IChevDown style={{ width: 9, height: 9, color: 'var(--accent)', transform: bExp ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
-                                                <span style={{ fontSize: 10, color: 'var(--accent)' }}>{bExp ? 'Details ausblenden' : 'Details anzeigen'}</span>
-                                              </div>
-                                            )}
-                                            {bExp && nextAgent?.task && (
-                                              <div style={{ padding: '8px 10px', borderTop: '1px solid var(--accent-line)' }}>
-                                                <div style={{ fontSize: 9, fontWeight: 700, color: GY1, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Nächste Aufgabe</div>
-                                                <pre style={{ margin: 0, fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{nextAgent.task}</pre>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )
-                                  })()}
-                                </React.Fragment>
-                              )
-                            })}
-
-                            {/* Active agents */}
-                            {activeAgents.map((a, ai) => {
-                              const color = agentColor(a.agent)
-                              return (
-                                <React.Fragment key={`${run.id}-active-${ai}`}>
-                                  <div style={{ display: 'flex', gap: 8 }}>
-                                    {dot(<span style={{ width: 7, height: 7, borderRadius: '50%', background: GY2, flexShrink: 0, display: 'block' }} />)}
-                                    <div style={{ paddingBottom: 16 }}>
-                                      <div style={{ fontSize: 11, color: GY2 }}>Orchestrator delegiert</div>
-                                    </div>
-                                  </div>
-                                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 18, flexShrink: 0, paddingTop: 9 }}>
-                                      {agentCircle(color, true)}
-                                    </div>
-                                    <div style={{ flex: 1, padding: '10px 14px 12px', borderRadius: 10, background: `${color}18`, margin: '0 0 16px' }}>
-                                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)' }}>{a.agent}</div>
-                                      <div style={{ fontSize: 10.5, color: GY2, fontFamily: 'var(--font-mono)', marginTop: 3 }}>{a.model.split('/').pop()}</div>
-                                      <div style={{ fontSize: 11, color, marginTop: 6, fontWeight: 500 }}>arbeitet…</div>
-                                    </div>
-                                  </div>
-                                </React.Fragment>
-                              )
-                            })}
-
-                            {/* Orchestrator waiting between agents */}
-                            {!allDone && activeAgents.length === 0 && run.agents.length > 0 && (
-                              <div style={{ display: 'flex', gap: 8 }}>
-                                {dot(<IShipWheel style={{ width: 15, height: 15, animation: 'cc-orch-pulse 1.2s ease-in-out infinite' }} />)}
-                                <div style={{ paddingBottom: 10 }}>
-                                  <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--fg-0)' }}>Orchestrator</div>
-                                  {run.managerModel && <div style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', marginTop: 1 }}>{run.managerModel.split('/').pop()}</div>}
-                                  <div style={{ fontSize: 11, color: GY1, marginTop: 2 }}>koordiniert nächsten Schritt…</div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Error box */}
-                            {run.error && (() => {
-                              const eKey = `${run.id}-error`
-                              const eExp = expandedHistoryIdx.has(eKey)
-                              const toggleE = () => setExpandedHistoryIdx(prev => {
-                                const next = new Set(prev); next.has(eKey) ? next.delete(eKey) : next.add(eKey); return next
-                              })
-                              const errContent = [run.error, run.errorTraceback].filter(Boolean).join('\n\n')
-                              return (
-                                <div style={{ marginTop: 16, borderRadius: 7, border: '1px solid var(--danger-line)', background: 'var(--danger-soft)', overflow: 'hidden' }}>
-                                  {/* Compact header row */}
-                                  <div
-                                    onClick={toggleE}
-                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', userSelect: 'none' }}
-                                  >
-                                    <IWarn style={{ width: 11, height: 11, color: 'var(--err)', flexShrink: 0 }} />
-                                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--err)', flexShrink: 0 }}>Fehler</span>
-                                    <span style={{ fontSize: 9.5, color: 'var(--err)', opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{run.error}</span>
-                                    <IChevDown style={{ width: 8, height: 8, color: 'var(--err)', flexShrink: 0, transform: eExp ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
-                                  </div>
-                                  {eExp && (
-                                    <div style={{ borderTop: '1px solid var(--danger-line)' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '4px 10px', borderBottom: '1px solid var(--danger-line)' }}>
-                                        <button
-                                          onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(errContent) }}
-                                          style={{ background: 'none', border: '1px solid var(--danger-line)', borderRadius: 4, padding: '2px 8px', fontSize: 9.5, color: 'var(--err)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'var(--font-ui)' }}
-                                        >
-                                          <ICopy style={{ width: 9, height: 9 }} /> Kopieren
-                                        </button>
-                                      </div>
-                                      <pre style={{ margin: 0, padding: '8px 10px', fontSize: 9.5, color: 'var(--err)', opacity: 0.85, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5, maxHeight: 240, overflowY: 'auto' }}>{run.errorTraceback || run.error}</pre>
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })()}
-
-                            {/* Abgeschlossen */}
-                            {allDone && run.history.length > 0 && (
-                              <div style={{ marginTop: 16, borderRadius: 7, border: '1px solid var(--line)', overflow: 'hidden' }}>
-                                {/* Info header — not clickable */}
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '8px 12px' }}>
-                                  <ICircleCheckBig style={{ width: 14, height: 14, color: GY1, flexShrink: 0, marginTop: 1 }} />
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-0)' }}>Abgeschlossen</span>
-                                      <span style={{ marginLeft: 'auto', fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)' }}>{fmtSecs(totalSecs)}</span>
-                                    </div>
-                                    {totalTokens > 0 && (
-                                      <div style={{ fontSize: 10, color: GY2, fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                                        {fmtTok(totalTokens)} Token{totalCost > 0 ? ` · ≈ ${fmtCost(totalCost)}` : ''}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {/* Details toggle strip */}
-                                <div
-                                  onClick={toggleSummary}
-                                  style={{ cursor: 'pointer', borderTop: '1px solid var(--line)', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 4, userSelect: 'none' }}
-                                >
-                                  <IChevDown style={{ width: 9, height: 9, color: GY1, transform: summaryExpanded ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
-                                  <span style={{ fontSize: 10, color: GY1 }}>{summaryExpanded ? 'Details ausblenden' : 'Details anzeigen'}</span>
-                                </div>
-                                {summaryExpanded && lastHistory?.output && (
-                                  <div style={{ padding: '8px 12px 10px', borderTop: '1px solid var(--line)' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-                                      <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.4, flex: 1 }}>Ergebnis</span>
-                                      <button
-                                        onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(lastHistory.output ?? '') }}
-                                        style={{ background: 'none', border: '1px solid var(--line-strong)', borderRadius: 4, padding: '1px 7px', fontSize: 9.5, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 3 }}
-                                      >
-                                        <ICopy style={{ width: 9, height: 9 }} /> Kopieren
-                                      </button>
-                                    </div>
-                                    <pre style={{ margin: 0, fontSize: 10.5, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5, maxHeight: 200, overflowY: 'auto' }}>
-                                      {lastHistory.output}
-                                    </pre>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })()}
+        {/* ── Tab AI Search ── */}
+        {tab === (isOrbitSession ? 5 : 4) && project && <AiSearchTab projectId={project.id} />}
+        {tab === (isOrbitSession ? 5 : 4) && !project && (
+          <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
+        )}
 
       </div>
 
       {/* ── Git info bar ── */}
       <GitInfoBar projectPath={project?.path} />
 
-      {/* ── Export bottom bar ── */}
-      <div style={{ padding: '8px 12px 16px', display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
-        {/* Export icon */}
-        <IDownload style={{ width: 13, height: 13, color: 'var(--fg-3)' }} />
-        <span style={{ fontSize: 11, color: 'var(--fg-3)', flexShrink: 0 }}>Export</span>
-        <div style={{ flex: 1 }}>
-          <SingleCombobox
-            value={exportFmt}
-            onChange={v => setExportFmt(v as ExportFmt)}
-            options={[
-              { value: 'txt',  label: 'Terminal .txt' },
-              { value: 'md',   label: 'Markdown .md' },
-              { value: 'json', label: 'JSON .json' },
-            ]}
-            maxHeight={180}
-          />
-        </div>
-        <button
-          onClick={handleExport}
-          disabled={!session || exporting}
-          style={{ padding: '3px 8px', border: '1px solid var(--line)', borderRadius: 4, background: 'transparent', color: session && !exporting ? 'var(--fg-2)' : 'var(--fg-3)', fontSize: 10.5, cursor: session && !exporting ? 'pointer' : 'default', fontFamily: 'var(--font-ui)', flexShrink: 0, transition: 'color 0.15s, border-color 0.15s', opacity: exporting ? 0.5 : 1 }}
-        >
-          {exporting ? '…' : '↓'}
-        </button>
-      </div>
     </aside>
   )
 }
@@ -2158,7 +1778,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', gap: 0 }}>
         {/* Icon */}
-        <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--bg-2)', border: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
           <IFileText style={{ width: 24, height: 24, color: 'var(--accent)' }} />
         </div>
 
@@ -2180,7 +1800,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
             { ext: 'TXT', color: 'var(--fg-2)' },
             { ext: 'LOG', color: 'var(--info)' },
           ].map(({ ext, color }) => (
-            <div key={ext} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
+            <div key={ext} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
               <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, color, fontFamily: 'var(--font-mono)', minWidth: 28 }}>{ext}</span>
               <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
                 {ext === 'JSON' && 'Baumansicht + Suche'}
@@ -2247,7 +1867,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
             style={{ background: showLineNums ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${showLineNums ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 3, color: showLineNums ? 'var(--accent)' : 'var(--fg-3)', fontSize: 9.5, padding: '2px 5px', cursor: 'pointer', fontFamily: 'var(--font-mono)', flexShrink: 0 }}
           >#</button>
           {/* Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '2px 6px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', padding: '2px 6px', flexShrink: 0 }}>
             <ISearch style={{ width: 10, height: 10, color: 'var(--fg-3)' }} />
             <input
               ref={searchRef}
@@ -2289,11 +1909,11 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
       {/* Search & Replace row */}
       {activeFile && showReplace && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 8px', borderBottom: '1px solid var(--line)', flexShrink: 0, background: 'var(--bg-0)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '2px 6px', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', padding: '2px 6px', flex: 1 }}>
             <ISearch style={{ width: 10, height: 10, color: 'var(--fg-3)' }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Suchen…" style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 10.5, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', width: '100%' }} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg-2)', padding: '2px 6px', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', padding: '2px 6px', flex: 1 }}>
             <input value={replaceStr} onChange={e => setReplaceStr(e.target.value)} placeholder="Ersetzen durch…" style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 10.5, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', width: '100%' }} />
           </div>
           <button onClick={replaceFirst} disabled={!search} style={{ ...dvBtn, opacity: !search ? 0.4 : 1 }}>Ersetzen</button>

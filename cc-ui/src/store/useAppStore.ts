@@ -1,29 +1,78 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { newAgentMsgId } from '../lib/ids'
 
-export type Screen = 'login' | 'workspace' | 'settings' | 'templates' | 'history'
+export type Screen = 'login' | 'register' | 'workspace' | 'settings' | 'templates' | 'history' | 'profile' | 'workshop'
+
+export type WorkshopElementRef = {
+  tag: string
+  id: string
+  classes: string[]
+  component?: string
+  text?: string
+  selector: string
+}
+
+export type PendingWorkshopTransfer = {
+  text: string
+  elementRefs: WorkshopElementRef[]
+  imageDataUrls: string[]
+}
+
+export interface CurrentUser {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  avatarDataUrl?: string
+}
+
+export interface OrbitMessage {
+  id?: string
+  role: 'user' | 'assistant'
+  content: string
+  ts: number
+  model?: string
+  tokens?: number
+  images?: string[]
+}
+
+export interface OrbitChatMeta {
+  title?: string    // AI-generated or user-edited
+  pinned?: boolean
+  lastTs?: number   // last message timestamp from JSONL (for sorting before messages load)
+}
+
+export type OrbitFavoriteKind = 'chat' | 'message'
+
+export interface OrbitFavorite {
+  id: string
+  kind: OrbitFavoriteKind
+  projectId: string
+  chatId: string
+  chatTitle?: string
+  // message-specific
+  messageId?: string
+  messageContent?: string
+  messageRole?: 'user' | 'assistant'
+  messageModel?: string
+  msgTs?: number
+  ts: number   // when favorited
+}
+export interface ProjectBrainEntry {
+  projectId: string
+  summary: string
+  architecture: string
+  recentWork: Array<{ date: string; item: string }>
+  openTasks: string[]
+  keyFiles: Array<{ path: string; purpose: string }>
+  brainTokens: number
+  lastUpdatedAt: string
+}
+
 export type Theme = 'dark' | 'light'
 export type PermMode = 'normal' | 'dangerous'
-export type SessionKind = 'single' | 'crew'
-
-export interface AgentRole {
-  id: string
-  name: string
-  model: string          // OpenRouter model ID, e.g. "anthropic/claude-opus-4"
-  strengths: string[]    // human-readable tags shown in UI and passed to orchestrator
-  systemPrompt: string
-  tools: string[]
-}
-
-export interface CrewConfig {
-  name: string
-  goal?: string
-  orchestration: 'auto' | 'manual'
-  backend: 'openrouter' | 'direct'
-  process?: 'sequential' | 'hierarchical'
-  agents: AgentRole[]   // snapshot at session creation time
-  managerModel?: string // OpenRouter model ID for the manager agent, e.g. "anthropic/claude-opus-4"
-}
+export type SessionKind = 'single' | 'orbit' | 'openrouter-claude'
 
 export interface Session {
   id: string
@@ -35,7 +84,8 @@ export interface Session {
   permMode: PermMode
   startedAt: number
   kind?: SessionKind  // undefined treated as 'single' for backwards compatibility
-  crew?: CrewConfig
+  orModel?: string               // OpenRouter model ID for openrouter-claude sessions
+  providerSettingsJson?: string  // Custom provider: full claude.json content
 }
 
 export interface Project {
@@ -56,6 +106,17 @@ export interface Alias {
   args: string
   permMode: PermMode
   status: 'ok' | 'warn'
+}
+
+export interface ClaudeProvider {
+  id: string
+  name: string
+  baseUrl: string       // base URL (no /anthropic appended)
+  authToken: string     // ANTHROPIC_AUTH_TOKEN
+  modelName: string     // model name for API
+  orModelId?: string    // OpenRouter model ID for display
+  endpointOk?: boolean | null  // null = unchecked
+  settingsJson?: string // full editable claude.json content written to disk on session start
 }
 
 export interface Template {
@@ -112,7 +173,7 @@ export interface RepoToken {
 export interface AIProvider {
   id: string
   name: string
-  provider: 'openai' | 'anthropic' | 'deepseek'
+  provider: 'openai' | 'anthropic' | 'deepseek' | 'groq'
   apiKey: string
   model: string
 }
@@ -141,144 +202,6 @@ export interface TerminalShortcut {
   enabled: boolean
   category: ShortcutCategory
 }
-
-// CrewAI tool class names used across the app
-export const CREW_TOOL_GROUPS = [
-  {
-    id: 'read',
-    label: 'Lesen',
-    color: '#3b82f6',
-    tools: [
-      { id: 'FileReadTool',      label: 'Dateien lesen',  short: 'File Read' },
-      { id: 'DirectoryReadTool', label: 'Ordner lesen',   short: 'Dir Read'  },
-    ],
-  },
-  {
-    id: 'write',
-    label: 'Schreiben',
-    color: '#22c55e',
-    tools: [
-      { id: 'FileWriterTool', label: 'Dateien schreiben', short: 'File Write' },
-    ],
-  },
-  {
-    id: 'web',
-    label: 'Web & Suche',
-    color: '#f59e0b',
-    tools: [
-      { id: 'ScrapeWebsiteTool', label: 'Webseiten abrufen', short: 'Web' },
-      { id: 'CSVSearchTool',     label: 'CSV durchsuchen',   short: 'CSV' },
-      { id: 'JSONSearchTool',    label: 'JSON durchsuchen',  short: 'JSON' },
-    ],
-  },
-] as const
-
-export const DEFAULT_AGENT_ROLES: AgentRole[] = [
-  {
-    id: 'ar-architect',
-    name: 'Architect',
-    model: 'anthropic/claude-opus-4',
-    strengths: ['Planung', 'Architektur', 'Technische Entscheidungen'],
-    systemPrompt: 'Du bist ein erfahrener Software-Architekt. Du planst Implementierungen, erkennst Abhängigkeiten und triffst technische Entscheidungen. Antworte strukturiert und präzise.',
-    tools: ['FileReadTool', 'DirectoryReadTool'],
-  },
-  {
-    id: 'ar-coder',
-    name: 'Coder',
-    model: 'anthropic/claude-sonnet-4-6',
-    strengths: ['TypeScript', 'React', 'Implementierung', 'Bugfixes'],
-    systemPrompt: 'Du bist ein präziser Entwickler. Du implementierst Features nach dem Plan des Architekten — minimal, korrekt, ohne Scope-Creep. Kein unnötiger Code.',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
-  },
-  {
-    id: 'ar-reviewer',
-    name: 'Reviewer',
-    model: 'openai/gpt-4o',
-    strengths: ['Code Review', 'Bugs finden', 'Best Practices'],
-    systemPrompt: 'Du bist ein kritischer Code-Reviewer. Du suchst nach Bugs, Logikfehlern und Abweichungen von Coding Guidelines. Sei konkret und direkt.',
-    tools: ['FileReadTool', 'DirectoryReadTool'],
-  },
-  {
-    id: 'ar-researcher',
-    name: 'Researcher',
-    model: 'deepseek/deepseek-r1',
-    strengths: ['Recherche', 'Analyse', 'Dokumentation', 'Zusammenfassung'],
-    systemPrompt: 'Du bist ein Recherche-Spezialist. Du findest Informationen, analysierst Abhängigkeiten und erstellst klare Dokumentation.',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'ScrapeWebsiteTool'],
-  },
-  {
-    id: 'ar-security',
-    name: 'Security',
-    model: 'anthropic/claude-opus-4',
-    strengths: ['Sicherheitsanalyse', 'Vulnerabilities', 'OWASP', 'Auth'],
-    systemPrompt: 'Du bist ein Security-Spezialist. Du analysierst Code auf Sicherheitslücken, prüfst Authentifizierung, Autorisierung und Datenschutz. Fokus auf OWASP Top 10 und CVEs.',
-    tools: ['FileReadTool', 'DirectoryReadTool'],
-  },
-  {
-    id: 'ar-devops',
-    name: 'DevOps',
-    model: 'openai/gpt-4o',
-    strengths: ['CI/CD', 'Docker', 'Kubernetes', 'Deployment', 'Monitoring'],
-    systemPrompt: 'Du bist ein DevOps-Engineer. Du konfigurierst CI/CD-Pipelines, Docker-Container, Cloud-Deployments und Monitoring. Fokus auf Automatisierung und Zuverlässigkeit.',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
-  },
-  {
-    id: 'ar-tester',
-    name: 'QA / Tester',
-    model: 'anthropic/claude-sonnet-4-6',
-    strengths: ['Unit Tests', 'E2E Tests', 'Test-Coverage', 'Edge Cases'],
-    systemPrompt: 'Du bist ein QA-Engineer. Du schreibst Unit-, Integrations- und E2E-Tests. Du deckst Edge Cases auf und stellst sicher, dass Anforderungen vollständig getestet sind.',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
-  },
-  {
-    id: 'ar-debugger',
-    name: 'Debugger',
-    model: 'anthropic/claude-sonnet-4-6',
-    strengths: ['Root-Cause-Analyse', 'Fehlersuche', 'Logging', 'Profiling'],
-    systemPrompt: 'Du bist ein Debugging-Spezialist. Du analysierst Fehlermeldungen, Stack Traces und Logs. Du findest die Root Cause von Problemen systematisch durch Hypothesen und Tests.',
-    tools: ['FileReadTool', 'DirectoryReadTool'],
-  },
-  {
-    id: 'ar-database',
-    name: 'Database',
-    model: 'openai/gpt-4o',
-    strengths: ['SQL', 'Schema Design', 'Query-Optimierung', 'Migrations'],
-    systemPrompt: 'Du bist ein Datenbank-Experte. Du entwirfst Schemas, optimierst Queries, schreibst Migrations und berätst bei der Wahl von Datenbanksystemen (SQL vs NoSQL).',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool', 'CSVSearchTool', 'JSONSearchTool'],
-  },
-  {
-    id: 'ar-frontend',
-    name: 'Frontend',
-    model: 'anthropic/claude-sonnet-4-6',
-    strengths: ['UI/UX', 'CSS', 'Accessibility', 'Performance', 'Responsive'],
-    systemPrompt: 'Du bist ein Frontend-Spezialist. Du implementierst UIs mit besonderem Fokus auf Usability, Accessibility (WCAG), Performance und visueller Konsistenz.',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
-  },
-  {
-    id: 'ar-backend',
-    name: 'Backend',
-    model: 'anthropic/claude-sonnet-4-6',
-    strengths: ['APIs', 'Microservices', 'Performance', 'Skalierung'],
-    systemPrompt: 'Du bist ein Backend-Entwickler. Du designst und implementierst REST/GraphQL APIs, Microservices und Backend-Systeme mit Fokus auf Performance und Skalierbarkeit.',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
-  },
-  {
-    id: 'ar-refactor',
-    name: 'Refactoring',
-    model: 'anthropic/claude-sonnet-4-6',
-    strengths: ['Clean Code', 'Tech-Debt', 'Patterns', 'SOLID', 'DRY'],
-    systemPrompt: 'Du bist ein Code-Qualitäts-Experte. Du erkennst Tech-Debt, anwendest Design Patterns und machst Code wartbarer — ohne Funktionalität zu verändern.',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool'],
-  },
-  {
-    id: 'ar-data',
-    name: 'Data Analyst',
-    model: 'deepseek/deepseek-r1',
-    strengths: ['Datenanalyse', 'Visualisierung', 'Python', 'Pandas', 'ML'],
-    systemPrompt: 'Du bist ein Data-Science-Experte. Du analysierst Daten, erstellst Visualisierungen und baust ML-Modelle. Du arbeitest bevorzugt mit Python, Pandas und scikit-learn.',
-    tools: ['FileReadTool', 'DirectoryReadTool', 'FileWriterTool', 'CSVSearchTool', 'ScrapeWebsiteTool'],
-  },
-]
 
 export const DEFAULT_TERMINAL_SHORTCUTS: TerminalShortcut[] = [
   { id: 'ctrl-c',     key: 'c',         ctrl: true,  label: 'Ctrl+C', description: 'Prozess unterbrechen (SIGINT)',       signal: '\x03',   enabled: true, category: 'control'    },
@@ -481,62 +404,6 @@ No output = all good.
 - [ ] No regressions in existing features
 `,
   },
-  {
-    id: 'dt-crew-setup',
-    name: 'Docs/CREW_SETUP.md',
-    relativePath: 'Docs/CREW_SETUP.md',
-    enabled: false,
-    content: `# Agenten-Crew Setup
-
-## Überblick
-Dieses Projekt nutzt eine Agenten-Crew für komplexe Aufgaben. Mehrere spezialisierte
-AI-Agenten arbeiten zusammen — Claude fungiert als Orchestrator und verteilt Aufgaben.
-
-## Voraussetzungen
-
-### Crew AI installieren
-\`\`\`bash
-pip install crewai crewai-tools
-\`\`\`
-
-### OpenRouter API Key
-1. Registrierung auf [openrouter.ai](https://openrouter.ai)
-2. API Key unter Settings → Keys erstellen
-3. Key in Codera AI hinterlegen: Settings → Agenten → OpenRouter Key
-
-## Agenten-Rollen in diesem Projekt
-
-| Rolle | Modell | Stärken |
-|-------|--------|---------|
-| Architect | claude/opus-4 | Planung, Architektur, Technische Entscheidungen |
-| Coder | claude/sonnet-4 | TypeScript, React, Implementierung |
-| Reviewer | openai/gpt-4o | Code Review, Tests, Sicherheit |
-| Researcher | deepseek/r1 | Recherche, Dokumentation, Analyse |
-
-## Orchestrierungs-Prinzip
-
-Claude (Orchestrator) analysiert die eingehende Anforderung und entscheidet:
-1. Welche Agenten für diese Aufgabe geeignet sind
-2. In welcher Reihenfolge sie arbeiten sollen
-3. Wie die Ergebnisse zusammengeführt werden
-
-## Crew-Session starten
-
-1. Neue Session → "Agenten-Crew" auswählen
-2. Crew-Name und optionales Ziel eingeben
-3. Agenten aus den Presets wählen (oder anpassen)
-4. Aufgabe in das Textfeld eingeben — Claude übernimmt die Koordination
-
-## Modelle & Kosten (OpenRouter)
-
-| Modell | Kosten (ca.) | Einsatz |
-|--------|-------------|---------|
-| anthropic/claude-opus-4 | $15/1M tokens | Architektur, komplexe Entscheidungen |
-| anthropic/claude-sonnet-4 | $3/1M tokens | Standard-Implementierung |
-| openai/gpt-4o | $2.5/1M tokens | Code Review |
-| deepseek/deepseek-r1 | $0.55/1M tokens | Recherche, Analyse |
-`,
-  },
   // ── AI Prompts ────────────────────────────────────────────────────────────
   {
     id: 'ai-prompt-doc-update',
@@ -618,6 +485,21 @@ Regeln:
 - Port wird vor dem Start automatisch freigegeben — kein kill nötig
 - Nur JSON zurückgeben, keine Erklärung`,
   },
+  {
+    id: 'ai-prompt-context-search',
+    name: 'Kontext Research (Research-Tab)',
+    relativePath: 'context-search',
+    enabled: true,
+    category: 'ai-prompt' as const,
+    content: `Du bist ein Kontext-Analyst für ein Software-Entwicklungsprojekt. Du bekommst die Chat-Historie und eine Suchanfrage.
+
+Antworte AUSSCHLIESSLICH als gültiges JSON-Objekt (kein Markdown drumherum, nur reines JSON):
+{
+  "humanSummary": "2-4 Sätze: Was wurde gemacht, was ist der aktuelle Stand. Knapp und direkt — keine langen Absätze.",
+  "detailed": "Stichpunktartige Auflistung (Bullet-Format mit •). Nur was relevant zur Suchanfrage ist. Bei Listen-Anfragen (z.B. 'welche X wurden aufgerufen') einfach alle aufzählen. Maximal 15 Punkte.",
+  "agentContext": "Englischer Kontext-Block für einen KI-Agenten. Format: TOPIC: ... | FILES: ... | HISTORY: ... (kompakt, nur das Wesentliche, max 400 Tokens)"
+}`,
+  },
   // ── User Stories ──────────────────────────────────────────────────────────
   {
     id: 'user-story-analyse',
@@ -657,6 +539,8 @@ ANTWORT-FORMAT (exakt so, kein Prolog/Epilog):
 
 export interface AppState {
   screen: Screen
+  prevScreen: Screen
+  pendingWorkshopTransfer: PendingWorkshopTransfer | null
   theme: Theme
   accent: string
   accentFg: string       // text colour on accent buttons/pills
@@ -666,6 +550,7 @@ export interface AppState {
   terminalFontSize: number   // terminal font size (px)
   uiFont: string             // UI font family
   uiFontSize: number         // UI base font size (px)
+  uiFontWeight: number       // UI base font weight (300/400/500/600)
   logoSize: number           // logo image height (px)
   showTitleBar: boolean      // show/hide top window chrome bar
   customTerminalColors: Record<string, string>  // key → hex, overrides terminal theme
@@ -693,21 +578,60 @@ export interface AppState {
   docTemplates: DocTemplate[]
   docApplying: Record<string, boolean>
   lastProjectPath: string
-  agentRoles: AgentRole[]
   openrouterKey: string
   defaultManagerModel: string
-  crewVerbose: boolean
-  crewTelemetryOff: boolean
-  crewQuietLogs: boolean
-  crewWrapperScript: string
-  crewRunTitleModel: string
+  orbitMessages: Record<string, OrbitMessage[]>   // chatId → messages
+  orbitMeta: Record<string, OrbitChatMeta>         // chatId → meta
+  orbitChats: Record<string, string[]>             // projectId → [chatId, ...]
+  activeOrbitChatId: Record<string, string>        // sessionId → chatId
+  orbitCtxBefore: number                           // context window — messages before ref
+  orbitCtxAfter: number                            // context window — messages after ref
+  orbitCompressPrompt: string                      // prompt used to compress chat history
+  orbitCompressModel: string                       // OR model used for compression
+  agentContextMsgCount: number                     // how many messages to compress (default 20)
+  agentCompressPrompt: string                      // compression prompt for agent sessions
+  orbitFavorites: Record<string, OrbitFavorite[]>  // projectId → favorites
+  projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
+  orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
+  claudeProviders: ClaudeProvider[]
+
+  // Auth
+  currentUser: CurrentUser | null
+  setCurrentUser: (u: CurrentUser | null) => void
+
+  // Integrationen
+  supabaseUrl: string
+  supabaseAnonKey: string
+  supabaseServiceRoleKey: string
+  cloudflareAccountId: string
+  cloudflareR2AccessKeyId: string
+  cloudflareR2SecretAccessKey: string
+  cloudflareR2BucketName: string
+  cloudflareR2Endpoint: string
+  cloudflareR2PublicUrl: string
+
+  setSupabaseUrl: (v: string) => void
+  setSupabaseAnonKey: (v: string) => void
+  setSupabaseServiceRoleKey: (v: string) => void
+  setCloudflareAccountId: (v: string) => void
+  setCloudflareR2AccessKeyId: (v: string) => void
+  setCloudflareR2SecretAccessKey: (v: string) => void
+  setCloudflareR2BucketName: (v: string) => void
+  setCloudflareR2Endpoint: (v: string) => void
+  setCloudflareR2PublicUrl: (v: string) => void
 
   setCustomTerminalColor: (key: string, value: string) => void
   resetCustomTerminalColors: () => void
   setCustomUiColor: (key: string, value: string) => void
+  setCustomUiColors: (map: Record<string, string>) => void
   resetCustomUiColors: () => void
 
+  resetUserData: () => void   // clears all user-scoped state before loading a different user
   setScreen: (s: Screen) => void
+  openWorkshop: () => void
+  closeWorkshop: () => void
+  transferToAgent: (transfer: PendingWorkshopTransfer) => void
+  clearWorkshopTransfer: () => void
   setTheme: (t: Theme) => void
   setAccent: (a: string) => void
   setAccentFg: (a: string) => void
@@ -717,6 +641,7 @@ export interface AppState {
   setTerminalFontSize: (s: number) => void
   setUiFont: (f: string) => void
   setUiFontSize: (s: number) => void
+  setUiFontWeight: (w: number) => void
   setLogoSize: (s: number) => void
   setShowTitleBar: (v: boolean) => void
   addToken: (t: RepoToken) => void
@@ -747,10 +672,13 @@ export interface AppState {
   updateAlias: (id: string, patch: Partial<Omit<Alias, 'id'>>) => void
   removeAlias: (id: string) => void
   reorderAliases: (ids: string[]) => void
+  addClaudeProvider: (p: ClaudeProvider) => void
+  updateClaudeProvider: (id: string, patch: Partial<Omit<ClaudeProvider, 'id'>>) => void
+  removeClaudeProvider: (id: string) => void
   addTemplate: (t: Template) => void
   updateTemplate: (id: string, patch: Partial<Omit<Template, 'id'>>) => void
   removeTemplate: (id: string) => void
-  sendMessage: (attachments?: string[]) => void
+  sendMessage: (attachments?: string[], text?: string) => void
   allowTool: (turnId: string) => void
   denyTool: (turnId: string) => void
   setAiFunctionMap: (key: string, providerId: string) => void
@@ -765,16 +693,26 @@ export interface AppState {
   removeDocTemplate: (id: string) => void
   setDocApplying: (projectId: string, applying: boolean) => void
   setLastProjectPath: (p: string) => void
-  addAgentRole: (r: AgentRole) => void
-  updateAgentRole: (id: string, patch: Partial<Omit<AgentRole, 'id'>>) => void
-  removeAgentRole: (id: string) => void
   setOpenrouterKey: (key: string) => void
   setDefaultManagerModel: (model: string) => void
-  setCrewVerbose: (v: boolean) => void
-  setCrewTelemetryOff: (v: boolean) => void
-  setCrewQuietLogs: (v: boolean) => void
-  setCrewWrapperScript: (s: string) => void
-  setCrewRunTitleModel: (model: string) => void
+  setOrbitCtxBefore: (n: number) => void
+  setOrbitCtxAfter: (n: number) => void
+  setOrbitCompressPrompt: (s: string) => void
+  setOrbitCompressModel: (s: string) => void
+  setAgentContextMsgCount: (agentContextMsgCount: number) => void
+  setAgentCompressPrompt: (agentCompressPrompt: string) => void
+  addOrbitFavorite: (fav: OrbitFavorite) => void
+  removeOrbitFavorite: (projectId: string, favId: string) => void
+  addOrbitMessage: (chatId: string, msg: OrbitMessage) => void
+  setOrbitMessages: (chatId: string, msgs: OrbitMessage[]) => void
+  clearOrbitMessages: (chatId: string) => void
+  setOrbitMeta: (chatId: string, patch: OrbitChatMeta) => void
+  createOrbitChat: (projectId: string, sessionId: string) => string
+  setActiveOrbitChat: (sessionId: string, chatId: string) => void
+  registerOrbitChats: (projectId: string, chatIds: string[]) => void
+  removeOrbitChat: (projectId: string, chatId: string) => void
+  setProjectBrain: (projectId: string, brain: ProjectBrainEntry) => void
+  setOrbitChatLoaded: (chatId: string) => void
 }
 
 const DEMO_TURNS: TurnMessage[] = [
@@ -877,6 +815,8 @@ const fileStorage = {
 
 export const useAppStore = create<AppState>()(persist((set, get) => ({
   screen: 'workspace',
+  prevScreen: 'workspace',
+  pendingWorkshopTransfer: null,
   theme: 'dark',
   accent: '#ff8a5b',
   accentFg: '#1a1410',
@@ -886,18 +826,19 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   terminalFontSize: 13,
   uiFont: 'system',
   uiFontSize: 13,
+  uiFontWeight: 400,
   logoSize: 24,
   showTitleBar: true,
   customTerminalColors: {},
   customUiColors: {},
   tokens: [],
   dangerMode: false,
-  activeProjectId: 'p1',
-  activeSessionId: 's1',
-  projects: DEMO_PROJECTS,
+  activeProjectId: '',
+  activeSessionId: '',
+  projects: [],
   aliases: DEMO_ALIASES,
   templates: DEMO_TEMPLATES,
-  turns: DEMO_TURNS,
+  turns: [],
   inputValue: '',
   newProjectOpen: false,
   newSessionOpen: false,
@@ -913,21 +854,77 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   docTemplates: DEFAULT_DOC_TEMPLATES,
   docApplying: {},
   lastProjectPath: '',
-  agentRoles: DEFAULT_AGENT_ROLES,
   openrouterKey: '',
   defaultManagerModel: 'anthropic/claude-sonnet-4-6',
-  crewVerbose: false,
-  crewTelemetryOff: true,
-  crewQuietLogs: true,
-  crewWrapperScript: '',
-  crewRunTitleModel: 'deepseek/deepseek-chat',
+  orbitMessages: {},
+  orbitMeta: {},
+  orbitChats: {},
+  activeOrbitChatId: {},
+  orbitCtxBefore: 2,
+  orbitCtxAfter: 2,
+  orbitCompressPrompt: `Du bist ein Kontext-Kompressor für Entwickler-Chats. Fasse den folgenden Chat-Verlauf in präzisen Stichpunkten zusammen.\n\nRegeln:\n- Nur entwicklungsrelevante Infos (Code, Dateipfade, Bugs, Entscheidungen, Architektur, Tools)\n- Kein Smalltalk, keine Begrüßungen, keine Wiederholungen, kein Lob\n- Bullet-Points (•), maximal 2–3 Zeilen pro Punkt\n- Technische Details (Dateinamen, Funktionsnamen, Fehlermeldungen) immer behalten\n- So kurz wie möglich — eine KI muss danach genau verstehen was besprochen und umgesetzt wurde\n- Max 25 Punkte`,
+  orbitCompressModel: 'deepseek/deepseek-chat-v3-0324',
+  agentContextMsgCount: 20,
+  agentCompressPrompt: 'Du bist ein Kontext-Kompressor für Coding-Sessions. Fasse die folgende Session kurz und präzise zusammen — nur was technisch relevant ist: was gebaut/gefixt wurde, aktuelle Stand, offene Probleme, wichtige Dateien und Entscheidungen. Kein Smalltalk. Bullet-Points. Max 15 Punkte.',
+  orbitFavorites: {},
+  projectBrains: {},
+  orbitChatsLoaded: {},
+  claudeProviders: [],
+
+  currentUser: null,
+
+  supabaseUrl: 'https://fpphqkuizptypeawclsx.supabase.co',
+  supabaseAnonKey: '',
+  supabaseServiceRoleKey: '',
+  cloudflareAccountId: '',
+  cloudflareR2AccessKeyId: '',
+  cloudflareR2SecretAccessKey: '',
+  cloudflareR2BucketName: '',
+  cloudflareR2Endpoint: '',
+  cloudflareR2PublicUrl: '',
+
+  setCurrentUser: (currentUser) => set({ currentUser }),
+
+  resetUserData: () => set({
+    // Clear all user-specific data so a new user starts with a blank slate
+    projects:          [],
+    activeProjectId:   null,
+    activeSessionId:   null,
+    orbitMessages:     {},
+    orbitMeta:         {},
+    orbitChats:        {},
+    orbitChatsLoaded:  {},
+    activeOrbitChatId: {},
+    orbitFavorites:    {},
+    kanban:            {},
+    notes:             {},
+    projectBrains:     {},
+    tokens:            [],
+    aliases:           [],
+    templates:         [],
+  }),
+
+  setSupabaseUrl: (v) => set({ supabaseUrl: v }),
+  setSupabaseAnonKey: (v) => set({ supabaseAnonKey: v }),
+  setSupabaseServiceRoleKey: (v) => set({ supabaseServiceRoleKey: v }),
+  setCloudflareAccountId: (v) => set({ cloudflareAccountId: v }),
+  setCloudflareR2AccessKeyId: (v) => set({ cloudflareR2AccessKeyId: v }),
+  setCloudflareR2SecretAccessKey: (v) => set({ cloudflareR2SecretAccessKey: v }),
+  setCloudflareR2BucketName: (v) => set({ cloudflareR2BucketName: v }),
+  setCloudflareR2Endpoint: (v) => set({ cloudflareR2Endpoint: v }),
+  setCloudflareR2PublicUrl: (v) => set({ cloudflareR2PublicUrl: v }),
 
   setCustomTerminalColor: (key, value) => set(s => ({ customTerminalColors: { ...s.customTerminalColors, [key]: value } })),
   resetCustomTerminalColors: () => set({ customTerminalColors: {} }),
   setCustomUiColor: (key, value) => set(s => ({ customUiColors: { ...s.customUiColors, [key]: value } })),
+  setCustomUiColors: (map) => set({ customUiColors: map }),
   resetCustomUiColors: () => set({ customUiColors: {} }),
 
-  setScreen: (screen) => set({ screen }),
+  setScreen: (screen) => set(s => ({ screen, prevScreen: s.screen })),
+  openWorkshop: () => set(s => ({ screen: 'workshop', prevScreen: s.screen })),
+  closeWorkshop: () => set(s => ({ screen: s.prevScreen === 'workshop' ? 'workspace' : s.prevScreen, prevScreen: 'workspace' })),
+  transferToAgent: (transfer) => set(s => ({ pendingWorkshopTransfer: transfer, screen: s.prevScreen === 'workshop' ? 'workspace' : s.prevScreen })),
+  clearWorkshopTransfer: () => set({ pendingWorkshopTransfer: null }),
   setTheme: (theme) => set({ theme }),
   setAccent: (accent) => set({ accent }),
   setAccentFg: (accentFg) => set({ accentFg }),
@@ -937,6 +934,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setTerminalFontSize: (terminalFontSize) => set({ terminalFontSize }),
   setUiFont: (uiFont) => set({ uiFont }),
   setUiFontSize: (uiFontSize) => set({ uiFontSize }),
+  setUiFontWeight: (uiFontWeight) => set({ uiFontWeight }),
   setLogoSize: (logoSize) => set({ logoSize }),
   setShowTitleBar: (showTitleBar) => set({ showTitleBar }),
   addToken: (t) => set((s) => ({ tokens: [...s.tokens, t] })),
@@ -983,6 +981,10 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     aliases: ids.map(id => s.aliases.find(a => a.id === id)!).filter(Boolean),
   })),
 
+  addClaudeProvider: (p) => set((s) => ({ claudeProviders: [...s.claudeProviders, p] })),
+  updateClaudeProvider: (id, patch) => set((s) => ({ claudeProviders: s.claudeProviders.map(p => p.id === id ? { ...p, ...patch } : p) })),
+  removeClaudeProvider: (id) => set((s) => ({ claudeProviders: s.claudeProviders.filter(p => p.id !== id) })),
+
   addTemplate: (t) => set((s) => ({ templates: [...s.templates, t] })),
   updateTemplate: (id, patch) =>
     set((s) => ({ templates: s.templates.map((t) => t.id === id ? { ...t, ...patch } : t) })),
@@ -1027,10 +1029,11 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }
   }),
 
-  sendMessage: (attachments?: string[]) => {
+  sendMessage: (attachments?: string[], text?: string) => {
     const { inputValue, turns } = get()
-    if (!inputValue.trim() && !attachments?.length) return
-    const userTurn: TurnMessage = { id: `t${Date.now()}`, kind: 'user', content: inputValue, attachments }
+    const content = text ?? inputValue
+    if (!content.trim() && !attachments?.length) return
+    const userTurn: TurnMessage = { id: newAgentMsgId(get().activeSessionId ?? 'x'), kind: 'user', content, attachments }
     set({ turns: [...turns, userTurn], inputValue: '' })
   },
   allowTool: (turnId) =>
@@ -1047,7 +1050,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     const nextNum = existing.reduce((max, t) => Math.max(max, t.ticketNumber ?? 0), 0) + 1
     const newTicket: KanbanTicket = {
       ...ticket,
-      id: `kt${Date.now()}`,
+      id: `kt-${Math.random().toString(36).slice(2, 8)}`,
       ticketNumber: nextNum,
       createdAt: Date.now(),
       priority: ticket.priority ?? 'medium',
@@ -1078,16 +1081,49 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   removeDocTemplate: (id) => set((s) => ({ docTemplates: s.docTemplates.filter(t => t.id !== id) })),
   setDocApplying: (projectId, applying) => set((s) => ({ docApplying: { ...s.docApplying, [projectId]: applying } })),
   setLastProjectPath: (lastProjectPath) => set({ lastProjectPath }),
-  addAgentRole: (r) => set((s) => ({ agentRoles: [...s.agentRoles, r] })),
-  updateAgentRole: (id, patch) => set((s) => ({ agentRoles: s.agentRoles.map(r => r.id === id ? { ...r, ...patch } : r) })),
-  removeAgentRole: (id) => set((s) => ({ agentRoles: s.agentRoles.filter(r => r.id !== id) })),
   setOpenrouterKey: (openrouterKey) => set({ openrouterKey }),
   setDefaultManagerModel: (defaultManagerModel) => set({ defaultManagerModel }),
-  setCrewVerbose: (crewVerbose) => set({ crewVerbose }),
-  setCrewTelemetryOff: (crewTelemetryOff) => set({ crewTelemetryOff }),
-  setCrewQuietLogs: (crewQuietLogs) => set({ crewQuietLogs }),
-  setCrewWrapperScript: (crewWrapperScript) => set({ crewWrapperScript }),
-  setCrewRunTitleModel: (crewRunTitleModel) => set({ crewRunTitleModel }),
+  setOrbitCtxBefore: (orbitCtxBefore) => set({ orbitCtxBefore }),
+  setOrbitCtxAfter: (orbitCtxAfter) => set({ orbitCtxAfter }),
+  setOrbitCompressPrompt: (orbitCompressPrompt) => set({ orbitCompressPrompt }),
+  setOrbitCompressModel: (orbitCompressModel) => set({ orbitCompressModel }),
+  setAgentContextMsgCount: (agentContextMsgCount) => set({ agentContextMsgCount }),
+  setAgentCompressPrompt: (agentCompressPrompt) => set({ agentCompressPrompt }),
+  addOrbitFavorite: (fav) => set(s => ({
+    orbitFavorites: { ...s.orbitFavorites, [fav.projectId]: [...(s.orbitFavorites[fav.projectId] ?? []), fav] },
+  })),
+  removeOrbitFavorite: (projectId, favId) => set(s => ({
+    orbitFavorites: { ...s.orbitFavorites, [projectId]: (s.orbitFavorites[projectId] ?? []).filter(f => f.id !== favId) },
+  })),
+  addOrbitMessage: (chatId, msg) => set(s => ({ orbitMessages: { ...s.orbitMessages, [chatId]: [...(s.orbitMessages[chatId] ?? []), msg] } })),
+  setOrbitMessages: (chatId, msgs) => set(s => ({ orbitMessages: { ...s.orbitMessages, [chatId]: msgs } })),
+  clearOrbitMessages: (chatId) => set(s => { const m = { ...s.orbitMessages }; delete m[chatId]; return { orbitMessages: m } }),
+  setOrbitMeta: (chatId, patch) => set(s => ({ orbitMeta: { ...s.orbitMeta, [chatId]: { ...s.orbitMeta[chatId], ...patch } } })),
+  createOrbitChat: (projectId, sessionId) => {
+    const proj4 = projectId.replace(/[^a-z0-9]/gi, '').slice(-4).padStart(4, '0')
+    const rand6 = Math.random().toString(36).slice(2, 8).padEnd(6, '0').slice(0, 6)
+    const chatId = `oc-${proj4}-${rand6}`
+    set(s => ({
+      orbitChats: { ...s.orbitChats, [projectId]: [...(s.orbitChats[projectId] ?? []), chatId] },
+      activeOrbitChatId: { ...s.activeOrbitChatId, [sessionId]: chatId },
+    }))
+    return chatId
+  },
+  setActiveOrbitChat: (sessionId, chatId) => set(s => ({ activeOrbitChatId: { ...s.activeOrbitChatId, [sessionId]: chatId } })),
+  registerOrbitChats: (projectId, chatIds) => set(s => {
+    const existing = new Set(s.orbitChats[projectId] ?? [])
+    const merged = [...existing, ...chatIds.filter(id => !existing.has(id))]
+    return { orbitChats: { ...s.orbitChats, [projectId]: merged } }
+  }),
+  removeOrbitChat: (projectId, chatId) => set(s => {
+    const chats = (s.orbitChats[projectId] ?? []).filter(id => id !== chatId)
+    const msgs = { ...s.orbitMessages }; delete msgs[chatId]
+    const meta = { ...s.orbitMeta }; delete meta[chatId]
+    const loaded = { ...s.orbitChatsLoaded }; delete loaded[chatId]
+    return { orbitChats: { ...s.orbitChats, [projectId]: chats }, orbitMessages: msgs, orbitMeta: meta, orbitChatsLoaded: loaded }
+  }),
+  setProjectBrain: (projectId, brain) => set(s => ({ projectBrains: { ...s.projectBrains, [projectId]: brain } })),
+  setOrbitChatLoaded: (chatId) => set(s => ({ orbitChatsLoaded: { ...s.orbitChatsLoaded, [chatId]: true } })),
 }), {
   name: 'cc-app-state',
   storage: createJSONStorage(() => fileStorage),
@@ -1127,34 +1163,28 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         state.docTemplates = [...state.docTemplates, def]
       }
     }
-    // Ensure agentRoles defaults exist
-    if (!state.agentRoles || state.agentRoles.length === 0) {
-      state.agentRoles = DEFAULT_AGENT_ROLES
-    }
-    // Migrate legacy tool names (Claude-style: 'Read','Write','Bash','Edit') → CrewAI class names
-    const LEGACY_TOOL_NAMES = new Set(['Read', 'Write', 'Edit', 'Bash'])
-    const needsMigration = state.agentRoles.some(r => r.tools.some(t => LEGACY_TOOL_NAMES.has(t)))
-    if (needsMigration) {
-      state.agentRoles = state.agentRoles.map(r => {
-        const def = DEFAULT_AGENT_ROLES.find(d => d.id === r.id)
-        if (def) return { ...r, tools: def.tools }
-        // Custom role: heuristic conversion
-        const hasWrite = r.tools.some(t => t === 'Write' || t === 'Edit')
-        const hasBash  = r.tools.includes('Bash')
-        const newTools: string[] = ['FileReadTool', 'DirectoryReadTool']
-        if (hasWrite) newTools.push('FileWriterTool')
-        if (hasBash)  newTools.push('ScrapeWebsiteTool')
-        return { ...r, tools: newTools }
-      })
-    }
     // Ensure openrouterKey exists
     if (state.openrouterKey === undefined) state.openrouterKey = ''
     if (state.defaultManagerModel === undefined) state.defaultManagerModel = 'anthropic/claude-sonnet-4-6'
-    if (state.crewVerbose === undefined) state.crewVerbose = false
-    if (state.crewTelemetryOff === undefined) state.crewTelemetryOff = true
-    if (state.crewQuietLogs === undefined) state.crewQuietLogs = true
-    if (state.crewWrapperScript === undefined) state.crewWrapperScript = ''
-    if (state.crewRunTitleModel === undefined) state.crewRunTitleModel = 'deepseek/deepseek-chat'
+    if (state.orbitCtxBefore === undefined) state.orbitCtxBefore = 2
+    if (state.orbitCtxAfter === undefined) state.orbitCtxAfter = 2
+    if (state.orbitFavorites === undefined) state.orbitFavorites = {}
+    if (!state.orbitCompressPrompt) state.orbitCompressPrompt = `Du bist ein Kontext-Kompressor für Entwickler-Chats. Fasse den folgenden Chat-Verlauf in präzisen Stichpunkten zusammen.\n\nRegeln:\n- Nur entwicklungsrelevante Infos (Code, Dateipfade, Bugs, Entscheidungen, Architektur, Tools)\n- Kein Smalltalk, keine Begrüßungen, keine Wiederholungen, kein Lob\n- Bullet-Points (•), maximal 2–3 Zeilen pro Punkt\n- Technische Details (Dateinamen, Funktionsnamen, Fehlermeldungen) immer behalten\n- So kurz wie möglich — eine KI muss danach genau verstehen was besprochen und umgesetzt wurde\n- Max 25 Punkte`
+    if (!state.orbitCompressModel) state.orbitCompressModel = 'deepseek/deepseek-chat-v3-0324'
+    if (!state.agentContextMsgCount) state.agentContextMsgCount = 20
+    if (!state.agentCompressPrompt) state.agentCompressPrompt = 'Du bist ein Kontext-Kompressor für Coding-Sessions. Fasse die folgende Session kurz und präzise zusammen — nur was technisch relevant ist: was gebaut/gefixt wurde, aktuelle Stand, offene Probleme, wichtige Dateien und Entscheidungen. Kein Smalltalk. Bullet-Points. Max 15 Punkte.'
+    if (state.projectBrains === undefined) state.projectBrains = {}
+    if (state.orbitChatsLoaded === undefined) state.orbitChatsLoaded = {}
+    if (!state.supabaseUrl) state.supabaseUrl = 'https://fpphqkuizptypeawclsx.supabase.co'
+    if (state.supabaseAnonKey === undefined) state.supabaseAnonKey = ''
+    if (state.supabaseServiceRoleKey === undefined) state.supabaseServiceRoleKey = ''
+    if (state.cloudflareAccountId === undefined) state.cloudflareAccountId = ''
+    if (state.cloudflareR2AccessKeyId === undefined) state.cloudflareR2AccessKeyId = ''
+    if (state.cloudflareR2SecretAccessKey === undefined) state.cloudflareR2SecretAccessKey = ''
+    if (state.cloudflareR2BucketName === undefined) state.cloudflareR2BucketName = ''
+    if (state.cloudflareR2Endpoint === undefined) state.cloudflareR2Endpoint = ''
+    if (state.cloudflareR2PublicUrl === undefined) state.cloudflareR2PublicUrl = ''
+    if (state.currentUser === undefined) state.currentUser = null
   },
   partialize: (s) => ({
     projects:        s.projects,
@@ -1168,7 +1198,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     terminalFontFamily: s.terminalFontFamily,
     terminalFontSize:   s.terminalFontSize,
     uiFont:             s.uiFont,
-    uiFontSize:      s.uiFontSize,
+    uiFontSize:         s.uiFontSize,
+    uiFontWeight:       s.uiFontWeight,
     logoSize:        s.logoSize,
     showTitleBar:    s.showTitleBar,
     tokens:          s.tokens,
@@ -1183,13 +1214,30 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     activeAiProvider: s.activeAiProvider,
     docTemplates:    s.docTemplates,
     lastProjectPath: s.lastProjectPath,
-    agentRoles:          s.agentRoles,
     openrouterKey:          s.openrouterKey,
     defaultManagerModel:    s.defaultManagerModel,
-    crewVerbose:         s.crewVerbose,
-    crewTelemetryOff:    s.crewTelemetryOff,
-    crewQuietLogs:       s.crewQuietLogs,
-    crewWrapperScript:   s.crewWrapperScript,
-    crewRunTitleModel:   s.crewRunTitleModel,
+    orbitCtxBefore:         s.orbitCtxBefore,
+    orbitCtxAfter:          s.orbitCtxAfter,
+    orbitCompressPrompt:    s.orbitCompressPrompt,
+    orbitCompressModel:     s.orbitCompressModel,
+    agentContextMsgCount:   s.agentContextMsgCount,
+    agentCompressPrompt:    s.agentCompressPrompt,
+    orbitMessages:       s.orbitMessages,
+    orbitMeta:           s.orbitMeta,
+    orbitChats:          s.orbitChats,
+    activeOrbitChatId:   s.activeOrbitChatId,
+    orbitFavorites:      s.orbitFavorites,
+    projectBrains:       s.projectBrains,
+    claudeProviders:     s.claudeProviders,
+    currentUser:         s.currentUser,
+    supabaseUrl:              s.supabaseUrl,
+    supabaseAnonKey:          s.supabaseAnonKey,
+    supabaseServiceRoleKey:   s.supabaseServiceRoleKey,
+    cloudflareAccountId:      s.cloudflareAccountId,
+    cloudflareR2AccessKeyId:  s.cloudflareR2AccessKeyId,
+    cloudflareR2SecretAccessKey: s.cloudflareR2SecretAccessKey,
+    cloudflareR2BucketName:   s.cloudflareR2BucketName,
+    cloudflareR2Endpoint:     s.cloudflareR2Endpoint,
+    cloudflareR2PublicUrl:    s.cloudflareR2PublicUrl,
   }),
 }))
