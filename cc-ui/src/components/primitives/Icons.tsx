@@ -8,8 +8,9 @@ import {
   Wand2, Play, Cpu, FileCheck2, ScrollText, Image, Keyboard, Table2, FilePlus,
   ExternalLink, Download, FileText, Bug, Star, User, PanelLeft,
   Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown,
-  Link2, Cloud, CloudUpload, Camera, Lock, Bell, Paperclip, ChevronLeft, ChevronUp,
-  MousePointer2, MessageSquare, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal,
+  Link2, Cloud, CloudUpload, CloudDownload, Camera, Lock, Bell, Paperclip, ChevronLeft, ChevronUp,
+  History, Eye, AlertCircle,
+  MousePointer2, MousePointerClick, MessageSquare, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal,
   type LucideProps,
 } from 'lucide-react'
 
@@ -98,13 +99,18 @@ export const IOrbit           = ic(Globe)
 export const ILink            = ic(Link2)
 export const ICloud           = ic(Cloud)
 export const ICloudUpload     = ic(CloudUpload)
+export const ICloudDownload   = ic(CloudDownload)
+export const IHistoryClock    = ic(History)
+export const IEye             = ic(Eye)
+export const IAlertCircle     = ic(AlertCircle)
 export const ICamera          = ic(Camera)
 export const ILock            = ic(Lock)
 export const IBell            = ic(Bell)
 export const IPaperclip       = ic(Paperclip)
 export const IWeb             = ic(Globe2)
 export const IChevLeft        = ic(ChevronLeft)
-export const IMousePointer    = ic(MousePointer2)
+export const IMousePointer        = ic(MousePointer2)
+export const IMousePointerClick   = ic(MousePointerClick)
 export const IMessageSquare   = ic(MessageSquare)
 export const ISave            = ic(Save)
 export const IEraser          = ic(Eraser)

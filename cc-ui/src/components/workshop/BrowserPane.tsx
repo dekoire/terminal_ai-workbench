@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { WorkshopElementRef } from '../../store/useAppStore'
 import { useAppStore } from '../../store/useAppStore'
 import {
-  IChevLeft, ISearch, IEdit, IMousePointer, ISave, IClose, IEraser,
+  IChevLeft, IEdit, IMousePointer, IMousePointerClick, ISave, IClose, IEraser,
   IUndo, ITrash, IRefresh, ICamera, IMessageSquare,
 } from '../primitives/Icons'
 import { DrawCanvas } from './DrawCanvas'
@@ -269,10 +269,9 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
   const modeActive = (m: BrowserMode): React.CSSProperties => ({
     ...btnBase,
     background: mode === m ? (theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)') : 'transparent',
-    color:      mode === m ? (theme === 'dark' ? '#0055cc' : '#60aaff') : bChrome.color,
+    color:      mode === m ? 'var(--accent)' : bChrome.color,
     fontWeight: mode === m ? 600 : 400,
   })
-  const sep: React.CSSProperties = { width: 1, height: 18, background: bChrome.borderColor, flexShrink: 0 }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -285,13 +284,13 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
         flexShrink: 0,
       }}>
         <button onClick={back}   style={btnBase} title="Zurück">
-          <IChevLeft style={{ width: 12, height: 12 }} />
+          <IChevLeft style={{ width: 15, height: 15, strokeWidth: 2.2 }} />
         </button>
         <button onClick={fwd}    style={btnBase} title="Vorwärts">
-          <IChevLeft style={{ width: 12, height: 12, transform: 'scaleX(-1)' }} />
+          <IChevLeft style={{ width: 15, height: 15, strokeWidth: 2.2, transform: 'scaleX(-1)' }} />
         </button>
         <button onClick={reload} style={btnBase} title="Neu laden">
-          <IRefresh style={{ width: 12, height: 12 }} />
+          <IRefresh style={{ width: 15, height: 15, strokeWidth: 2.2 }} />
         </button>
 
         <form onSubmit={e => { e.preventDefault(); navigate(inputUrl) }} style={{ flex: 1, display: 'flex' }}>
@@ -309,19 +308,15 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           />
         </form>
 
-        <div style={sep} />
-
         <button onClick={() => onModeChange('normal')} style={modeActive('normal')} title="Normal">
-          <IMousePointer style={{ width: 11, height: 11, marginRight: 3 }} />Normal
+          <IMousePointer style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Normal
         </button>
         <button onClick={() => onModeChange('draw')} style={modeActive('draw')} title="Zeichnen">
-          <IEdit style={{ width: 11, height: 11, marginRight: 3 }} />Zeichnen
+          <IEdit style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Zeichnen
         </button>
         <button onClick={() => onModeChange('inspect')} style={modeActive('inspect')} title="Inspect (Shift+Klick)">
-          <ISearch style={{ width: 11, height: 11, marginRight: 3 }} />Selektor
+          <IMousePointerClick style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Selektor
         </button>
-
-        <div style={sep} />
 
         <button
           onClick={takeScreenshot}
@@ -329,7 +324,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           style={{ ...btnBase, gap: 4, opacity: url ? 1 : 0.4, cursor: url ? 'pointer' : 'default' }}
           title={url ? 'Screenshot machen' : 'Zuerst eine URL eingeben'}
         >
-          <ICamera style={{ width: 11, height: 11 }} />Screenshot
+          <ICamera style={{ width: 14, height: 14, strokeWidth: 2.2 }} />Screenshot
         </button>
       </div>
 
@@ -366,18 +361,16 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
               style={{
                 ...btnBase,
                 background: drawTool === t.id ? (theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)') : 'transparent',
-                color: drawTool === t.id ? (theme === 'dark' ? '#0055cc' : '#60aaff') : bChrome.color,
+                color: drawTool === t.id ? 'var(--accent)' : bChrome.color,
                 fontWeight: drawTool === t.id ? 600 : 400,
               }}
             >
-              {t.id === 'pen'    && <IEdit          style={{ width: 11, height: 11, marginRight: 3 }} />}
-              {t.id === 'eraser' && <IEraser        style={{ width: 11, height: 11, marginRight: 3 }} />}
-              {t.id === 'text'   && <IMessageSquare style={{ width: 11, height: 11, marginRight: 3 }} />}
+              {t.id === 'pen'    && <IEdit          style={{ width: 13, height: 13, marginRight: 4, strokeWidth: 2.2 }} />}
+              {t.id === 'eraser' && <IEraser        style={{ width: 13, height: 13, marginRight: 4, strokeWidth: 2.2 }} />}
+              {t.id === 'text'   && <IMessageSquare style={{ width: 13, height: 13, marginRight: 4, strokeWidth: 2.2 }} />}
               {t.label}
             </button>
           ))}
-
-          <div style={sep} />
 
           {/* Color presets */}
           {COLOR_PRESETS.map(c => (
@@ -395,25 +388,21 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
             style={{ width: 16, height: 16, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer', background: 'transparent', flexShrink: 0 }}
           />
 
-          <div style={sep} />
-
           <span style={{ fontSize: 10, color: bChrome.color, fontFamily: 'var(--font-ui)', opacity: 0.7 }}>
             {drawTool === 'text' ? 'Größe' : 'Stärke'}
           </span>
           <input
             type="range" min={1} max={30} value={drawSize}
             onChange={e => setDrawSize(+e.target.value)}
-            style={{ width: 70, accentColor: theme === 'dark' ? '#0055cc' : '#60aaff' }}
+            style={{ width: 70, accentColor: 'var(--accent)' }}
           />
           <span style={{ fontSize: 10, color: bChrome.color, fontFamily: 'var(--font-mono)', minWidth: 14, opacity: 0.7 }}>{drawSize}</span>
 
-          <div style={sep} />
-
           <button onClick={() => drawRef.current?.undo()} style={btnBase} title="Rückgängig (⌘Z)">
-            <IUndo style={{ width: 11, height: 11 }} />
+            <IUndo style={{ width: 13, height: 13, strokeWidth: 2.2 }} />
           </button>
           <button onClick={() => drawRef.current?.clear()} style={{ ...btnBase, color: '#ef4444' }} title="Löschen">
-            <ITrash style={{ width: 11, height: 11 }} />
+            <ITrash style={{ width: 13, height: 13, strokeWidth: 2.2 }} />
           </button>
 
           <div style={{ flex: 1 }} />
@@ -421,14 +410,14 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           <button
             onClick={saveDraw}
             disabled={saving}
-            style={{ ...btnBase, background: theme === 'dark' ? '#0055cc' : '#3b82f6', color: '#ffffff', fontWeight: 600, padding: '4px 12px', gap: 4, opacity: saving ? 0.6 : 1 }}
+            style={{ ...btnBase, background: 'var(--accent)', color: 'var(--accent-fg)', fontWeight: 600, padding: '4px 12px', gap: 4, opacity: saving ? 0.6 : 1 }}
             title="Zeichnung mit Browser-Inhalt speichern"
           >
-            <ISave style={{ width: 11, height: 11 }} />
+            <ISave style={{ width: 13, height: 13, strokeWidth: 2.2 }} />
             {saving ? 'Wird erfasst…' : 'Speichern'}
           </button>
           <button onClick={cancelDraw} style={{ ...btnBase, gap: 4 }} title="Abbrechen">
-            <IClose style={{ width: 11, height: 11 }} />Abbrechen
+            <IClose style={{ width: 13, height: 13, strokeWidth: 2.2 }} />Abbrechen
           </button>
         </div>
       )}

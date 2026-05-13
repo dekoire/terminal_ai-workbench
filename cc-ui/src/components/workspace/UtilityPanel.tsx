@@ -5,7 +5,7 @@ import type { OrbitMessage } from '../../store/useAppStore'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages } from '../../lib/agentSync'
-import { IMore, IEdit, IChev, IChevDown, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX } from '../primitives/Icons'
+import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
@@ -568,7 +568,254 @@ function FilesTab({ projectPath }: { projectName: string; projectPath: string })
   )
 }
 
-// ── Git tab ───────────────────────────────────────────────────────────────────
+// ── GitHub tab (non-developer friendly) ──────────────────────────────────────
+
+type GhStatus = 'synced' | 'dirty' | 'error' | 'loading'
+
+function humanGitError(raw: string): string {
+  if (raw.includes('Authentication failed') || raw.includes('could not read Username')) return 'GitHub hat den Zugang abgelehnt. Prüfe deinen Zugangsschlüssel in den Einstellungen.'
+  if (raw.includes('Could not resolve host') || raw.includes('Network is unreachable')) return 'Keine Internetverbindung. Versuche es später nochmal.'
+  if (raw.includes('Your branch is behind')) return 'Es gibt neuere Updates online. Hole sie zuerst.'
+  if (raw.includes('nothing to commit')) return 'Es gibt nichts zum Speichern. Alles ist aktuell.'
+  if (raw.includes('permission denied') || raw.includes('Permission denied')) return 'Keine Berechtigung. Hast du Schreibzugriff auf das Projekt?'
+  if (raw.includes('merge conflict') || raw.includes('CONFLICT')) return 'Es gibt einen Konflikt mit den Online-Updates. Bitte löse ihn manuell.'
+  if (raw.includes('not a git repository')) return 'Dieser Ordner ist noch nicht eingerichtet.'
+  return raw.slice(0, 140)
+}
+
+interface GhFileInfo { flag: string; file: string }
+interface GhBranch   { name: string; current: boolean }
+interface GhCommit   { hash: string; msg: string; when: string }
+interface GhData {
+  hasGit: boolean
+  branch: string
+  remote: string | null
+  files: GhFileInfo[]
+  branches: GhBranch[]
+  log: GhCommit[]
+}
+
+function GitHubTab({ projectPath, projectName }: { projectPath: string; projectName: string }) {
+  const [data,     setData]     = useState<GhData | null>(null)
+  const [status,   setStatus]   = useState<GhStatus>('loading')
+  const [note,     setNote]     = useState('')
+  const [busy,     setBusy]     = useState<'save' | 'pull' | null>(null)
+  const [toast,    setToast]    = useState<{ msg: string; ok: boolean } | null>(null)
+  const [sections, setSections] = useState({ versions: false, history: false, settings: false })
+  const [showAllFiles, setShowAllFiles] = useState(false)
+
+  const showToast = (msg: string, ok: boolean) => {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  const load = useCallback(() => {
+    setStatus('loading')
+    fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
+      .then(r => r.json())
+      .then((d: { hasGit?: boolean; status?: { flag: string; file: string }[]; branches?: { name: string; current: boolean }[]; log?: { hash: string; msg: string; when: string }[]; remotes?: string[] }) => {
+        const files = (d.status ?? []).filter(f => f.flag !== '??')
+        const currentBranch = (d.branches ?? []).find((b: { current: boolean }) => b.current)?.name ?? 'main'
+        const remote = (d.remotes ?? [])[0] ?? null
+        setData({
+          hasGit: d.hasGit ?? false,
+          branch: currentBranch,
+          remote,
+          files,
+          branches: d.branches ?? [],
+          log: (d.log ?? []).slice(0, 10),
+        })
+        setStatus(files.length > 0 ? 'dirty' : 'synced')
+      })
+      .catch(() => setStatus('error'))
+  }, [projectPath])
+
+  useEffect(() => { load() }, [load])
+
+  const gitAction = (action: string, extra?: Record<string, string>) =>
+    fetch('/api/git-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, path: projectPath, ...extra }),
+    }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
+
+  const handleSave = async () => {
+    if (!data) return
+    setBusy('save')
+    try {
+      const autoMsg = data.files.length > 0
+        ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''} (${data.files.slice(0, 3).map(f => f.file.split('/').pop()).join(', ')}${data.files.length > 3 ? ` +${data.files.length - 3}` : ''})`
+        : 'Update'
+      const msg = note.trim() || autoMsg
+      const r1 = await gitAction('stage')
+      if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
+      const r2 = await gitAction('commit', { message: msg })
+      if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      if (data.remote) {
+        const r3 = await gitAction('push')
+        if (!r3.ok) { showToast(humanGitError(r3.out), false); return }
+      }
+      setNote('')
+      showToast('Gespeichert & hochgeladen ✓', true)
+      load()
+    } finally { setBusy(null) }
+  }
+
+  const handlePull = async () => {
+    setBusy('pull')
+    try {
+      const r = await gitAction('pull')
+      showToast(r.ok ? 'Updates geholt ✓' : humanGitError(r.out), r.ok)
+      if (r.ok) load()
+    } finally { setBusy(null) }
+  }
+
+  const statusColor = status === 'synced' ? '#7dc97d' : status === 'dirty' ? '#f5a623' : status === 'error' ? '#e24b4a' : 'var(--fg-3)'
+  const statusText  = status === 'synced' ? 'Alles gesichert' : status === 'dirty' ? `${data?.files.length ?? 0} ungespeicherte Änderung${(data?.files.length ?? 0) !== 1 ? 'en' : ''}` : status === 'error' ? 'Verbindung getrennt' : 'Wird geladen…'
+
+  const flagColor = (f: string) => f === 'M' || f === ' M' || f === 'MM' ? '#7dc97d' : f.includes('A') || f === '??' ? '#f5a623' : f.includes('D') ? '#e24b4a' : 'var(--fg-2)'
+  const flagLabel = (f: string) => f.trim().startsWith('A') || f === '??' ? '+' : f.includes('D') ? '−' : 'M'
+
+  const card: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }
+  const secBtn: React.CSSProperties = { width: '100%', background: 'transparent', color: 'var(--fg-1)', border: '0.5px solid rgba(255,255,255,0.18)', padding: '8px 10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8 }
+  const priBtn: React.CSSProperties = { width: '100%', background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '10px', borderRadius: 7, fontWeight: 600, fontSize: 12.5, cursor: (status === 'dirty' && !busy) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, opacity: (status !== 'dirty' || busy === 'save') ? 0.5 : 1 }
+
+  const toggleSection = (k: keyof typeof sections) => setSections(s => ({ ...s, [k]: !s[k] }))
+  const collRow = (label: string, icon: React.ReactNode, key: keyof typeof sections): React.ReactNode => (
+    <div
+      onClick={() => toggleSection(key)}
+      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 2px', borderTop: '0.5px solid rgba(255,255,255,0.07)', fontSize: 11.5, color: 'var(--fg-2)', cursor: 'pointer', userSelect: 'none' }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{icon}{label}</span>
+      {sections[key]
+        ? <IChevUp   style={{ width: 12, height: 12, color: 'var(--fg-3)' }} />
+        : <IChevDown style={{ width: 12, height: 12, color: 'var(--fg-3)' }} />
+      }
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingTop: 2 }}>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{ margin: '0 0 10px', padding: '6px 10px', borderRadius: 6, background: toast.ok ? 'rgba(125,201,125,0.12)' : 'rgba(226,75,74,0.12)', border: `0.5px solid ${toast.ok ? 'rgba(125,201,125,0.35)' : 'rgba(226,75,74,0.35)'}`, color: toast.ok ? '#7dc97d' : '#e24b4a', fontSize: 11, fontFamily: 'var(--font-ui)' }}>
+          {toast.msg}
+        </div>
+      )}
+
+      {/* 1 — Status card */}
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <IFolder style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
+            {projectName}
+          </span>
+          <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{data?.branch ?? '—'}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, marginBottom: 3 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+          <span style={{ color: statusColor }}>{statusText}</span>
+        </div>
+        {data?.remote && (
+          <div style={{ fontSize: 10.5, color: 'var(--fg-3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <IBranch style={{ width: 11, height: 11 }} />
+            verbunden mit GitHub
+          </div>
+        )}
+      </div>
+
+      {/* 2 — Note */}
+      <textarea
+        value={note}
+        onChange={e => setNote(e.target.value)}
+        placeholder="Was hast du geändert? (optional)"
+        rows={2}
+        style={{ resize: 'none', background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, color: 'var(--fg-1)', fontSize: 11, fontFamily: 'var(--font-ui)', padding: '7px 10px', outline: 'none', marginBottom: 10, lineHeight: 1.5, boxSizing: 'border-box', width: '100%' }}
+      />
+
+      {/* 3 — Buttons */}
+      <button onClick={handleSave} disabled={status !== 'dirty' || !!busy} style={priBtn}>
+        {busy === 'save' ? <ISpinner style={{ width: 13, height: 13 }} /> : <ICloudUpload style={{ width: 13, height: 13, strokeWidth: 2 }} />}
+        {busy === 'save' ? 'Wird hochgeladen…' : status !== 'dirty' ? 'Speichern & Hochladen' : 'Speichern & Hochladen'}
+      </button>
+      <button onClick={handlePull} disabled={!!busy} style={{ ...secBtn, opacity: busy === 'pull' ? 0.6 : 1 }}>
+        {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudDownload style={{ width: 12, height: 12, strokeWidth: 2 }} />}
+        Updates holen
+      </button>
+
+      {/* 4 — Changed files (max 5 visible) */}
+      {(data?.files.length ?? 0) > 0 && (
+        <>
+          <div style={{ fontSize: 10, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, marginTop: 2 }}>Was hat sich geändert</div>
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 6, marginBottom: 12 }}>
+            {(showAllFiles ? data!.files : data!.files.slice(0, 5)).map((f, i, arr) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderBottom: i < arr.length - 1 || (!showAllFiles && data!.files.length > 5) ? '0.5px solid rgba(255,255,255,0.04)' : 'none', fontSize: 11 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                  <span style={{ color: flagColor(f.flag), fontWeight: 700, marginRight: 5, fontFamily: 'var(--font-mono)' }}>{flagLabel(f.flag)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>{f.file}</span>
+                </span>
+                <IEye style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0, marginLeft: 6 }} />
+              </div>
+            ))}
+            {!showAllFiles && data!.files.length > 5 && (
+              <div onClick={() => setShowAllFiles(true)} style={{ padding: '5px 10px', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', textAlign: 'center' }}>
+                + {data!.files.length - 5} weitere anzeigen
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* 5 — AI Review teaser */}
+      <div style={{ background: 'rgba(var(--accent-rgb, 255,138,76), 0.07)', border: '0.5px solid rgba(var(--accent-rgb, 255,138,76), 0.25)', borderRadius: 8, padding: '9px 12px', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, marginBottom: 2 }}>
+          <ISpark style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
+          KI-Code-Review
+        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Datei auswählen und prüfen lassen</div>
+      </div>
+
+      {/* 6 — Collapsibles */}
+      <div style={{ marginTop: 4 }}>
+        {collRow('Versionen', <IBranch style={{ width: 12, height: 12, flexShrink: 0 }} />, 'versions')}
+        {sections.versions && data?.branches && data.branches.length > 0 && (
+          <div style={{ paddingBottom: 8, paddingLeft: 4 }}>
+            {data.branches.map(b => (
+              <div key={b.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', fontSize: 11, color: b.current ? 'var(--accent)' : 'var(--fg-2)', borderRadius: 4, background: b.current ? 'rgba(var(--accent-rgb,255,138,76),0.07)' : 'transparent' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: b.current ? 'var(--accent)' : 'var(--fg-3)', flexShrink: 0 }} />
+                {b.name}
+                {b.current && <span style={{ fontSize: 9, color: 'var(--fg-3)', marginLeft: 'auto' }}>aktiv</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {collRow('Verlauf', <IHistoryClock style={{ width: 12, height: 12, flexShrink: 0 }} />, 'history')}
+        {sections.history && (
+          <div style={{ paddingBottom: 8, paddingLeft: 4 }}>
+            {data?.log.length === 0 && <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '4px 6px' }}>Noch keine Speicherpunkte</div>}
+            {data?.log.map((c, i) => (
+              <div key={i} style={{ padding: '4px 6px', borderBottom: i < (data?.log.length ?? 0) - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                <div style={{ fontSize: 11, color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.msg}</div>
+                <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>{c.when}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {collRow('Einstellungen', <ISettings style={{ width: 12, height: 12, flexShrink: 0 }} />, 'settings')}
+        {sections.settings && (
+          <div style={{ paddingBottom: 8, paddingLeft: 4 }}>
+            <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '6px 6px' }}>GitHub Token und OpenRouter Key in den App-Einstellungen konfigurierbar.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Git tab (Advanced) ─────────────────────────────────────────────────────────
 
 function toRepoUrl(remoteUrl: string): string | null {
   const patterns: [RegExp, string][] = [
@@ -1540,7 +1787,7 @@ export function UtilityPanel() {
       setDataActiveByProject(p => ({ ...p, [projId]: next.length - 1 }))
       return { ...prev, [projId]: next }
     })
-    setTab(isOrbitSession ? 4 : 3)
+    setTab(isOrbitSession ? 5 : 4)
   }
 
   const closeDataFile = (i: number) => {
@@ -1563,14 +1810,14 @@ export function UtilityPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projId])
 
-  // Jump to Git tab when sidebar git icon is clicked
+  // Jump to GitHub tab when sidebar git icon is clicked
   useEffect(() => {
     const handler = () => setTab(isOrbitSession ? 2 : 1)
     window.addEventListener('cc:goto-git-tab', handler)
     return () => window.removeEventListener('cc:goto-git-tab', handler)
   }, [])
 
-  // Dirty file count for Git tab badge
+  // Dirty file count for GitHub tab badge
   const [gitDirty, setGitDirty] = useState(0)
   useEffect(() => {
     if (!project?.path) { setGitDirty(0); return }
@@ -1582,13 +1829,22 @@ export function UtilityPanel() {
       .catch(() => setGitDirty(0))
   }, [project?.path])
 
-  // Auto-switch away from Data tab when files are closed
-  useEffect(() => {
-    if (tab === (isOrbitSession ? 4 : 3) && dataFiles.length === 0) setTab(0)
-  }, [dataFiles.length, tab])
-
   // Check if active session is orbit
   const isOrbitSession = session?.kind === 'orbit'
+
+  // Tab indices:
+  // non-orbit: 0=Session 1=GitHub 2=GitAdvanced 3=Files 4=Data 5=Research [6=Terminal]
+  // orbit:     0=Chat   1=Session 2=GitHub 3=GitAdvanced 4=Files 5=Data 6=Research [7=Terminal]
+  const ghIdx       = isOrbitSession ? 2 : 1
+  const gitAdvIdx   = isOrbitSession ? 3 : 2
+  const filesIdx    = isOrbitSession ? 4 : 3
+  const dataIdx     = isOrbitSession ? 5 : 4
+  const researchIdx = isOrbitSession ? 6 : 5
+
+  // Auto-switch away from Data tab when files are closed
+  useEffect(() => {
+    if (tab === dataIdx && dataFiles.length === 0) setTab(0)
+  }, [dataFiles.length, tab, dataIdx])
 
   // ── Project Terminal tab ──────────────────────────────────────────────────
   const [terminalOpen, setTerminalOpen] = useState(false)
@@ -1597,23 +1853,22 @@ export function UtilityPanel() {
   useEffect(() => {
     const handler = () => {
       setTerminalOpen(true)
-      // switch to terminal tab (last index)
       setTimeout(() => {
-        setTab(prev => {
-          const base = isOrbitSession ? 6 : 5
-          return base
-        })
+        setTab(isOrbitSession ? 7 : 6)
       }, 0)
     }
     window.addEventListener('cc:open-project-terminal', handler)
     return () => window.removeEventListener('cc:open-project-terminal', handler)
   }, [isOrbitSession])
 
-  // Tab order: Session | Chat (orbit only) | Git | Files | Data | Research [| Terminal]
-  const baseTabs = isOrbitSession ? ['Chat', 'Session', 'Git', 'Files', 'Data', 'Research'] : ['Session', 'Git', 'Files', 'Data', 'Research']
+  // Tab order: Session | GitHub | Git Advanced | Files | Data | Research [| Terminal]
+  const baseTabs = isOrbitSession
+    ? ['Chat', 'Session', 'GitHub', 'Git Advanced', 'Files', 'Data', 'Research']
+    : ['Session', 'GitHub', 'Git Advanced', 'Files', 'Data', 'Research']
   const tabs = terminalOpen ? [...baseTabs, 'Terminal'] : baseTabs
   const terminalTabIdx = terminalOpen ? tabs.length - 1 : -1
-  const noPaddingBase = isOrbitSession ? [0, 2, 3, 4] : [1, 2, 3]
+  // tabs with no padding (full-bleed): Chat, Files, Data, Terminal
+  const noPaddingBase = isOrbitSession ? [0, 4, 5] : [3, 4]
   const noPadding = terminalOpen ? [...noPaddingBase, terminalTabIdx] : noPaddingBase
 
   return (
@@ -1635,7 +1890,7 @@ export function UtilityPanel() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
             }}>
               <span style={{ fontSize: 10.5 }}>{t}</span>
-              {t === 'Git' && gitDirty > 0 && (
+              {t === 'GitHub' && gitDirty > 0 && (
                 <span title={`${gitDirty} geänderte Dateien`} style={{ position: 'absolute', top: 4, right: 4, fontSize: 8, fontWeight: 700, minWidth: 12, height: 12, borderRadius: 99, background: 'rgba(244,195,101,0.18)', border: '1px solid rgba(244,195,101,0.4)', color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{gitDirty}</span>
               )}
               {isTermTab && (
@@ -1691,20 +1946,26 @@ export function UtilityPanel() {
           </>
         )}
 
-        {/* ── Tab Git ── */}
-        {tab === (isOrbitSession ? 2 : 1) && project && <GitTab projectPath={project.path} />}
-        {tab === (isOrbitSession ? 2 : 1) && !project && (
+        {/* ── Tab GitHub ── */}
+        {tab === ghIdx && project && <GitHubTab projectPath={project.path} projectName={project.name} />}
+        {tab === ghIdx && !project && (
+          <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
+        )}
+
+        {/* ── Tab Git Advanced ── */}
+        {tab === gitAdvIdx && project && <GitTab projectPath={project.path} />}
+        {tab === gitAdvIdx && !project && (
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
         )}
 
         {/* ── Tab Files ── */}
-        {tab === (isOrbitSession ? 3 : 2) && project && <FilesTab projectName={project.name} projectPath={project.path} />}
-        {tab === (isOrbitSession ? 3 : 2) && !project && (
+        {tab === filesIdx && project && <FilesTab projectName={project.name} projectPath={project.path} />}
+        {tab === filesIdx && !project && (
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
         )}
 
         {/* ── Tab Data Viewer ── */}
-        {tab === (isOrbitSession ? 4 : 3) && (
+        {tab === dataIdx && (
           <DataViewer
             files={dataFiles}
             activeIdx={dataActive}
@@ -1714,8 +1975,8 @@ export function UtilityPanel() {
         )}
 
         {/* ── Tab AI Search ── */}
-        {tab === (isOrbitSession ? 5 : 4) && project && <AiSearchTab projectId={project.id} />}
-        {tab === (isOrbitSession ? 5 : 4) && !project && (
+        {tab === researchIdx && project && <AiSearchTab projectId={project.id} />}
+        {tab === researchIdx && !project && (
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
         )}
 
