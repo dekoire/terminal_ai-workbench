@@ -71,7 +71,7 @@ function TextInput({ value, color, fontSize, onChange, onConfirm, onRemove }: Te
         outline: '1.5px dashed rgba(255,255,255,0.7)',
         color, fontSize, fontWeight: 700, fontFamily: 'sans-serif',
         padding: '1px 3px', minWidth: 60,
-        textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+        textShadow: '0 1px 2px rgba(0,0,0,0.3)',
         lineHeight: 1,
       }}
     />
@@ -152,6 +152,11 @@ export const DrawCanvas = React.forwardRef<DrawCanvasHandle, Props>(
       window.addEventListener('keydown', h)
       return () => window.removeEventListener('keydown', h)
     }, [active, undo])
+
+    // ── Live-update fontSize of the currently editing text item when size changes ─
+    useEffect(() => {
+      setTextItems(prev => prev.map(i => i.editing ? { ...i, fontSize: Math.max(14, size * 3) } : i))
+    }, [size])
 
     // ── Drawing handlers ──────────────────────────────────────────────────────
     const onDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -330,7 +335,7 @@ export const DrawCanvas = React.forwardRef<DrawCanvasHandle, Props>(
                   fontSize: item.fontSize,
                   fontWeight: 700,
                   fontFamily: 'sans-serif',
-                  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.3)',
                   lineHeight: 1,
                   whiteSpace: 'pre',
                   display: 'block',

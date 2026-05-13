@@ -63,16 +63,7 @@ export function UIWorkshop() {
           ? { bg: '#f0f0f0', border: '#d0d0d0', color: '#1a1a1a' }
           : { bg: '#1e1e1e', border: '#3a3a3a', color: '#e0e0e0' }
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: hdr.bg, borderBottom: `1px solid ${hdr.border}`, flexShrink: 0 }}>
-            <button
-              onClick={closeWorkshop}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: hdr.color, padding: '3px 6px', borderRadius: 5, fontSize: 11.5, fontFamily: 'var(--font-ui)' }}
-              title={`Zurück zu ${sessionLabel}`}
-            >
-              <IChevLeft style={{ width: 14, height: 14, strokeWidth: 2.2 }} />
-              {sessionLabel}
-            </button>
-
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: hdr.bg, flexShrink: 0 }}>
             <div style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: hdr.color, fontFamily: 'var(--font-ui)', letterSpacing: 0.3 }}>
               Live Browser / Selektor
             </div>

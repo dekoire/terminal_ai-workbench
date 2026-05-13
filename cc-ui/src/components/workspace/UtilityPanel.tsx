@@ -5,7 +5,7 @@ import type { OrbitMessage } from '../../store/useAppStore'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages } from '../../lib/agentSync'
-import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings } from '../primitives/Icons'
+import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
@@ -568,9 +568,47 @@ function FilesTab({ projectPath }: { projectName: string; projectPath: string })
   )
 }
 
-// ── GitHub tab (non-developer friendly) ──────────────────────────────────────
+// ── Shared git state (module-level cache, shared between GitHubTab + CompactGitCard) ──
 
 type GhStatus = 'synced' | 'dirty' | 'error' | 'loading'
+
+interface GhCacheEntry { data: GhDataShared; status: GhStatus; ts: number }
+interface GhDataShared {
+  hasGit: boolean; branch: string; remote: string | null
+  files: Array<{ flag: string; file: string }>
+  branches: Array<{ name: string; current: boolean }>
+  log: Array<{ hash: string; msg: string; when: string }>
+  added: number; removed: number
+}
+
+function parseDiffStat(diffStat: string): { added: number; removed: number } {
+  const a = parseInt(diffStat.match(/(\d+) insertion/)?.[1] ?? '0')
+  const r = parseInt(diffStat.match(/(\d+) deletion/)?.[1] ?? '0')
+  return { added: a, removed: r }
+}
+
+const _gitCache  = new Map<string, GhCacheEntry>()
+const _gitSubs   = new Map<string, Set<() => void>>()
+
+function _gitSubscribe(path: string, fn: () => void) {
+  if (!_gitSubs.has(path)) _gitSubs.set(path, new Set())
+  _gitSubs.get(path)!.add(fn)
+  return () => { _gitSubs.get(path)?.delete(fn) }
+}
+
+function _gitInvalidate(path: string) {
+  _gitCache.delete(path)
+  _gitSubs.get(path)?.forEach(fn => fn())
+}
+
+function _flagColor(f: string) {
+  return f === 'M' || f === ' M' || f === 'MM' ? '#7dc97d' : f.includes('A') || f === '??' ? '#f5a623' : f.includes('D') ? '#e24b4a' : 'var(--fg-2)'
+}
+function _flagLabel(f: string) {
+  return f.trim().startsWith('A') || f === '??' ? '+' : f.includes('D') ? '−' : 'M'
+}
+
+// ── GitHub tab (non-developer friendly) ──────────────────────────────────────
 
 function humanGitError(raw: string): string {
   if (raw.includes('Authentication failed') || raw.includes('could not read Username')) return 'GitHub hat den Zugang abgelehnt. Prüfe deinen Zugangsschlüssel in den Einstellungen.'
@@ -583,26 +621,771 @@ function humanGitError(raw: string): string {
   return raw.slice(0, 140)
 }
 
-interface GhFileInfo { flag: string; file: string }
-interface GhBranch   { name: string; current: boolean }
-interface GhCommit   { hash: string; msg: string; when: string }
-interface GhData {
-  hasGit: boolean
-  branch: string
-  remote: string | null
-  files: GhFileInfo[]
-  branches: GhBranch[]
-  log: GhCommit[]
+type GhFileInfo = { flag: string; file: string }
+type GhBranch   = { name: string; current: boolean }
+type GhCommit   = { hash: string; msg: string; when: string }
+type GhData     = GhDataShared
+
+type ReviewType = 'general' | 'security' | 'performance' | 'style'
+type ReviewFinding = { severity: 'info' | 'warn' | 'error'; line?: number; title: string; advice: string; suggestion?: string }
+
+// ── Diff types + parser ───────────────────────────────────────────────────────
+
+type DiffSide = { lineNo: number | null; text: string; type: 'context' | 'added' | 'removed' | 'empty' }
+type DiffRow  = { left: DiffSide; right: DiffSide; hunkHeader?: string }
+
+function parseDiff(raw: string): DiffRow[] {
+  const rows: DiffRow[] = []
+  let leftNo = 0, rightNo = 0
+  const pendL: string[] = [], pendR: string[] = []
+
+  function flush() {
+    const len = Math.max(pendL.length, pendR.length)
+    for (let i = 0; i < len; i++) {
+      rows.push({
+        left:  pendL[i] !== undefined ? { lineNo: ++leftNo,  text: pendL[i], type: 'removed' } : { lineNo: null, text: '', type: 'empty' },
+        right: pendR[i] !== undefined ? { lineNo: ++rightNo, text: pendR[i], type: 'added'   } : { lineNo: null, text: '', type: 'empty' },
+      })
+    }
+    pendL.length = 0; pendR.length = 0
+  }
+
+  for (const line of raw.split('\n')) {
+    if (/^(diff |index |--- |[+]{3} |Binary )/.test(line)) continue
+    if (line.startsWith('@@')) {
+      flush()
+      const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+      if (m) { leftNo = parseInt(m[1]) - 1; rightNo = parseInt(m[2]) - 1 }
+      rows.push({ hunkHeader: line, left: { lineNo: null, text: line, type: 'context' }, right: { lineNo: null, text: '', type: 'context' } })
+      continue
+    }
+    if (line.startsWith('-')) { pendL.push(line.slice(1)); continue }
+    if (line.startsWith('+')) { pendR.push(line.slice(1)); continue }
+    flush()
+    rows.push({
+      left:  { lineNo: ++leftNo,  text: line.startsWith(' ') ? line.slice(1) : line, type: 'context' },
+      right: { lineNo: ++rightNo, text: line.startsWith(' ') ? line.slice(1) : line, type: 'context' },
+    })
+  }
+  flush()
+  return rows
+}
+
+// ── Diff Modal ────────────────────────────────────────────────────────────────
+
+function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false, onOpenReview, onDiscard }: {
+  projectPath: string; files: GhFileInfo[]; initialFile: string; onClose: () => void
+  readOnly?: boolean; onOpenReview: (file: string) => void; onDiscard: (file: string) => void
+}) {
+  const [selFile,         setSelFile]         = useState(initialFile || (files[0]?.file ?? ''))
+  const [mode,            setMode]            = useState<'side' | 'inline'>('side')
+  const [rows,            setRows]            = useState<DiffRow[]>([])
+  const [loading,         setLoading]         = useState(false)
+  const [confirmDiscard,  setConfirmDiscard]  = useState(false)
+
+  const fileIdx = files.findIndex(f => f.file === selFile)
+  const curFile = files[fileIdx]
+
+  const loadDiff = useCallback((file: string) => {
+    if (!file) return
+    setLoading(true); setRows([]); setConfirmDiscard(false)
+    fetch(`/api/git-diff?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(file)}`)
+      .then(r => r.json())
+      .then((d: { ok: boolean; diff: string }) => setRows(parseDiff(d.diff ?? '')))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false))
+  }, [projectPath])
+
+  useEffect(() => { loadDiff(selFile) }, [selFile, loadDiff])
+
+  useEffect(() => {
+    if (!files.find(f => f.file === selFile) && files.length > 0) setSelFile(files[0].file)
+    else if (files.length === 0) onClose()
+  }, [files, selFile, onClose])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key === 'ArrowLeft'  && fileIdx > 0)              setSelFile(files[fileIdx - 1].file)
+      if (e.key === 'ArrowRight' && fileIdx < files.length - 1) setSelFile(files[fileIdx + 1].file)
+      if (e.key === 'Tab') { e.preventDefault(); setMode(m => m === 'side' ? 'inline' : 'side') }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [files, fileIdx, onClose])
+
+  const stats = rows.reduce((a, r) => {
+    if (r.right.type === 'added')   a.added++
+    if (r.left.type === 'removed')  a.removed++
+    return a
+  }, { added: 0, removed: 0 })
+
+  const MONO: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 11.5 }
+  const LINE_H = 20
+
+  function sideColor(t: DiffSide['type']) { return t === 'removed' ? '#e24b4a' : t === 'added' ? '#7dc97d' : 'var(--fg-3)' }
+  function sideBg(t: DiffSide['type'])    { return t === 'removed' ? 'rgba(226,75,74,0.12)' : t === 'added' ? 'rgba(125,201,125,0.12)' : t === 'empty' ? 'rgba(255,255,255,0.02)' : 'transparent' }
+
+  function SideLine({ side }: { side: DiffSide }) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-start', background: sideBg(side.type), minHeight: LINE_H, lineHeight: `${LINE_H}px` }}>
+        <span style={{ display: 'inline-block', width: 36, textAlign: 'right', paddingRight: 8, flexShrink: 0, userSelect: 'none', color: sideColor(side.type), fontSize: 10.5 }}>
+          {side.lineNo ?? '·'}
+        </span>
+        <span style={{ ...MONO, color: side.type === 'empty' ? '#555' : 'var(--fg-1)', whiteSpace: 'pre', overflow: 'hidden', flex: 1, textOverflow: 'ellipsis' }}>
+          {side.type === 'empty' ? '—' : side.text}
+        </span>
+      </div>
+    )
+  }
+
+  const HUNK_ROW: React.CSSProperties = { padding: '3px 12px', background: 'rgba(255,255,255,0.03)', color: 'var(--fg-3)', fontSize: 10.5, borderTop: '0.5px solid rgba(255,255,255,0.06)', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div style={{ width: '98%', height: '98%', display: 'flex', flexDirection: 'column', background: 'var(--bg-0)', borderRadius: 12, overflow: 'hidden', border: '0.5px solid var(--line-strong)', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.08)', background: 'var(--bg-1)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <IGitFork style={{ width: 14, height: 14, color: 'var(--accent)', flexShrink: 0 }} />
+          <span style={{ fontWeight: 500, fontSize: 13 }}>{readOnly ? 'Speicherpunkt' : 'Vergleich anzeigen'}</span>
+          <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>·</span>
+          <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>{files.length} Datei{files.length !== 1 ? 'en' : ''} geändert</span>
+          {stats.added + stats.removed > 0 && (
+            <span style={{ fontSize: 11 }}>
+              <span style={{ color: '#7dc97d' }}>+{stats.added}</span>
+              {' '}
+              <span style={{ color: '#e24b4a' }}>−{stats.removed}</span>
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 2 }}>
+            {(['side', 'inline'] as const).map(m => (
+              <button key={m} onClick={() => setMode(m)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: mode === m ? 'rgba(255,138,76,0.2)' : 'transparent', color: mode === m ? 'var(--accent)' : 'var(--fg-3)', fontFamily: 'var(--font-ui)' }}>
+                {m === 'side' ? 'Nebeneinander' : 'Inline'}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}>
+            <IClose style={{ width: 14, height: 14 }} />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '200px 1fr', overflow: 'hidden' }}>
+
+        {/* Sidebar */}
+        <div style={{ borderRight: '0.5px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.15)', overflowY: 'auto', padding: '10px 0' }}>
+          <div style={{ fontSize: 10, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 12px 8px' }}>Dateien</div>
+          {files.map(f => {
+            const active = f.file === selFile
+            const isNew  = f.flag === '??' || f.flag.trim().startsWith('A')
+            return (
+              <div key={f.file} onClick={() => setSelFile(f.file)} title={f.file}
+                style={{ padding: '6px 10px', background: active ? 'rgba(255,138,76,0.1)' : 'transparent', borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
+                <span style={{ fontSize: 10, fontWeight: 600, flexShrink: 0, color: isNew ? 'var(--accent)' : _flagColor(f.flag), background: isNew ? 'rgba(255,138,76,0.15)' : `${_flagColor(f.flag)}22`, borderRadius: 3, padding: '1px 4px', lineHeight: 1.4, ...MONO }}>
+                  {isNew ? 'A' : f.flag.trim()[0] ?? 'M'}
+                </span>
+                <span style={{ ...MONO, fontSize: 11, color: active ? 'var(--accent)' : 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                  {f.file.split('/').pop()}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Diff area */}
+        <div style={{ overflow: 'auto', display: 'flex', flexDirection: 'column', background: 'var(--bg-0)' }}>
+          {loading && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--fg-3)', fontSize: 12, gap: 8 }}>
+              <ISpinner style={{ width: 14, height: 14 }} /> Wird geladen…
+            </div>
+          )}
+
+          {!loading && rows.length === 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--fg-3)', fontSize: 12 }}>Kein Diff verfügbar</div>
+          )}
+
+          {!loading && rows.length > 0 && mode === 'side' && (
+            <>
+              {/* Column labels */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: '0.5px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', flexShrink: 0 }}>
+                <div style={{ padding: '7px 12px', fontSize: 10.5, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5, borderRight: '0.5px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <IHistoryClock style={{ width: 11, height: 11 }} /> Vorher
+                </div>
+                <div style={{ padding: '7px 12px', fontSize: 10.5, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <ISpark style={{ width: 11, height: 11 }} /> Nachher (deine Änderungen)
+                </div>
+              </div>
+              {/* Rows */}
+              <div style={{ ...MONO, display: 'grid', gridTemplateColumns: '1fr 1fr', flex: 1 }}>
+                {rows.map((row, i) =>
+                  row.hunkHeader
+                    ? <div key={i} style={{ gridColumn: '1 / -1', ...HUNK_ROW }}>{row.hunkHeader}</div>
+                    : (
+                      <React.Fragment key={i}>
+                        <div style={{ borderRight: '0.5px solid rgba(255,255,255,0.05)', overflow: 'hidden', minWidth: 0 }}><SideLine side={row.left} /></div>
+                        <div style={{ overflow: 'hidden', minWidth: 0 }}><SideLine side={row.right} /></div>
+                      </React.Fragment>
+                    )
+                )}
+              </div>
+            </>
+          )}
+
+          {!loading && rows.length > 0 && mode === 'inline' && (
+            <div style={{ ...MONO, flex: 1 }}>
+              {rows.map((row, i) => {
+                if (row.hunkHeader) return <div key={i} style={HUNK_ROW}>{row.hunkHeader}</div>
+                return (
+                  <React.Fragment key={i}>
+                    {row.left.type === 'removed' && (
+                      <div style={{ display: 'flex', background: 'rgba(226,75,74,0.12)', minHeight: LINE_H, lineHeight: `${LINE_H}px` }}>
+                        <span style={{ width: 36, textAlign: 'right', paddingRight: 8, color: '#e24b4a', fontSize: 10.5, flexShrink: 0, userSelect: 'none' }}>{row.left.lineNo}</span>
+                        <span style={{ color: '#e24b4a', paddingRight: 8, flexShrink: 0, userSelect: 'none' }}>−</span>
+                        <span style={{ color: 'var(--fg-1)', whiteSpace: 'pre' }}>{row.left.text}</span>
+                      </div>
+                    )}
+                    {row.right.type === 'added' && (
+                      <div style={{ display: 'flex', background: 'rgba(125,201,125,0.12)', minHeight: LINE_H, lineHeight: `${LINE_H}px` }}>
+                        <span style={{ width: 36, textAlign: 'right', paddingRight: 8, color: '#7dc97d', fontSize: 10.5, flexShrink: 0, userSelect: 'none' }}>{row.right.lineNo}</span>
+                        <span style={{ color: '#7dc97d', paddingRight: 8, flexShrink: 0, userSelect: 'none' }}>+</span>
+                        <span style={{ color: 'var(--fg-1)', whiteSpace: 'pre' }}>{row.right.text}</span>
+                      </div>
+                    )}
+                    {row.left.type === 'context' && row.left.lineNo !== null && (
+                      <div style={{ display: 'flex', minHeight: LINE_H, lineHeight: `${LINE_H}px` }}>
+                        <span style={{ width: 36, textAlign: 'right', paddingRight: 8, color: 'var(--fg-3)', fontSize: 10.5, flexShrink: 0, userSelect: 'none' }}>{row.left.lineNo}</span>
+                        <span style={{ paddingRight: 8, flexShrink: 0, color: 'transparent', userSelect: 'none' }}>·</span>
+                        <span style={{ color: 'var(--fg-2)', whiteSpace: 'pre' }}>{row.left.text}</span>
+                      </div>
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderTop: '0.5px solid rgba(255,255,255,0.08)', background: 'var(--bg-1)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--fg-3)' }}>
+          <IKeyboard style={{ width: 12, height: 12, flexShrink: 0 }} />
+          ← → zwischen Dateien · Esc schließen · Tab Ansicht wechseln
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!readOnly && curFile && (
+            confirmDiscard ? (
+              <>
+                <span style={{ fontSize: 11, color: '#e24b4a' }}>Wirklich verwerfen?</span>
+                <button onClick={() => { onDiscard(selFile); setConfirmDiscard(false) }}
+                  style={{ background: 'transparent', color: '#e24b4a', border: '0.5px solid rgba(226,75,74,0.4)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>
+                  Ja, verwerfen
+                </button>
+                <button onClick={() => setConfirmDiscard(false)}
+                  style={{ background: 'transparent', color: 'var(--fg-2)', border: '0.5px solid rgba(255,255,255,0.15)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>
+                  Abbrechen
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmDiscard(true)}
+                style={{ background: 'transparent', color: '#e24b4a', border: '0.5px solid rgba(226,75,74,0.4)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <IUndo style={{ width: 11, height: 11 }} /> Änderung verwerfen
+              </button>
+            )
+          )}
+          <button onClick={() => { onOpenReview(selFile); onClose() }}
+            style={{ background: 'rgba(255,138,76,0.15)', color: 'var(--accent)', border: '0.5px solid rgba(255,138,76,0.3)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <ISpark style={{ width: 11, height: 11 }} /> KI-Review dieser Datei
+          </button>
+        </div>
+      </div>
+    </div>
+    </div>
+  )
+}
+
+const REVIEW_PROMPTS: Record<ReviewType, string> = {
+  general:     'Du bist ein erfahrener Code-Reviewer. Prüfe den Code auf offensichtliche Bugs, fehlerhafte Logik, Tippfehler und Missverständnisse. Antworte ausschließlich als JSON: {"findings":[{"severity":"info|warn|error","line":0,"title":"...","advice":"...","suggestion":"..."}]}. Falls nichts zu beanstanden: {"findings":[]}.',
+  security:    'Du bist Security-Reviewer. Suche nach SQL-Injection, XSS, unsicheren Auth-Mustern, exponierten Secrets, fehlender Eingabevalidierung, unsicheren Krypto-Aufrufen. Antworte ausschließlich als JSON: {"findings":[{"severity":"info|warn|error","line":0,"title":"...","advice":"...","suggestion":"..."}]}.',
+  performance: 'Du bist Performance-Reviewer. Suche nach N+1 Queries, unnötigen Re-Renders, Speicherlecks, ineffizienten Algorithmen, blockierendem I/O. Antworte ausschließlich als JSON: {"findings":[{"severity":"info|warn|error","line":0,"title":"...","advice":"...","suggestion":"..."}]}.',
+  style:       'Du bist Code-Style-Reviewer. Prüfe Lesbarkeit, Benennung, Funktionslänge, Magic Numbers, fehlende Typen, inkonsistente Konventionen. Antworte ausschließlich als JSON: {"findings":[{"severity":"info|warn|error","line":0,"title":"...","advice":"...","suggestion":"..."}]}.',
+}
+
+// ── Compact git card (Session tab) ───────────────────────────────────────────
+
+function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; onOpenGitTab: () => void }) {
+  const cached = _gitCache.get(projectPath)
+  const [data,      setData]      = useState<GhData | null>(cached?.data ?? null)
+  const [status,    setStatus]    = useState<GhStatus>(cached?.status ?? 'loading')
+  const [open,      setOpen]      = useState(true)
+  const [note,      setNote]      = useState('')
+  const [busy,      setBusy]      = useState<'save' | 'pull' | null>(null)
+  const [toast,     setToast]     = useState<{ msg: string; ok: boolean } | null>(null)
+  const [diffOpen,  setDiffOpen]  = useState(false)
+  const [diffFile,  setDiffFile]  = useState('')
+  const [setupOpen, setSetupOpen] = useState(false)
+  const { githubToken, projects } = useAppStore()
+  const projectName = projects.find(p => p.path === projectPath)?.name ?? ''
+
+  const load = useCallback(() => {
+    const c = _gitCache.get(projectPath)
+    if (c && Date.now() - c.ts < 20_000) { setData(c.data); setStatus(c.status); return }
+    fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
+      .then(r => r.json())
+      .then((d: { hasGit?: boolean; status?: GhFileInfo[]; branches?: GhBranch[]; log?: GhCommit[]; remotes?: string[]; diffStat?: string }) => {
+        const files = (d.status ?? []).filter(f => f.flag !== '??')
+        const branch = (d.branches ?? []).find(b => b.current)?.name ?? 'main'
+        const remote = (d.remotes ?? [])[0] ?? null
+        const { added, removed } = parseDiffStat(d.diffStat ?? '')
+        const newData: GhData = { hasGit: d.hasGit ?? false, branch, remote, files, branches: d.branches ?? [], log: (d.log ?? []).slice(0, 10), added, removed }
+        const newStatus: GhStatus = files.length > 0 ? 'dirty' : 'synced'
+        _gitCache.set(projectPath, { data: newData, status: newStatus, ts: Date.now() })
+        setData(newData); setStatus(newStatus)
+      })
+      .catch(() => setStatus('error'))
+  }, [projectPath])
+
+  useEffect(() => { load() }, [load])
+  useEffect(() => _gitSubscribe(projectPath, load), [projectPath, load])
+
+  // Cmd/Ctrl+S — trigger save
+  const handleSaveRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); handleSaveRef.current() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  const gitAction = (action: string, extra?: Record<string, string>) =>
+    fetch('/api/git-action', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, path: projectPath, ...extra }),
+    }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
+
+  const showToast = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000) }
+
+  const handleSave = useCallback(async () => {
+    if (!data || status !== 'dirty' || busy) return
+    setBusy('save')
+    try {
+      const autoMsg = data.files.length > 0 ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''}` : 'Update'
+      const r1 = await gitAction('stage')
+      if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
+      const r2 = await gitAction('commit', { message: note.trim() || autoMsg })
+      if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      if (data.remote) {
+        const r3 = await gitAction('push')
+        if (!r3.ok) { showToast(humanGitError(r3.out), false); return }
+      }
+      setNote(''); showToast('Gespeichert ✓', true)
+      _gitInvalidate(projectPath); load()
+    } finally { setBusy(null) }
+  }, [data, status, busy, note, projectPath])
+
+  handleSaveRef.current = handleSave
+
+  const handlePull = async () => {
+    setBusy('pull')
+    try {
+      const r = await gitAction('pull')
+      showToast(r.ok ? 'Updates geholt ✓' : humanGitError(r.out), r.ok)
+      if (r.ok) { _gitInvalidate(projectPath); load() }
+    } finally { setBusy(null) }
+  }
+
+  const handleDiscardFile = async (file: string) => {
+    await fetch('/api/git-action', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'discard-file', path: projectPath, message: file }),
+    })
+    _gitInvalidate(projectPath); load()
+  }
+
+  const added   = data?.added   ?? 0
+  const removed = data?.removed ?? 0
+  const hasDiff = added > 0 || removed > 0
+  const statusColor = status === 'synced' ? '#7dc97d' : status === 'dirty' ? '#f5a623' : '#e24b4a'
+  const borderColor = 'var(--line-strong)'
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {/* ── Section header — always visible ── */}
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', paddingBottom: open ? 6 : 0 }}
+      >
+        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1 }}>GitHub</span>
+
+        {/* status dot */}
+        {status !== 'loading' && (
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+        )}
+
+        {/* diff stats — always shown, grayed when 0 */}
+        <span
+          onClick={hasDiff ? e => { e.stopPropagation(); if (data?.files.length) { setDiffFile(data.files[0].file); setDiffOpen(true) } } : undefined}
+          style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, background: 'rgba(255,255,255,0.04)', borderRadius: 4, padding: '2px 6px', cursor: hasDiff ? 'pointer' : 'default', flexShrink: 0 }}
+        >
+          {status === 'loading'
+            ? <span style={{ color: 'var(--fg-3)' }}>…</span>
+            : <>
+                <span style={{ color: hasDiff ? '#7dc97d' : 'var(--fg-3)', fontWeight: hasDiff ? 600 : 400 }}>+{added}</span>
+                <span style={{ color: hasDiff ? '#e24b4a' : 'var(--fg-3)', fontWeight: hasDiff ? 600 : 400 }}>−{removed}</span>
+              </>
+          }
+        </span>
+
+        {open
+          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+        }
+      </div>
+
+      {/* ── Section body — only when open ── */}
+      {open && (
+        <div style={{ background: 'var(--bg-2)', border: `0.5px solid ${borderColor}`, borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+
+          {/* DiffModal */}
+          {diffOpen && data && data.files.length > 0 && (
+            <DiffModal
+              projectPath={projectPath}
+              files={data.files}
+              initialFile={diffFile}
+              onClose={() => setDiffOpen(false)}
+              onOpenReview={() => { setDiffOpen(false); onOpenGitTab() }}
+              onDiscard={handleDiscardFile}
+            />
+          )}
+
+          {/* Toast */}
+          {toast && (
+            <div style={{ padding: '6px 12px', background: toast.ok ? 'rgba(125,201,125,0.12)' : 'rgba(226,75,74,0.12)', color: toast.ok ? '#7dc97d' : '#e24b4a', fontSize: 11, borderBottom: `0.5px solid ${toast.ok ? 'rgba(125,201,125,0.2)' : 'rgba(226,75,74,0.2)'}` }}>
+              {toast.msg}
+            </div>
+          )}
+
+          {/* Loading */}
+          {status === 'loading' && (
+            <div style={{ padding: '14px 12px', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--fg-3)', fontSize: 11.5 }}>
+              <ISpinner style={{ width: 13, height: 13 }} /> Lade…
+            </div>
+          )}
+
+          {/* No git */}
+          {status !== 'loading' && data !== null && !data.hasGit && (
+            <div style={{ padding: '14px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: 'var(--fg-2)', marginBottom: 10 }}>Noch kein Git-Projekt</div>
+              <span onClick={() => setSetupOpen(true)} style={{ fontSize: 11, color: 'var(--accent)', cursor: 'pointer' }}>Einrichten →</span>
+            </div>
+          )}
+          {setupOpen && (
+            <GitSetupModal
+              projectPath={projectPath}
+              projectName={projectName}
+              githubToken={githubToken}
+              onClose={() => setSetupOpen(false)}
+              onDone={() => { setSetupOpen(false); _gitInvalidate(projectPath); load() }}
+            />
+          )}
+
+          {/* Synced */}
+          {status === 'synced' && data?.hasGit && (
+            <div style={{ padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: data.log[0] ? 8 : 0 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: 'var(--fg-1)', flex: 1 }}>Alles gesichert</span>
+                <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{data.log[0]?.when ?? ''}</span>
+              </div>
+              {data.log[0] && (
+                <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 5, padding: '5px 8px', marginBottom: 8, fontSize: 11 }}>
+                  <div style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.log[0].msg}</div>
+                  <div style={{ color: 'var(--fg-3)', fontSize: 10, marginTop: 1, fontFamily: 'var(--font-mono)' }}>{data.log[0].hash.slice(0, 7)}</div>
+                </div>
+              )}
+              <button onClick={handlePull} disabled={!!busy} style={{ width: '100%', background: 'transparent', color: 'var(--fg-2)', border: '0.5px solid rgba(255,255,255,0.12)', padding: '7px', borderRadius: 6, fontSize: 11.5, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', opacity: busy ? 0.6 : 1 }}>
+                {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudDownload style={{ width: 12, height: 12 }} />}
+                Updates holen
+              </button>
+              <div style={{ textAlign: 'center', marginTop: 7 }}>
+                <span onClick={onOpenGitTab} style={{ fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer' }}>Alle Details →</span>
+              </div>
+            </div>
+          )}
+
+          {/* Dirty */}
+          {status === 'dirty' && data?.hasGit && (
+            <div style={{ padding: '10px 12px' }}>
+              {/* File list */}
+              {data.files.length > 0 && (
+                <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 6, marginBottom: 8 }}>
+                  {data.files.slice(0, 4).map((f, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', borderBottom: i < Math.min(data.files.length, 4) - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', fontSize: 11.5, fontFamily: 'var(--font-mono)', minWidth: 0 }}>
+                      <span style={{ color: _flagColor(f.flag), marginRight: 6, fontWeight: 700, flexShrink: 0 }}>{_flagLabel(f.flag)}</span>
+                      <span style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.file}</span>
+                      <IEye onClick={e => { e.stopPropagation(); setDiffFile(f.file); setDiffOpen(true) }} style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0, marginLeft: 6, cursor: 'pointer' }} />
+                    </div>
+                  ))}
+                  {data.files.length > 4 && (
+                    <div onClick={onOpenGitTab} style={{ padding: '4px 8px', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', textAlign: 'center' }}>
+                      + {data.files.length - 4} weitere →
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Note */}
+              <input
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder="Was hast du geändert? (optional)"
+                style={{ width: '100%', padding: '6px 9px', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, background: 'rgba(255,255,255,0.03)', color: 'var(--fg-1)', fontSize: 11.5, fontFamily: 'var(--font-ui)', outline: 'none', marginBottom: 8, boxSizing: 'border-box' as const }}
+              />
+              {/* Buttons */}
+              <div style={{ display: 'flex', gap: 5 }}>
+                <button onClick={handleSave} disabled={!!busy} style={{ flex: 1, background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: 7, borderRadius: 6, fontWeight: 500, fontSize: 12, cursor: busy ? 'default' : 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: busy ? 0.7 : 1 }}>
+                  {busy === 'save' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudUpload style={{ width: 13, height: 13, strokeWidth: 2 }} />}
+                  {busy === 'save' ? 'Wird hochgeladen…' : 'Speichern & Hochladen'}
+                </button>
+                <button onClick={handlePull} disabled={!!busy} title="Updates holen" style={{ background: 'transparent', color: 'var(--fg-2)', border: '0.5px solid rgba(255,255,255,0.12)', padding: '7px 9px', borderRadius: 6, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+                  {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudDownload style={{ width: 13, height: 13 }} />}
+                </button>
+              </div>
+              <div style={{ textAlign: 'center', marginTop: 7 }}>
+                <span onClick={onOpenGitTab} style={{ fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer' }}>Alle Details →</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Git setup modal ───────────────────────────────────────────────────────────
+
+type SetupMode = 'init' | 'clone' | 'connect' | null
+
+function GitSetupModal({
+  projectPath, projectName, githubToken, onClose, onDone,
+}: { projectPath: string; projectName: string; githubToken: string; onClose: () => void; onDone: () => void }) {
+  const [mode,       setMode]       = useState<SetupMode>(null)
+  const [remoteUrl,  setRemoteUrl]  = useState('')
+  const [busy,       setBusy]       = useState(false)
+  const [result,     setResult]     = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const gitAction = (action: string, extra?: Record<string, string>) =>
+    fetch('/api/git-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, path: projectPath, ...extra }),
+    }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
+
+  const withToken = (url: string) =>
+    githubToken && url.includes('github.com')
+      ? url.replace('https://github.com/', `https://${githubToken}@github.com/`)
+      : url
+
+  const run = async () => {
+    setBusy(true)
+    setResult(null)
+    try {
+      if (mode === 'init') {
+        const r = await gitAction('init')
+        setResult(r.ok ? { ok: true, msg: 'Projekt eingerichtet ✓' } : { ok: false, msg: 'Fehler beim Einrichten.' })
+        if (r.ok) setTimeout(onDone, 1200)
+      } else if (mode === 'clone') {
+        const r = await gitAction('clone', { remote: withToken(remoteUrl) })
+        setResult(r.ok ? { ok: true, msg: 'Erfolgreich geklont ✓' } : { ok: false, msg: r.out.slice(0, 120) })
+        if (r.ok) setTimeout(onDone, 1200)
+      } else if (mode === 'connect') {
+        const r1 = await gitAction('init')
+        if (!r1.ok) { setResult({ ok: false, msg: 'Fehler beim Einrichten.' }); return }
+        if (remoteUrl.trim()) {
+          const r2 = await gitAction('add-remote', { remote: withToken(remoteUrl) })
+          if (!r2.ok) { setResult({ ok: false, msg: 'Remote konnte nicht verbunden werden.' }); return }
+        }
+        setResult({ ok: true, msg: 'Ordner verbunden ✓' })
+        setTimeout(onDone, 1200)
+      }
+    } finally { setBusy(false) }
+  }
+
+  const modalBg: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(5px)' }
+  const modalBox: React.CSSProperties = { background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 12, padding: 24, width: 420, maxWidth: '90vw', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }
+  const optCard: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--bg-2)', cursor: 'pointer', marginBottom: 8 }
+  const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' as const, marginBottom: 4 }
+  const btnPri: React.CSSProperties = { background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '8px 18px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+  const btnSec: React.CSSProperties = { background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--line-strong)', padding: '8px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+
+  return (
+    <div style={modalBg} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={modalBox}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg-0)' }}>Projekt einrichten</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 3 }}>{projectName}</div>
+          </div>
+          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', padding: 4, lineHeight: 1 }}>
+            <IClose style={{ width: 14, height: 14 }} />
+          </button>
+        </div>
+
+        {/* Option selection */}
+        {!mode && !result && (
+          <div>
+            <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginBottom: 14 }}>Wie möchtest du das Projekt einrichten?</div>
+            {([
+              { m: 'init' as SetupMode,    icon: <IPlay style={{ width: 15, height: 15, color: 'var(--accent)', flexShrink: 0 }} />,          title: 'Neues Projekt starten',    desc: 'Git in diesem Ordner einrichten — Änderungen lokal speichern' },
+              { m: 'clone' as SetupMode,   icon: <ICloudDownload style={{ width: 15, height: 15, color: 'var(--accent)', flexShrink: 0 }} />,  title: 'Von GitHub holen',         desc: 'Vorhandenes GitHub-Repo in diesen Ordner klonen' },
+              { m: 'connect' as SetupMode, icon: <ILink style={{ width: 15, height: 15, color: 'var(--accent)', flexShrink: 0 }} />,           title: 'Diesen Ordner verbinden',  desc: 'Git einrichten und mit einem GitHub-Repo verknüpfen' },
+            ] as const).map(({ m, icon, title, desc }) => (
+              <div key={m as string} style={optCard} onClick={() => setMode(m)}>
+                {icon}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>{title}</div>
+                  <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>{desc}</div>
+                </div>
+                <IChev style={{ width: 12, height: 12, color: 'var(--fg-3)', marginLeft: 'auto', flexShrink: 0 }} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Form: init */}
+        {mode === 'init' && !result && (
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--fg-2)', marginBottom: 18, lineHeight: 1.6 }}>
+              Git wird in <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-0)' }}>{projectName}</span> eingerichtet. Du kannst danach eine GitHub-Verbindung im GitHub-Tab hinzufügen.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setMode(null)} style={btnSec}>Zurück</button>
+              <button onClick={run} disabled={busy} style={{ ...btnPri, opacity: busy ? 0.6 : 1 }}>
+                {busy ? 'Wird eingerichtet…' : 'Einrichten'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Form: clone */}
+        {mode === 'clone' && !result && (
+          <div>
+            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>GitHub URL</label>
+            <input style={inp} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus />
+            {githubToken
+              ? <div style={{ fontSize: 10.5, color: '#7dc97d', marginBottom: 14 }}>✓ GitHub Token hinterlegt — authentifizierter Zugriff</div>
+              : <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 14 }}>Kein GitHub Token — nur öffentliche Repos klonbar</div>
+            }
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setMode(null)} style={btnSec}>Zurück</button>
+              <button onClick={run} disabled={busy || !remoteUrl.trim()} style={{ ...btnPri, opacity: (busy || !remoteUrl.trim()) ? 0.5 : 1 }}>
+                {busy ? 'Wird geklont…' : 'Klonen'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Form: connect */}
+        {mode === 'connect' && !result && (
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--fg-2)', marginBottom: 14, lineHeight: 1.6 }}>
+              Git wird in diesem Ordner eingerichtet und optional mit einem GitHub-Repo verbunden.
+            </div>
+            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>GitHub URL (optional)</label>
+            <input style={{ ...inp, marginBottom: 16 }} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setMode(null)} style={btnSec}>Zurück</button>
+              <button onClick={run} disabled={busy} style={{ ...btnPri, opacity: busy ? 0.6 : 1 }}>
+                {busy ? 'Wird verbunden…' : 'Verbinden'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Result */}
+        {result && (
+          <div style={{ padding: '14px 16px', borderRadius: 8, background: result.ok ? 'rgba(125,201,125,0.1)' : 'rgba(226,75,74,0.1)', border: `1px solid ${result.ok ? 'rgba(125,201,125,0.3)' : 'rgba(226,75,74,0.3)'}`, color: result.ok ? '#7dc97d' : '#e24b4a', fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
+            {result.msg}
+            {!result.ok && (
+              <button onClick={() => { setResult(null) }} style={{ display: 'block', margin: '10px auto 0', ...btnSec, fontSize: 11 }}>Nochmal versuchen</button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function GitHubTab({ projectPath, projectName }: { projectPath: string; projectName: string }) {
-  const [data,     setData]     = useState<GhData | null>(null)
+  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken, setGithubToken } = useAppStore()
+  const [data,            setData]          = useState<GhData | null>(null)
+  const [showSetupModal,  setShowSetupModal] = useState(false)
   const [status,   setStatus]   = useState<GhStatus>('loading')
   const [note,     setNote]     = useState('')
   const [busy,     setBusy]     = useState<'save' | 'pull' | null>(null)
   const [toast,    setToast]    = useState<{ msg: string; ok: boolean } | null>(null)
   const [sections, setSections] = useState({ versions: false, history: false, settings: false })
-  const [showAllFiles, setShowAllFiles] = useState(false)
+  const [showAllFiles,  setShowAllFiles]  = useState(false)
+  const [editingToken,  setEditingToken]  = useState(false)
+  const [tokenDraft,    setTokenDraft]    = useState(githubToken)
+  const [diffOpen,      setDiffOpen]      = useState(false)
+  const [diffFile,      setDiffFile]      = useState('')
+
+  // ── Review state ──────────────────────────────────────────────────────────
+  const [reviewOpen,     setReviewOpen]     = useState(false)
+  const [reviewFile,     setReviewFile]     = useState('')
+  const [reviewType,     setReviewType]     = useState<ReviewType>('general')
+  const [reviewBusy,     setReviewBusy]     = useState(false)
+  const [reviewFindings, setReviewFindings] = useState<ReviewFinding[] | null>(null)
+  const [reviewError,    setReviewError]    = useState<string | null>(null)
+
+  const runReview = useCallback(async () => {
+    if (!reviewFile || !openrouterKey) return
+    setReviewBusy(true)
+    setReviewFindings(null)
+    setReviewError(null)
+    try {
+      const fileRes = await fetch(`/api/file-content?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(reviewFile)}`)
+      const fileData = await fileRes.json() as { ok: boolean; content?: string; error?: string }
+      if (!fileData.ok || !fileData.content) { setReviewError('Dateiinhalt konnte nicht gelesen werden.'); return }
+
+      const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openrouterKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://codera.ai',
+          'X-Title': 'Codera AI Code Review',
+        },
+        body: JSON.stringify({
+          model: codeReviewModel,
+          messages: [
+            { role: 'system', content: REVIEW_PROMPTS[reviewType] },
+            { role: 'user',   content: `Datei: ${reviewFile}\n\n\`\`\`\n${fileData.content.slice(0, 12000)}\n\`\`\`` },
+          ],
+          max_tokens: 2048,
+        }),
+      })
+      if (resp.status === 401) { setReviewError('OpenRouter API-Key ungültig. Bitte in den Einstellungen prüfen.'); return }
+      if (resp.status === 429) { setReviewError('Zu viele Anfragen — kurz warten und nochmal probieren.'); return }
+      if (!resp.ok) { setReviewError(`Fehler vom Modell (${resp.status}). Versuche ein anderes Modell.`); return }
+
+      const json = await resp.json() as { choices?: { message?: { content?: string } }[] }
+      const raw = json.choices?.[0]?.message?.content ?? ''
+      const match = raw.match(/\{[\s\S]*\}/)
+      if (!match) { setReviewError('Antwort konnte nicht gelesen werden. Versuche es nochmal.'); return }
+      const parsed = JSON.parse(match[0]) as { findings: ReviewFinding[] }
+      setReviewFindings(parsed.findings ?? [])
+    } catch { setReviewError('Verbindungsfehler. Ist eine Internetverbindung vorhanden?') }
+    finally { setReviewBusy(false) }
+  }, [reviewFile, reviewType, openrouterKey, codeReviewModel, projectPath])
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok })
@@ -613,24 +1396,25 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
     setStatus('loading')
     fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
       .then(r => r.json())
-      .then((d: { hasGit?: boolean; status?: { flag: string; file: string }[]; branches?: { name: string; current: boolean }[]; log?: { hash: string; msg: string; when: string }[]; remotes?: string[] }) => {
+      .then((d: { hasGit?: boolean; status?: GhFileInfo[]; branches?: GhBranch[]; log?: GhCommit[]; remotes?: string[]; diffStat?: string }) => {
         const files = (d.status ?? []).filter(f => f.flag !== '??')
-        const currentBranch = (d.branches ?? []).find((b: { current: boolean }) => b.current)?.name ?? 'main'
+        const currentBranch = (d.branches ?? []).find(b => b.current)?.name ?? 'main'
         const remote = (d.remotes ?? [])[0] ?? null
-        setData({
-          hasGit: d.hasGit ?? false,
-          branch: currentBranch,
-          remote,
-          files,
-          branches: d.branches ?? [],
-          log: (d.log ?? []).slice(0, 10),
-        })
-        setStatus(files.length > 0 ? 'dirty' : 'synced')
+        const { added, removed } = parseDiffStat(d.diffStat ?? '')
+        const newData: GhData = {
+          hasGit: d.hasGit ?? false, branch: currentBranch, remote,
+          files, branches: d.branches ?? [], log: (d.log ?? []).slice(0, 10), added, removed,
+        }
+        const newStatus: GhStatus = files.length > 0 ? 'dirty' : 'synced'
+        _gitCache.set(projectPath, { data: newData, status: newStatus, ts: Date.now() })
+        setData(newData)
+        setStatus(newStatus)
       })
       .catch(() => setStatus('error'))
   }, [projectPath])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => _gitSubscribe(projectPath, load), [projectPath, load])
 
   const gitAction = (action: string, extra?: Record<string, string>) =>
     fetch('/api/git-action', {
@@ -657,6 +1441,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
       }
       setNote('')
       showToast('Gespeichert & hochgeladen ✓', true)
+      _gitInvalidate(projectPath)
       load()
     } finally { setBusy(null) }
   }
@@ -666,19 +1451,33 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
     try {
       const r = await gitAction('pull')
       showToast(r.ok ? 'Updates geholt ✓' : humanGitError(r.out), r.ok)
-      if (r.ok) load()
+      if (r.ok) { _gitInvalidate(projectPath); load() }
     } finally { setBusy(null) }
+  }
+
+  const handleDiscardFile = async (file: string) => {
+    await fetch('/api/git-action', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'discard-file', path: projectPath, message: file }),
+    })
+    _gitInvalidate(projectPath); load()
   }
 
   const statusColor = status === 'synced' ? '#7dc97d' : status === 'dirty' ? '#f5a623' : status === 'error' ? '#e24b4a' : 'var(--fg-3)'
   const statusText  = status === 'synced' ? 'Alles gesichert' : status === 'dirty' ? `${data?.files.length ?? 0} ungespeicherte Änderung${(data?.files.length ?? 0) !== 1 ? 'en' : ''}` : status === 'error' ? 'Verbindung getrennt' : 'Wird geladen…'
 
-  const flagColor = (f: string) => f === 'M' || f === ' M' || f === 'MM' ? '#7dc97d' : f.includes('A') || f === '??' ? '#f5a623' : f.includes('D') ? '#e24b4a' : 'var(--fg-2)'
-  const flagLabel = (f: string) => f.trim().startsWith('A') || f === '??' ? '+' : f.includes('D') ? '−' : 'M'
+  const flagColor = _flagColor
+  const flagLabel = _flagLabel
 
   const card: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }
   const secBtn: React.CSSProperties = { width: '100%', background: 'transparent', color: 'var(--fg-1)', border: '0.5px solid rgba(255,255,255,0.18)', padding: '8px 10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8 }
   const priBtn: React.CSSProperties = { width: '100%', background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '10px', borderRadius: 7, fontWeight: 600, fontSize: 12.5, cursor: (status === 'dirty' && !busy) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, opacity: (status !== 'dirty' || busy === 'save') ? 0.5 : 1 }
+
+  const ghUrl = (() => {
+    if (!data?.remote) return null
+    const m = data.remote.match(/github\.com[:/](.+?)(?:\.git)?$/)
+    return m ? `https://github.com/${m[1]}` : null
+  })()
 
   const toggleSection = (k: keyof typeof sections) => setSections(s => ({ ...s, [k]: !s[k] }))
   const collRow = (label: string, icon: React.ReactNode, key: keyof typeof sections): React.ReactNode => (
@@ -695,6 +1494,26 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
   )
 
   return (
+    <>
+      {showSetupModal && (
+        <GitSetupModal
+          projectPath={projectPath}
+          projectName={projectName}
+          githubToken={githubToken}
+          onClose={() => setShowSetupModal(false)}
+          onDone={() => { setShowSetupModal(false); load() }}
+        />
+      )}
+      {diffOpen && (data?.files.length ?? 0) > 0 && (
+        <DiffModal
+          projectPath={projectPath}
+          files={data!.files}
+          initialFile={diffFile}
+          onClose={() => setDiffOpen(false)}
+          onOpenReview={(file) => { setDiffOpen(false); setReviewFile(file); setReviewOpen(true) }}
+          onDiscard={handleDiscardFile}
+        />
+      )}
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingTop: 2 }}>
 
       {/* Toast */}
@@ -703,6 +1522,30 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
           {toast.msg}
         </div>
       )}
+
+      {/* No git repo detected */}
+      {data !== null && !data.hasGit && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, paddingTop: 24, paddingBottom: 8, textAlign: 'center' }}>
+          <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(var(--accent-rgb,255,138,76),0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <IFolder style={{ width: 20, height: 20, color: 'var(--accent)' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 5 }}>Noch kein Git-Projekt</div>
+            <div style={{ fontSize: 11.5, color: 'var(--fg-3)', lineHeight: 1.6, maxWidth: 210 }}>
+              Richte Git ein, um Änderungen zu speichern und mit GitHub zu synchronisieren.
+            </div>
+          </div>
+          <button
+            onClick={() => setShowSetupModal(true)}
+            style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '9px 22px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
+          >
+            Projekt einrichten
+          </button>
+        </div>
+      )}
+
+      {/* Normal git content — only when repo exists */}
+      {(data === null || data.hasGit) && <>
 
       {/* 1 — Status card */}
       <div style={card}>
@@ -716,11 +1559,26 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, marginBottom: 3 }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
           <span style={{ color: statusColor }}>{statusText}</span>
+          {status === 'dirty' && (data?.added ?? 0) + (data?.removed ?? 0) > 0 && (
+            <span
+              onClick={() => { setDiffFile(data!.files[0]?.file ?? ''); setDiffOpen(true) }}
+              title="Diff anzeigen"
+              style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: '1px 5px', marginLeft: 2 }}
+            >
+              <span style={{ color: '#7dc97d', fontWeight: 600 }}>+{data!.added}</span>
+              <span style={{ color: '#e24b4a', fontWeight: 600 }}>−{data!.removed}</span>
+            </span>
+          )}
         </div>
         {data?.remote && (
           <div style={{ fontSize: 10.5, color: 'var(--fg-3)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <IBranch style={{ width: 11, height: 11 }} />
             verbunden mit GitHub
+            {ghUrl && (
+              <a href={ghUrl} target="_blank" rel="noreferrer" style={{ marginLeft: 'auto', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, textDecoration: 'none' }}>
+                Öffnen <IExternalLink style={{ width: 10, height: 10 }} />
+              </a>
+            )}
           </div>
         )}
       </div>
@@ -747,7 +1605,12 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
       {/* 4 — Changed files (max 5 visible) */}
       {(data?.files.length ?? 0) > 0 && (
         <>
-          <div style={{ fontSize: 10, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, marginTop: 2 }}>Was hat sich geändert</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, marginTop: 2 }}>
+            <span style={{ fontSize: 10, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Was hat sich geändert</span>
+            <span onClick={() => { setDiffFile(data!.files[0].file); setDiffOpen(true) }} style={{ fontSize: 10, color: 'var(--accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <IGitFork style={{ width: 10, height: 10 }} /> Diff
+            </span>
+          </div>
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 6, marginBottom: 12 }}>
             {(showAllFiles ? data!.files : data!.files.slice(0, 5)).map((f, i, arr) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderBottom: i < arr.length - 1 || (!showAllFiles && data!.files.length > 5) ? '0.5px solid rgba(255,255,255,0.04)' : 'none', fontSize: 11 }}>
@@ -755,7 +1618,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
                   <span style={{ color: flagColor(f.flag), fontWeight: 700, marginRight: 5, fontFamily: 'var(--font-mono)' }}>{flagLabel(f.flag)}</span>
                   <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>{f.file}</span>
                 </span>
-                <IEye style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0, marginLeft: 6 }} />
+                <IEye onClick={() => { setDiffFile(f.file); setDiffOpen(true) }} style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0, marginLeft: 6, cursor: 'pointer' }} />
               </div>
             ))}
             {!showAllFiles && data!.files.length > 5 && (
@@ -767,13 +1630,90 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
         </>
       )}
 
-      {/* 5 — AI Review teaser */}
-      <div style={{ background: 'rgba(var(--accent-rgb, 255,138,76), 0.07)', border: '0.5px solid rgba(var(--accent-rgb, 255,138,76), 0.25)', borderRadius: 8, padding: '9px 12px', marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, marginBottom: 2 }}>
+      {/* 5 — KI-Code-Review */}
+      <div style={{ background: 'rgba(var(--accent-rgb,255,138,76),0.07)', border: '0.5px solid rgba(var(--accent-rgb,255,138,76),0.25)', borderRadius: 8, marginBottom: 12, overflow: 'hidden' }}>
+        {/* Header row */}
+        <div
+          onClick={() => { setReviewOpen(o => !o); setReviewFindings(null); setReviewError(null) }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', cursor: 'pointer' }}
+        >
           <ISpark style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
-          KI-Code-Review
+          <span style={{ flex: 1, fontSize: 12, fontWeight: 500 }}>KI-Code-Review</span>
+          {reviewOpen
+            ? <IChevUp   style={{ width: 12, height: 12, color: 'var(--fg-3)' }} />
+            : <IChevDown style={{ width: 12, height: 12, color: 'var(--fg-3)' }} />
+          }
         </div>
-        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Datei auswählen und prüfen lassen</div>
+
+        {reviewOpen && (
+          <div style={{ padding: '0 12px 12px', borderTop: '0.5px solid rgba(var(--accent-rgb,255,138,76),0.2)', paddingTop: 10 }}>
+            {!openrouterKey ? (
+              <div style={{ fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.5 }}>
+                Kein OpenRouter API-Key hinterlegt.{' '}
+                <span style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => useAppStore.getState().setScreen('settings')}>
+                  Jetzt in Einstellungen hinterlegen →
+                </span>
+              </div>
+            ) : (
+              <>
+                {/* File picker */}
+                <select
+                  value={reviewFile}
+                  onChange={e => { setReviewFile(e.target.value); setReviewFindings(null); setReviewError(null) }}
+                  style={{ width: '100%', background: 'var(--bg-2)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 5, color: 'var(--fg-0)', fontSize: 11, padding: '5px 7px', fontFamily: 'var(--font-mono)', marginBottom: 8, cursor: 'pointer' }}
+                >
+                  <option value="">Datei wählen…</option>
+                  {(data?.files ?? []).map(f => <option key={f.file} value={f.file}>{f.file}</option>)}
+                </select>
+
+                {/* Review type tabs */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                  {(['general','security','performance','style'] as ReviewType[]).map(t => (
+                    <button key={t} onClick={() => { setReviewType(t); setReviewFindings(null); setReviewError(null) }} style={{ flex: 1, padding: '4px 0', fontSize: 10, borderRadius: 5, border: 'none', cursor: 'pointer', background: reviewType === t ? 'var(--accent)' : 'var(--bg-3)', color: reviewType === t ? 'var(--accent-fg)' : 'var(--fg-2)', fontWeight: reviewType === t ? 600 : 400, fontFamily: 'var(--font-ui)' }}>
+                      {t === 'general' ? 'Allgemein' : t === 'security' ? 'Sicherheit' : t === 'performance' ? 'Speed' : 'Stil'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Run button */}
+                <button
+                  onClick={runReview}
+                  disabled={!reviewFile || reviewBusy}
+                  style={{ width: '100%', padding: '7px', borderRadius: 6, border: 'none', background: reviewFile && !reviewBusy ? 'var(--accent)' : 'var(--bg-3)', color: reviewFile && !reviewBusy ? 'var(--accent-fg)' : 'var(--fg-3)', fontWeight: 600, fontSize: 11.5, cursor: reviewFile && !reviewBusy ? 'pointer' : 'default', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 8 }}
+                >
+                  {reviewBusy ? <><ISpinner style={{ width: 12, height: 12 }} />Wird analysiert…</> : 'Review starten'}
+                </button>
+
+                {/* Error */}
+                {reviewError && (
+                  <div style={{ fontSize: 11, color: '#e24b4a', padding: '6px 8px', background: 'rgba(226,75,74,0.08)', borderRadius: 5, marginBottom: 6 }}>{reviewError}</div>
+                )}
+
+                {/* Results */}
+                {reviewFindings !== null && (
+                  reviewFindings.length === 0
+                    ? <div style={{ fontSize: 11, color: '#7dc97d', padding: '6px 8px', background: 'rgba(125,201,125,0.08)', borderRadius: 5 }}>Keine Probleme gefunden ✓</div>
+                    : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {reviewFindings.map((f, i) => {
+                          const c = f.severity === 'error' ? '#e24b4a' : f.severity === 'warn' ? '#f5a623' : 'var(--fg-2)'
+                          return (
+                            <div key={i} style={{ padding: '7px 9px', background: 'var(--bg-2)', borderRadius: 6, border: `0.5px solid ${c}44` }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+                                <span style={{ fontSize: 9, fontWeight: 700, color: c, textTransform: 'uppercase' }}>{f.severity}</span>
+                                {f.line ? <span style={{ fontSize: 9, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>Zeile {f.line}</span> : null}
+                              </div>
+                              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>{f.title}</div>
+                              <div style={{ fontSize: 11, color: 'var(--fg-2)', lineHeight: 1.45 }}>{f.advice}</div>
+                              {f.suggestion && <div style={{ marginTop: 4, fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--fg-3)', background: 'var(--bg-3)', padding: '4px 7px', borderRadius: 4, whiteSpace: 'pre-wrap' }}>{f.suggestion}</div>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 6 — Collapsibles */}
@@ -793,12 +1733,30 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
 
         {collRow('Verlauf', <IHistoryClock style={{ width: 12, height: 12, flexShrink: 0 }} />, 'history')}
         {sections.history && (
-          <div style={{ paddingBottom: 8, paddingLeft: 4 }}>
+          <div style={{ paddingBottom: 8 }}>
             {data?.log.length === 0 && <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '4px 6px' }}>Noch keine Speicherpunkte</div>}
             {data?.log.map((c, i) => (
-              <div key={i} style={{ padding: '4px 6px', borderBottom: i < (data?.log.length ?? 0) - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
-                <div style={{ fontSize: 11, color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.msg}</div>
-                <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>{c.when}</div>
+              <div
+                key={i}
+                onClick={() => { navigator.clipboard.writeText(c.hash).catch(() => {}); showToast(`Hash kopiert: ${c.hash.slice(0, 7)}`, true) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 6px', borderBottom: i < (data?.log.length ?? 0) - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', cursor: 'pointer', borderRadius: 4 }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.msg}</div>
+                  <div style={{ fontSize: 10, color: 'var(--fg-3)', display: 'flex', gap: 6, marginTop: 1 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>{c.hash.slice(0, 7)}</span>
+                    <span>{c.when}</span>
+                  </div>
+                </div>
+                {ghUrl ? (
+                  <a href={`${ghUrl}/commit/${c.hash}`} target="_blank" rel="noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{ color: 'var(--fg-3)', flexShrink: 0, display: 'flex', lineHeight: 1 }}>
+                    <IExternalLink style={{ width: 11, height: 11 }} />
+                  </a>
+                ) : (
+                  <ICopy style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+                )}
               </div>
             ))}
           </div>
@@ -806,12 +1764,57 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
 
         {collRow('Einstellungen', <ISettings style={{ width: 12, height: 12, flexShrink: 0 }} />, 'settings')}
         {sections.settings && (
-          <div style={{ paddingBottom: 8, paddingLeft: 4 }}>
-            <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '6px 6px' }}>GitHub Token und OpenRouter Key in den App-Einstellungen konfigurierbar.</div>
+          <div style={{ paddingBottom: 8, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* GitHub Token inline */}
+            <div>
+              <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--fg-3)', marginBottom: 5 }}>GitHub Token</div>
+              {editingToken ? (
+                <div style={{ display: 'flex', gap: 5 }}>
+                  <input
+                    type="password"
+                    value={tokenDraft}
+                    onChange={e => setTokenDraft(e.target.value)}
+                    placeholder="ghp_..."
+                    autoFocus
+                    style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', outline: 'none' }}
+                  />
+                  <button onClick={() => { setGithubToken(tokenDraft); setEditingToken(false) }} style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '5px 9px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>✓</button>
+                  <button onClick={() => setEditingToken(false)} style={{ background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--line-strong)', padding: '5px 9px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>✕</button>
+                </div>
+              ) : (
+                <div
+                  onClick={() => { setEditingToken(true); setTokenDraft(githubToken) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', background: 'var(--bg-2)', borderRadius: 5, border: '1px solid var(--line)', cursor: 'pointer', fontSize: 11 }}
+                >
+                  {githubToken
+                    ? <><ICheck style={{ width: 11, height: 11, color: 'var(--ok)', flexShrink: 0 }} /><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-2)' }}>{githubToken.slice(0, 12)}···</span></>
+                    : <span style={{ color: 'var(--fg-3)' }}>Kein Token — klicken zum Hinterlegen</span>
+                  }
+                  <IEdit style={{ width: 10, height: 10, color: 'var(--fg-3)', marginLeft: 'auto', flexShrink: 0 }} />
+                </div>
+              )}
+            </div>
+
+            {/* Code Review model */}
+            <div>
+              <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--fg-3)', marginBottom: 5 }}>KI-Review Modell</div>
+              <select
+                value={codeReviewModel}
+                onChange={e => setCodeReviewModel(e.target.value)}
+                style={{ width: '100%', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 5, color: 'var(--fg-0)', fontSize: 11, padding: '5px 7px', fontFamily: 'var(--font-ui)', cursor: 'pointer' }}
+              >
+                {OPENROUTER_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+
           </div>
         )}
       </div>
+
+      </> /* end hasGit content */}
     </div>
+    </>
   )
 }
 
@@ -895,7 +1898,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
       {/* Header bar */}
-      <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--line)', flexShrink: 0, background: 'var(--bg-0)' }}>
+      <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 8, margin: '10px 12px 0' }}>
         <span className="mono" style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>
           {currentBranch?.name ?? '—'}
         </span>
@@ -1120,14 +2123,9 @@ function UserStoriesCard({ projectId: _projectId, sessionId }: { projectId?: str
           onClose={() => setOpenTicket(null)}
         />
       )}
-      <Card title={`User Stories${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false} action={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <GenerateStoryButton projectId={_projectId} sessionId={sessionId} />
-          <IKanban style={{ color: 'var(--fg-3)', width: 12, height: 12 }} />
-        </div>
-      }>
+      <Card title={`Tasks${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false}>
         {allTickets.length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>Keine User Stories</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>Keine Tasks</div>
         ) : (
           allTickets.slice(0, 8).map(({ ticket: t, project: p }) => (
             <div key={t.id} onClick={() => setOpenTicket({ projectId: p.id, projectName: p.name, projectPath: p.path, ticketId: t.id })}
@@ -1712,6 +2710,15 @@ export function UtilityPanel() {
   const [tab, setTab] = useState(0)
   const [exporting, setExporting]  = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [tabConfig, setTabConfig] = useState<{ githubMode: 'github' | 'advanced' | 'none'; showFiles: boolean; showResearch: boolean }>({ githubMode: 'github', showFiles: true, showResearch: true })
+  const [tabConfigOpen, setTabConfigOpen] = useState(false)
+  const tabConfigRef = React.useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!tabConfigOpen) return
+    const handler = (e: MouseEvent) => { if (tabConfigRef.current && !tabConfigRef.current.contains(e.target as Node)) setTabConfigOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [tabConfigOpen])
   const { aliases, activeSessionId, projects, activeProjectId, createOrbitChat } = useAppStore()
   const project = projects.find(p => p.id === activeProjectId)
   const session = project?.sessions.find(s => s.id === activeSessionId)
@@ -1861,11 +2868,21 @@ export function UtilityPanel() {
     return () => window.removeEventListener('cc:open-project-terminal', handler)
   }, [isOrbitSession])
 
-  // Tab order: Session | GitHub | Git Advanced | Files | Data | Research [| Terminal]
+  // Tab order: Session | GitHub | Git Advanced | Dateien | Data | Research [| Terminal]
   const baseTabs = isOrbitSession
-    ? ['Chat', 'Session', 'GitHub', 'Git Advanced', 'Files', 'Data', 'Research']
-    : ['Session', 'GitHub', 'Git Advanced', 'Files', 'Data', 'Research']
+    ? ['Chat', 'Session', 'GitHub', 'Git Advanced', 'Dateien', 'Data', 'Research']
+    : ['Session', 'GitHub', 'Git Advanced', 'Dateien', 'Data', 'Research']
   const tabs = terminalOpen ? [...baseTabs, 'Terminal'] : baseTabs
+
+  // Reset tab if it becomes hidden via config
+  useEffect(() => {
+    const hidden =
+      (tab === ghIdx     && tabConfig.githubMode !== 'github') ||
+      (tab === gitAdvIdx && tabConfig.githubMode !== 'advanced') ||
+      (tab === filesIdx  && !tabConfig.showFiles) ||
+      (tab === researchIdx && !tabConfig.showResearch)
+    if (hidden) setTab(0)
+  }, [tabConfig, tab, ghIdx, gitAdvIdx, filesIdx, researchIdx])
   const terminalTabIdx = terminalOpen ? tabs.length - 1 : -1
   // tabs with no padding (full-bleed): Chat, Files, Data, Terminal
   const noPaddingBase = isOrbitSession ? [0, 4, 5] : [3, 4]
@@ -1873,9 +2890,13 @@ export function UtilityPanel() {
 
   return (
     <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid var(--line)' }}>
+      <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid var(--line)', position: 'relative' }}>
         {tabs.map((t, i) => {
           if (t === 'Data' && dataFiles.length === 0) return null
+          if (t === 'GitHub'      && tabConfig.githubMode !== 'github')   return null
+          if (t === 'Git Advanced' && tabConfig.githubMode !== 'advanced') return null
+          if (t === 'Dateien'     && !tabConfig.showFiles)                 return null
+          if (t === 'Research'    && !tabConfig.showResearch)              return null
           const isTermTab = t === 'Terminal'
           const active = i === tab
           return (
@@ -1907,6 +2928,55 @@ export function UtilityPanel() {
             </div>
           )
         })}
+
+        {/* ── Tab visibility settings ── */}
+        <div ref={tabConfigRef} style={{ display: 'flex', alignItems: 'center', flexShrink: 0, borderLeft: '1px solid var(--line)', position: 'relative' }}>
+          <button
+            onClick={() => setTabConfigOpen(o => !o)}
+            title="Tabs ein-/ausblenden"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center', gap: 3, color: tabConfigOpen ? 'var(--fg-0)' : 'var(--fg-3)' }}
+          >
+            <ISliders style={{ width: 12, height: 12 }} />
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, opacity: 0.8 }} />
+          </button>
+
+          {tabConfigOpen && (
+            <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 8, padding: '12px 14px', minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', marginBottom: 2 }}>Tabs anzeigen</div>
+
+              {/* Files toggle */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)' }}>
+                <input type="checkbox" checked={tabConfig.showFiles} onChange={e => setTabConfig(c => ({ ...c, showFiles: e.target.checked }))}
+                  style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
+                Dateien
+              </label>
+
+              <div style={{ height: 1, background: 'var(--line)', margin: '2px 0' }} />
+
+              {/* GitHub — mutually exclusive */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)' }}>GitHub</div>
+                {(['github', 'advanced', 'none'] as const).map(mode => (
+                  <label key={mode} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)' }}>
+                    <input type="radio" name="githubMode" checked={tabConfig.githubMode === mode}
+                      onChange={() => setTabConfig(c => ({ ...c, githubMode: mode }))}
+                      style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
+                    {mode === 'github' ? 'GitHub' : mode === 'advanced' ? 'Git Advanced' : 'Keines'}
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ height: 1, background: 'var(--line)', margin: '2px 0' }} />
+
+              {/* Research toggle */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)' }}>
+                <input type="checkbox" checked={tabConfig.showResearch} onChange={e => setTabConfig(c => ({ ...c, showResearch: e.target.checked }))}
+                  style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
+                Research
+              </label>
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: noPadding.includes(tab) ? 'hidden' : 'auto', padding: noPadding.includes(tab) ? 0 : 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -1918,30 +2988,47 @@ export function UtilityPanel() {
         {tab === (isOrbitSession ? 1 : 0) && (
           <>
             <div style={{ marginBottom: 14, paddingTop: 14 }}>
-              {/* ── Session-Header: Ampel + Icon + Name ── */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                {/* Ampel: status dot */}
-                <span style={{
-                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                  background: session?.status === 'active' ? 'var(--ok)' : session?.status === 'error' ? 'var(--err)' : 'var(--fg-3)',
-                  ...(session?.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}),
-                }} />
-                {/* Type icon */}
-                {isOrbitSession
-                  ? <IOrbit style={{ width: 13, height: 13, color: 'var(--orbit)', flexShrink: 0 }} />
-                  : session?.kind === 'openrouter-claude'
-                    ? <ISpark style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
-                    : <ITerminal style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
-                }
-                {/* Name — einmal */}
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {session?.name ?? project?.name ?? '—'}
-                </span>
+              {/* ── Session-Header card ── */}
+              <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                {/* Name row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  {isOrbitSession
+                    ? <IOrbit style={{ width: 13, height: 13, color: 'var(--orbit)', flexShrink: 0 }} />
+                    : session
+                      ? session.kind === 'openrouter-claude'
+                        ? <ISpark style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
+                        : <ITerminal style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
+                      : <IFolder style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
+                  }
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {session?.name ?? project?.name ?? '—'}
+                  </span>
+                  {session && (
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                      background: session.status === 'active' ? 'var(--ok)' : session.status === 'error' ? 'var(--err)' : 'var(--fg-3)',
+                      ...(session.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}),
+                    }} />
+                  )}
+                </div>
+                {/* ── Info-Felder ── */}
+                <FieldPath label="Pfad" path={project?.path ?? '—'} />
+                {session?.startedAt && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', fontSize: 11.5 }}>
+                    <span style={{ width: 60, color: 'var(--fg-3)', flexShrink: 0 }}>Aktiv seit</span>
+                    <span style={{ color: 'var(--fg-1)' }}>{startedLabel}</span>
+                  </div>
+                )}
               </div>
-              {/* ── Info-Felder ohne Trennlinien ── */}
-              <FieldPlain label="Gestartet" value={startedLabel} />
-              <FieldPath label="Pfad" path={project?.path ?? '—'} />
             </div>
+
+            {/* ── GitHub Kompakt-Kachel ── */}
+            {project?.path && (
+              <div style={{ marginTop: 16 }}>
+                <CompactGitCard projectPath={project.path} onOpenGitTab={() => setTab(ghIdx)} />
+              </div>
+            )}
+
             <UserStoriesCard projectId={project?.id} sessionId={session?.id ?? ''} />
           </>
         )}
@@ -2435,18 +3522,23 @@ function TextViewer({ content, search, showLineNums, ext }: { content: string; s
 function Card({ title, action, children, collapsible, defaultOpen = true }: { title: string; action?: React.ReactNode; children: React.ReactNode; collapsible?: boolean; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ marginBottom: 14, paddingTop: 14 }}>
+    <div style={{ marginBottom: 20 }}>
       <div
         onClick={collapsible ? () => setOpen(o => !o) : undefined}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: open ? 8 : 0, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, cursor: collapsible ? 'pointer' : 'default', userSelect: 'none' }}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: collapsible ? 'pointer' : 'default', userSelect: 'none', paddingBottom: open ? 6 : 0 }}
       >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          {collapsible && <IChev style={{ width: 8, height: 8, transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none', flexShrink: 0 }} />}
-          {title}
-        </span>
-        {action && <span style={{ color: 'var(--fg-2)', cursor: 'pointer' }} onClick={e => e.stopPropagation()}>{action}</span>}
+        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1 }}>{title}</span>
+        {action && <span onClick={e => e.stopPropagation()}>{action}</span>}
+        {collapsible && (open
+          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+        )}
       </div>
-      {open && children}
+      {open && (
+        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          {children}
+        </div>
+      )}
     </div>
   )
 }
@@ -2478,7 +3570,7 @@ function FieldPath({ label, path }: { label: string; path: string }) {
   }
   return (
     <div style={{ display: 'flex', alignItems: 'center', padding: '3px 0', fontSize: 11.5, gap: 6 }}>
-      <span style={{ width: 90, color: 'var(--fg-3)', flexShrink: 0 }}>{label}</span>
+      <span style={{ width: 44, color: 'var(--fg-3)', flexShrink: 0 }}>{label}</span>
       <span className="mono" style={{ color: 'var(--fg-1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{path}</span>
       <button
         onClick={copy}

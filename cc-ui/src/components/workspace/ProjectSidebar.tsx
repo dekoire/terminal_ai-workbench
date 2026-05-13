@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { Project, Session } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
-import { IChev, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IOrbit, IBell } from '../primitives/Icons'
+import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell } from '../primitives/Icons'
+import { AdminPanel } from '../screens/AdminPanel'
 import avatarDefault from '../../assets/avatar.jpg'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
 import { Kbd } from '../primitives/Kbd'
@@ -55,16 +56,34 @@ function useCtxMenu() {
 }
 
 function ThemeToggleBtn() {
-  const { theme, setTheme, preset, setPreset, setAccent, setAccentFg, terminalTheme, setTerminalTheme } = useAppStore()
+  const { theme, setTheme, preset, setPreset, setAccent, setAccentFg, terminalTheme, setTerminalTheme, customUiColors, setCustomUiColors } = useAppStore()
   const toggle = () => {
-    const cur = DESIGN_PRESETS.find(d => d.id === preset) ?? DESIGN_PRESETS[0]
-    // Dark → Slate Light; Light → Ember Dark
-    const nextId = cur.dark ? 'light-slate' : 'ember'
-    const next = DESIGN_PRESETS.find(d => d.id === nextId) ?? DESIGN_PRESETS[0]
+    const cur    = DESIGN_PRESETS.find(d => d.id === preset) ?? DESIGN_PRESETS[0]
+    // Keep the current accent family — only flip dark ↔ light
+    const family = cur.id.replace(/-light$/, '')
+    const nextId = cur.dark ? `${family}-light` : family
+    const next   = DESIGN_PRESETS.find(d => d.id === nextId) ?? DESIGN_PRESETS[0]
     setPreset(next.id); setTheme(next.dark ? 'dark' : 'light')
-    setAccent(next.accent); setAccentFg(next.accentFg); applyPreset(next)
-    if (next.dark && terminalTheme === 'github-light') setTerminalTheme('default')
-    if (!next.dark && terminalTheme === 'default') setTerminalTheme('github-light')
+    setAccent(next.accent); setAccentFg(next.accentFg)
+    applyPreset(next, next.accent, next.accentFg)
+    // Sync customUiColors so App.tsx's override pass uses the new preset values.
+    // Preserve only syntax-token overrides the user set manually.
+    const SYNTAX_KEYS = ['--tok-keyword','--tok-string','--tok-number','--tok-comment','--tok-type','--tok-fn']
+    const preservedSyntax: Record<string, string> = {}
+    SYNTAX_KEYS.forEach(k => { if (customUiColors[k]) preservedSyntax[k] = customUiColors[k] })
+    const css = getComputedStyle(document.documentElement)
+    const g = (k: string) => css.getPropertyValue(k).trim()
+    setCustomUiColors({
+      ...preservedSyntax,
+      '--accent': next.accent, '--accent-fg': next.accentFg,
+      '--accent-soft': g('--accent-soft'), '--accent-line': g('--accent-line'),
+      '--bg-0': g('--bg-0'), '--bg-1': g('--bg-1'), '--bg-2': g('--bg-2'),
+      '--bg-3': g('--bg-3'), '--bg-4': g('--bg-4'),
+      '--fg-0': g('--fg-0'), '--fg-1': g('--fg-1'), '--fg-2': g('--fg-2'), '--fg-3': g('--fg-3'),
+      '--line': g('--line'), '--line-strong': g('--line-strong'),
+    })
+    if (next.dark  && terminalTheme === 'github-light') setTerminalTheme('default')
+    if (!next.dark && terminalTheme === 'default')      setTerminalTheme('github-light')
   }
   return (
     <button onClick={toggle} title={theme === 'dark' ? 'Zu hell wechseln' : 'Zu dunkel wechseln'} style={{ background: 'none', border: '1px solid transparent', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '4px 5px', borderRadius: 6 }}>
@@ -197,7 +216,8 @@ function PopMenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: s
 }
 
 export function ProjectSidebar() {
-  const { projects, templates, activeProjectId, activeSessionId, setActiveProject, setActiveSession, setScreen, setNewProjectOpen, setNewSessionOpen, removeProject, removeSession, inputValue, setInputValue } = useAppStore()
+  const { projects, templates, activeProjectId, activeSessionId, setActiveProject, setActiveSession, setScreen, setNewProjectOpen, setNewSessionOpen, removeProject, removeSession, inputValue, setInputValue, currentUser, adminEmails } = useAppStore()
+  const isAdmin = !!currentUser?.email && adminEmails.map(e => e.toLowerCase()).includes(currentUser.email.toLowerCase())
 
   return (
     <aside style={{
@@ -244,8 +264,20 @@ export function ProjectSidebar() {
 
       <div style={{ padding: '8px 10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
         <AvatarPopoverBtn />
-        <ThemeToggleBtn />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {isAdmin && (
+            <button
+              onClick={() => setScreen('settings')}
+              title="Admin-Einstellungen"
+              style={{ background: 'none', border: '1px solid transparent', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', padding: '4px 5px', borderRadius: 6 }}
+            >
+              <IShield style={{ width: 16, height: 16 }} />
+            </button>
+          )}
+          <ThemeToggleBtn />
+        </div>
       </div>
+
     </aside>
   )
 }
@@ -349,7 +381,7 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px',
+          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 8px',
           margin: '1px 6px', borderRadius: 6, cursor: 'pointer',
           background: active ? 'var(--bg-2)' : hovered ? 'var(--bg-2)' : 'transparent',
           color: active ? 'var(--fg-0)' : 'var(--fg-1)',
@@ -360,22 +392,10 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
         {open
           ? <IFolderOpen style={{ color: active ? 'var(--fg-2)' : 'var(--fg-2)', flexShrink: 0 }} />
           : <IFolder style={{ color: 'var(--fg-2)', flexShrink: 0 }} />}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <span style={{ fontSize: 12, fontWeight: active ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 12, fontWeight: active ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
             {project.name}
           </span>
-          {/* Pfad — nur anzeigen wenn aktiv oder gehovered */}
-          {(active || hovered) && project.path && (
-            <span
-              onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(project.path) }}
-              title={`Pfad kopieren: ${project.path}`}
-              style={{ fontSize: 9.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--fg-3)')}
-            >
-              {project.path.split('/').slice(-2).join('/')}
-            </span>
-          )}
         </div>
         {isDocApplying && (
           <ILoader className="anim-spin" style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} title="Docu wird angelegt…" />
@@ -532,26 +552,25 @@ function TemplatesSection({
   const hidden  = templates.length - TEMPLATES_COLLAPSED
 
   return (
-    <div style={{ marginBottom: 14, paddingTop: 0, paddingBottom: 14 }}>
+    <div style={{ marginBottom: 20, padding: '0 10px' }}>
       {ctxMenu}
-      {/* Header — click label to collapse section */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 10px 6px 14px', textTransform: 'uppercase', fontSize: 10,
-        letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500, cursor: 'pointer',
-      }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5, userSelect: 'none' }} onClick={() => setSectionOpen(o => !o)}>
-          <IChev style={{ transform: sectionOpen ? 'rotate(90deg)' : 'none', width: 8, height: 8, transition: 'transform 0.1s', flexShrink: 0 }} />
+      <div
+        onClick={() => setSectionOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', paddingBottom: sectionOpen ? 6 : 0, cursor: 'pointer', userSelect: 'none' }}
+      >
+        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
           Prompts
-          <span style={{ color: 'var(--fg-3)', fontSize: 10, fontWeight: 400, letterSpacing: 0 }}>
-            ({templates.length})
-          </span>
+          <span style={{ fontWeight: 400, letterSpacing: 0 }}>({templates.length})</span>
         </span>
-        <button onClick={onAdd} style={iconBtn}><IPlus /></button>
+        <button onClick={e => { e.stopPropagation(); onAdd() }} style={iconBtn}><IPlus /></button>
+        {sectionOpen
+          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+        }
       </div>
 
       {sectionOpen && (
-        <>
+        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', padding: '4px 0', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           {visible.map((t) => (
             <div
               key={t.id}
@@ -563,7 +582,7 @@ function TemplatesSection({
               ])}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
-                margin: '0 6px 1px', borderRadius: 6, cursor: 'pointer', color: 'var(--fg-1)', fontSize: 11.5,
+                cursor: 'pointer', color: 'var(--fg-1)', fontSize: 11.5,
               }}
             >
               <ISpark style={{ color: t.favorite ? 'var(--warn)' : 'var(--accent)', flexShrink: 0 }} />
@@ -572,22 +591,16 @@ function TemplatesSection({
               {t.hint && <Kbd>{t.hint}</Kbd>}
             </div>
           ))}
-
-          {/* Show more / less toggle */}
           {templates.length > TEMPLATES_COLLAPSED && (
             <div
               onClick={() => setExpanded(e => !e)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
-                margin: '2px 6px 0', borderRadius: 6, cursor: 'pointer',
-                color: 'var(--fg-3)', fontSize: 10.5,
-              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 10.5 }}
             >
               <IChev style={{ transform: expanded ? 'rotate(90deg)' : 'none', width: 8, height: 8 }} />
-              {expanded ? 'Show less' : `${hidden} more template${hidden !== 1 ? 's' : ''}`}
+              {expanded ? 'Weniger anzeigen' : `${hidden} weitere`}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   )
@@ -779,27 +792,26 @@ function StoryRow({ ticket, projectName, onOpen }: {
 function CollapsibleSection({ label, count, action, children, defaultOpen = true }: { label: string; count?: number; action?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ marginBottom: 14, paddingTop: 0, paddingBottom: 14 }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 10px 6px 14px', textTransform: 'uppercase', fontSize: 10,
-        letterSpacing: 0.7, color: 'var(--fg-3)', fontWeight: 500,
-      }}>
-        <span
-          onClick={() => setOpen(o => !o)}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', userSelect: 'none' }}
-        >
-          <IChev style={{ transform: open ? 'rotate(90deg)' : 'none', width: 8, height: 8, transition: 'transform 0.1s', flexShrink: 0 }} />
+    <div style={{ marginBottom: 20, padding: '0 10px' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', paddingBottom: open ? 6 : 0, cursor: 'pointer', userSelect: 'none' }}
+      >
+        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
           {label}
-          {count != null && (
-            <span style={{ color: 'var(--fg-3)', fontSize: 10, fontWeight: 400, letterSpacing: 0 }}>
-              ({count})
-            </span>
-          )}
+          {count != null && <span style={{ fontWeight: 400, letterSpacing: 0 }}>({count})</span>}
         </span>
-        {action && <span style={{ display: 'flex', alignItems: 'center', color: 'var(--fg-2)' }}>{action}</span>}
+        {action && <span onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', color: 'var(--fg-2)' }}>{action}</span>}
+        {open
+          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+        }
       </div>
-      {open && children}
+      {open && (
+        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden' }}>
+          {children}
+        </div>
+      )}
     </div>
   )
 }

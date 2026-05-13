@@ -41,6 +41,10 @@
   --r-lg: 10px;
   --r-xl: 14px;
 
+  --code-bg:        #252320;
+  --code-header-bg: #2e2b26;
+  --inline-code-bg: #222019;
+
   /* Syntax highlight token colors (dark theme) */
   --tok-keyword: #c792ea;
   --tok-string:  #98c379;
@@ -51,6 +55,10 @@
 }
 
 .theme-light {
+  --code-bg:        #f0ece4;
+  --code-header-bg: #e8e3d9;
+  --inline-code-bg: #ece8e0;
+
   --bg-0: #f5f2ec;
   --bg-1: #ece8df;
   --bg-2: #e2ddd3;

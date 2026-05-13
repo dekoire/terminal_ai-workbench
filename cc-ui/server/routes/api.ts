@@ -156,11 +156,50 @@ router.post('/api/git-action', async (req, res) => {
     if (action === 'stage')      result = { ok: true, out: await run('git add -A') }
     if (action === 'commit')     result = { ok: true, out: await run(`git commit -m ${JSON.stringify(message ?? 'Update')}`) }
     if (action === 'push')       result = { ok: true, out: await run(`git push ${remote ?? 'origin'} ${branch ?? 'HEAD'}`) }
+    if (action === 'push-u')     result = { ok: true, out: await run(`git push -u origin ${JSON.stringify(branch ?? 'main')}`) }
     if (action === 'pull')       result = { ok: true, out: await run('git pull') }
     if (action === 'checkout')   result = { ok: true, out: await run(`git checkout ${JSON.stringify(branch ?? '')}`) }
     if (action === 'new-branch') result = { ok: true, out: await run(`git checkout -b ${JSON.stringify(branch ?? '')}`) }
+    if (action === 'init') {
+      const o1 = await run('git init')
+      const o2 = await run(`git checkout -b ${JSON.stringify(branch ?? 'main')}`)
+      result = { ok: true, out: o1 + '\n' + o2 }
+    }
+    if (action === 'add-remote' && remote) result = { ok: true, out: await run(`git remote add origin ${JSON.stringify(remote)}`) }
+    if (action === 'clone' && remote) {
+      // clone into the path itself — use parent dir + folder name
+      const parentDir = path.dirname(resolved)
+      const folderName = path.basename(resolved)
+      const cloneRun = (cmd: string) => new Promise<string>(ok =>
+        exec(cmd, { cwd: parentDir }, (err, out, errOut) => ok(err ? errOut || err.message : out.trim()))
+      )
+      result = { ok: true, out: await cloneRun(`git clone ${JSON.stringify(remote)} ${JSON.stringify(folderName)}`) }
+    }
+    if (action === 'discard-file' && message) {
+      const statusOut = await run(`git status --porcelain -- ${JSON.stringify(message)}`)
+      const flag = statusOut.trim().slice(0, 2)
+      if (flag === '??' || flag.startsWith('A')) {
+        const fullPath = path.resolve(resolved, message)
+        try { fs.unlinkSync(fullPath); result = { ok: true, out: '' } } catch (e) { result = { ok: false, out: String(e) } }
+      } else {
+        const out = await run(`git checkout HEAD -- ${JSON.stringify(message)}`)
+        result = { ok: !out.includes('error:'), out }
+      }
+    }
     res.json(result)
   } catch (e) { res.json({ ok: false, out: String(e) }) }
+})
+
+router.get('/api/file-content', (req, res) => {
+  const base = tilde(req.query.path as string ?? '')
+  const file = req.query.file as string ?? ''
+  if (!base || !file) { res.json({ ok: false, error: 'missing params' }); return }
+  const full = path.resolve(base, file)
+  if (!full.startsWith(base)) { res.json({ ok: false, error: 'forbidden' }); return }
+  fs.readFile(full, 'utf-8', (err, content) => {
+    if (err) res.json({ ok: false, error: String(err) })
+    else res.json({ ok: true, content })
+  })
 })
 
 router.get('/api/git-remote', (req, res) => {
@@ -856,6 +895,39 @@ router.post('/api/screenshot', async (req, res) => {
         : msg,
     })
   }
+})
+
+// ── GET /api/git-diff ─────────────────────────────────────────────────────────
+router.get('/api/git-diff', (req, res) => {
+  const cwd    = tilde(req.query.path   as string ?? '')
+  const file   = req.query.file         as string ?? ''
+  const commit = req.query.commit       as string ?? ''
+  if (!cwd || !file) { res.json({ ok: false, diff: '' }); return }
+  const run = (cmd: string) => new Promise<string>(ok =>
+    exec(cmd, { cwd }, (err, out, errOut) => ok(err ? errOut || err.message : out))
+  )
+  ;(async () => {
+    try {
+      let diff = ''
+      if (commit) {
+        diff = await run(`git diff ${commit}^..${commit} -- ${JSON.stringify(file)} 2>/dev/null`)
+      } else {
+        const statusOut = await run(`git status --porcelain -- ${JSON.stringify(file)}`)
+        const flag = statusOut.trim().slice(0, 2)
+        const isNew = flag === '??' || flag.startsWith('A')
+        if (isNew) {
+          const fullPath = path.resolve(cwd, file)
+          const content = fs.existsSync(fullPath) ? fs.readFileSync(fullPath, 'utf-8') : ''
+          const lines = content.split('\n')
+          diff = `--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${lines.length} @@\n` + lines.map((l: string) => '+' + l).join('\n')
+        } else {
+          diff = await run(`git diff HEAD -- ${JSON.stringify(file)}`)
+          if (!diff.trim()) diff = await run(`git diff --cached -- ${JSON.stringify(file)}`)
+        }
+      }
+      res.json({ ok: true, diff })
+    } catch (e) { res.json({ ok: false, diff: '', error: String(e) }) }
+  })()
 })
 
 export default router

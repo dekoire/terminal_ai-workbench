@@ -550,7 +550,7 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
           )}
           <div style={{
             padding: '10px 14px',
-            borderRadius: '15px 15px 0 15px',
+            borderRadius: '6px 15px 0 6px',
             background: 'var(--orbit)', color: '#fff',
             fontWeight: 300, wordBreak: 'break-word', fontFamily: 'var(--font-ui)',
           }}>
