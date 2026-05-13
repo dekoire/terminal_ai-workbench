@@ -5,7 +5,7 @@
 
 import React, { useCallback, useRef, useState } from 'react'
 import type { WorkshopElementRef, PendingWorkshopTransfer } from '../../store/useAppStore'
-import { IClose, IMessageSquare, IImage, ISearch } from '../primitives/Icons'
+import { IClose, IImage, ISearch, IChevDown, IChevUp } from '../primitives/Icons'
 
 interface ChatItem {
   type: 'screenshot' | 'element'
@@ -96,9 +96,8 @@ export function FloatingChatbox({ items, onRemoveItem, onTransfer }: Props) {
           cursor: 'grab', flexShrink: 0,
         }}
       >
-        <IMessageSquare style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
         <span style={{ fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-ui)', color: 'var(--fg-1)', flex: 1 }}>
-          An Agent senden
+          Übergabe an Chatbox
           {items.length > 0 && (
             <span style={{ marginLeft: 5, fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
               {items.length}
@@ -107,10 +106,13 @@ export function FloatingChatbox({ items, onRemoveItem, onTransfer }: Props) {
         </span>
         <button
           onClick={() => setMinimized(m => !m)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: '1px 3px', fontSize: 13, lineHeight: 1 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: '1px 3px', display: 'flex', alignItems: 'center' }}
           title={minimized ? 'Aufklappen' : 'Minimieren'}
         >
-          {minimized ? '□' : '−'}
+          {minimized
+            ? <IChevDown style={{ width: 13, height: 13 }} />
+            : <IChevUp   style={{ width: 13, height: 13 }} />
+          }
         </button>
       </div>
 
@@ -181,7 +183,7 @@ export function FloatingChatbox({ items, onRemoveItem, onTransfer }: Props) {
             <textarea
               value={text}
               onChange={e => setText(e.target.value)}
-              placeholder="Was soll Claude ändern / wissen?"
+              placeholder="Was soll geändert / übergeben werden?"
               rows={3}
               style={{
                 width: '100%', resize: 'none', background: 'var(--bg-2)',
@@ -207,8 +209,7 @@ export function FloatingChatbox({ items, onRemoveItem, onTransfer }: Props) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               }}
             >
-              <IMessageSquare style={{ width: 12, height: 12 }} />
-              An Agent übernehmen
+              An Chatbox übernehmen
             </button>
           </div>
         </div>

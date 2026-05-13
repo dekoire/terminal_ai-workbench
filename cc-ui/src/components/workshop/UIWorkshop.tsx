@@ -18,7 +18,7 @@ type ChatItem =
 let screenshotCount = 0
 
 export function UIWorkshop() {
-  const { closeWorkshop, transferToAgent, projects, activeProjectId, activeSessionId } = useAppStore()
+  const { closeWorkshop, transferToAgent, projects, activeProjectId, activeSessionId, theme } = useAppStore()
   const [mode, setMode] = useState<BrowserMode>('normal')
   const [items, setItems] = useState<ChatItem[]>([])
 
@@ -57,29 +57,36 @@ export function UIWorkshop() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '97vw', height: '97vh', background: 'var(--bg-0)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line-strong)', boxShadow: '0 8px 28px rgba(0,0,0,0.35)' }}>
 
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
-        <button
-          onClick={closeWorkshop}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-2)', padding: '3px 6px', borderRadius: 5, fontSize: 11.5, fontFamily: 'var(--font-ui)' }}
-          title={`Zurück zu ${sessionLabel}`}
-        >
-          <IChevLeft style={{ width: 13, height: 13 }} />
-          {sessionLabel}
-        </button>
+      {/* ── Header — inverted chrome (light in dark mode, dark in light mode) ── */}
+      {(() => {
+        const hdr = theme === 'dark'
+          ? { bg: '#f0f0f0', border: '#d0d0d0', color: '#1a1a1a' }
+          : { bg: '#1e1e1e', border: '#3a3a3a', color: '#e0e0e0' }
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: hdr.bg, borderBottom: `1px solid ${hdr.border}`, flexShrink: 0 }}>
+            <button
+              onClick={closeWorkshop}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: hdr.color, padding: '3px 6px', borderRadius: 5, fontSize: 11.5, fontFamily: 'var(--font-ui)' }}
+              title={`Zurück zu ${sessionLabel}`}
+            >
+              <IChevLeft style={{ width: 14, height: 14, strokeWidth: 2.2 }} />
+              {sessionLabel}
+            </button>
 
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: 'var(--fg-2)', fontFamily: 'var(--font-ui)', letterSpacing: 0.3 }}>
-          Live Browser / Selektor
-        </div>
+            <div style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: hdr.color, fontFamily: 'var(--font-ui)', letterSpacing: 0.3 }}>
+              Live Browser / Selektor
+            </div>
 
-        <button
-          onClick={closeWorkshop}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 5 }}
-          title="Schließen"
-        >
-          <IClose style={{ width: 13, height: 13 }} />
-        </button>
-      </div>
+            <button
+              onClick={closeWorkshop}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: hdr.color, padding: 4, display: 'flex', alignItems: 'center', borderRadius: 5, opacity: 0.7 }}
+              title="Schließen"
+            >
+              <IClose style={{ width: 14, height: 14, strokeWidth: 2.2 }} />
+            </button>
+          </div>
+        )
+      })()}
 
       {/* ── Browser area ── */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
