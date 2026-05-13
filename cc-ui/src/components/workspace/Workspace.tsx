@@ -5,7 +5,7 @@ import logoBlack from '../../assets/codera_logo_black.png'
 import { ProjectSidebar } from './ProjectSidebar'
 import { CenterPane } from './CenterPane'
 import { UtilityPanel } from './UtilityPanel'
-import { IMoon, ISun, ILogout, ITerminal, IPlay, ITrophy, ICompass, ISquareTerminal, IKanban } from '../primitives/Icons'
+import { IMoon, ISun, ILogout, ITerminal, IPlay, IBot, ICompass, ISquareTerminal, IKanban } from '../primitives/Icons'
 import { ModelBrowserModal } from '../modals/ModelBrowserModal'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
@@ -210,7 +210,7 @@ export function Workspace() {
               </button>
               <button onClick={() => setModelBrowserOpen(true)} title="Modell-Browser"
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                <ITrophy style={{ width: 15, height: 15 }} />
+                <IBot style={{ width: 15, height: 15 }} />
               </button>
             </div>
           )}

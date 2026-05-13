@@ -209,10 +209,10 @@ export function PermissionDialog({ req, cwd, agentName }: Props) {
   const surface  = 'var(--bg-2)'
   const textMain = 'var(--fg-0)'
   const textSub  = 'var(--fg-3)'
-  const linClr   = 'var(--line)'
+  const linClr   = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.18)'
   const shadow   = isDark
-    ? '0 2px 6px rgba(0,0,0,0.22)'
-    : '0 2px 6px rgba(0,0,0,0.12)'
+    ? '0 1px 3px rgba(0,0,0,0.18)'
+    : '0 1px 3px rgba(0,0,0,0.08)'
 
   const meta       = toolMeta(req.toolName)
   const accentClr  = 'var(--accent)'

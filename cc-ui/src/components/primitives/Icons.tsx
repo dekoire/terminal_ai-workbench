@@ -4,13 +4,13 @@ import {
   Terminal, Zap, Sparkles, GitCommitHorizontal, GitBranch, GitFork, Settings,
   ArrowUpRight, Bookmark, TriangleAlert, Check, Loader, Copy, Send,
   MoreHorizontal, Pencil, Trash2, GripVertical, Shield, ShieldPlus, File,
-  HardDrive, Moon, Sun, Mic, LogOut, LayoutDashboard, LayoutList, FileCode2,
+  HardDrive, Moon, Sun, Mic, LogOut, LayoutDashboard, LayoutList, Columns3, FileCode2,
   Wand2, Play, Cpu, FileCheck2, ScrollText, Image, Keyboard, Table2, FilePlus,
   ExternalLink, Download, FileText, Bug, Star, User, PanelLeft,
-  Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown,
+  Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown, Users,
   Link2, Cloud, CloudUpload, CloudDownload, Camera, Lock, Bell, Paperclip, ChevronLeft, ChevronUp,
   History, Eye, AlertCircle,
-  MousePointer2, MousePointerClick, MessageSquare, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal,
+  MousePointer2, MousePointerClick, MessageSquare, MessageSquareCode, MoveUpRight, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal, SlidersHorizontal, Bot,
   type LucideProps,
 } from 'lucide-react'
 
@@ -39,7 +39,7 @@ export const IClose        = ic(X)
 export const ISearch       = ic(Search)
 export const ITerminal     = ic(Terminal)
 export const IBolt         = ic(Zap)
-export const ISpark        = ic(Sparkles)
+export const ISpark        = ic(MessageSquareCode)
 export const IGit          = ic(GitCommitHorizontal)
 export const IBranch       = ic(GitBranch)
 export const ISettings     = ic(Settings)
@@ -70,7 +70,7 @@ export const IMoon         = ic(Moon)
 export const ISun          = ic(Sun)
 export const IMic          = ic(Mic)
 export const ILogout       = ic(LogOut)
-export const IKanban       = ic(LayoutList)
+export const IKanban       = ic(Columns3)
 export const IKanbanLegacy = ic(LayoutDashboard)
 export const IDocAI        = ic(FileCode2)
 export const IAiWand       = ic(Wand2)
@@ -89,6 +89,7 @@ export const IFileText     = ic(FileText)
 export const IBug          = ic(Bug)
 export const IStar         = ic(Star)
 export const IUser         = ic(User)
+export const IUsers        = ic(Users)
 export const IPanel        = ic(PanelLeft)
 export const IGitFork      = ic(GitFork)
 export const IDatabase     = ic(Database)
@@ -118,6 +119,9 @@ export const IUndo            = ic(Undo2)
 export const IRefresh         = ic(RefreshCw)
 export const ICompass         = ic(Compass)
 export const ISquareTerminal  = ic(SquareTerminal)
+export const IMoveUpRight     = ic(MoveUpRight)
+export const ISliders         = ic(SlidersHorizontal)
+export const IBot             = ic(Bot)
 
 // ── Logo spinner (SVG from assets/spinner.html) ───────────────────────────────
 export function ISpinner({ size = 20 }: { size?: number }) {

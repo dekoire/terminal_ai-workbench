@@ -585,6 +585,8 @@ export interface AppState {
   docApplying: Record<string, boolean>
   lastProjectPath: string
   openrouterKey: string
+  githubToken: string
+  codeReviewModel: string
   defaultManagerModel: string
   orbitMessages: Record<string, OrbitMessage[]>   // chatId → messages
   orbitMeta: Record<string, OrbitChatMeta>         // chatId → meta
@@ -604,6 +606,11 @@ export interface AppState {
   // Auth
   currentUser: CurrentUser | null
   setCurrentUser: (u: CurrentUser | null) => void
+
+  // Admin
+  adminEmails: string[]
+  addAdminEmail: (email: string) => void
+  removeAdminEmail: (email: string) => void
 
   // Integrationen
   supabaseUrl: string
@@ -701,6 +708,8 @@ export interface AppState {
   setDocApplying: (projectId: string, applying: boolean) => void
   setLastProjectPath: (p: string) => void
   setOpenrouterKey: (key: string) => void
+  setGithubToken: (token: string) => void
+  setCodeReviewModel: (model: string) => void
   setDefaultManagerModel: (model: string) => void
   setOrbitCtxBefore: (n: number) => void
   setOrbitCtxAfter: (n: number) => void
@@ -862,6 +871,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   docApplying: {},
   lastProjectPath: '',
   openrouterKey: '',
+  githubToken: '',
+  codeReviewModel: 'anthropic/claude-sonnet-4-6',
   defaultManagerModel: 'anthropic/claude-sonnet-4-6',
   orbitMessages: {},
   orbitMeta: {},
@@ -879,6 +890,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   claudeProviders: [],
 
   currentUser: null,
+  adminEmails: ['admin@codera.com'],
 
   supabaseUrl: 'https://fpphqkuizptypeawclsx.supabase.co',
   supabaseAnonKey: '',
@@ -891,6 +903,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   cloudflareR2PublicUrl: '',
 
   setCurrentUser: (currentUser) => set({ currentUser }),
+  addAdminEmail:    (email) => set(s => ({ adminEmails: s.adminEmails.includes(email.toLowerCase()) ? s.adminEmails : [...s.adminEmails, email.toLowerCase()] })),
+  removeAdminEmail: (email) => set(s => ({ adminEmails: s.adminEmails.filter(e => e !== email.toLowerCase()) })),
 
   resetUserData: () => set({
     // Clear all user-specific data so a new user starts with a blank slate
@@ -1095,6 +1109,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setDocApplying: (projectId, applying) => set((s) => ({ docApplying: { ...s.docApplying, [projectId]: applying } })),
   setLastProjectPath: (lastProjectPath) => set({ lastProjectPath }),
   setOpenrouterKey: (openrouterKey) => set({ openrouterKey }),
+  setGithubToken: (githubToken) => set({ githubToken }),
+  setCodeReviewModel: (codeReviewModel) => set({ codeReviewModel }),
   setDefaultManagerModel: (defaultManagerModel) => set({ defaultManagerModel }),
   setOrbitCtxBefore: (orbitCtxBefore) => set({ orbitCtxBefore }),
   setOrbitCtxAfter: (orbitCtxAfter) => set({ orbitCtxAfter }),
@@ -1178,6 +1194,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }
     // Ensure openrouterKey exists
     if (state.openrouterKey === undefined) state.openrouterKey = ''
+    if (state.githubToken === undefined) state.githubToken = ''
+    if (state.codeReviewModel === undefined) state.codeReviewModel = 'anthropic/claude-sonnet-4-6'
     if (state.defaultManagerModel === undefined) state.defaultManagerModel = 'anthropic/claude-sonnet-4-6'
     if (state.orbitCtxBefore === undefined) state.orbitCtxBefore = 2
     if (state.orbitCtxAfter === undefined) state.orbitCtxAfter = 2
@@ -1228,6 +1246,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     docTemplates:    s.docTemplates,
     lastProjectPath: s.lastProjectPath,
     openrouterKey:          s.openrouterKey,
+    githubToken:            s.githubToken,
+    codeReviewModel:        s.codeReviewModel,
     defaultManagerModel:    s.defaultManagerModel,
     orbitCtxBefore:         s.orbitCtxBefore,
     orbitCtxAfter:          s.orbitCtxAfter,
@@ -1243,6 +1263,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     projectBrains:       s.projectBrains,
     claudeProviders:     s.claudeProviders,
     currentUser:         s.currentUser,
+    adminEmails:         s.adminEmails,
     supabaseUrl:              s.supabaseUrl,
     supabaseAnonKey:          s.supabaseAnonKey,
     supabaseServiceRoleKey:   s.supabaseServiceRoleKey,

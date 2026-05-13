@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { useAppStore } from '../../store/useAppStore'
 import type { SessionKind } from '../../store/useAppStore'
-import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp } from '../primitives/Icons'
+import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
 import { saveAgentMessage, loadLastProjectMessages, loadLatestContextSummary, saveContextSummary, compressAgentHistory, loadAgentMessageById, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { resolveRefs } from '../../lib/resolveRefs'
@@ -251,7 +251,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const lineNumW   = lines.length >= 100 ? 40 : 28
   return (
     <div style={{ margin: '10px 0', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--line-strong)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 12px', background: 'var(--bg-3)', borderBottom: '1px solid var(--line-strong)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 12px', background: 'var(--code-header-bg)', borderBottom: '1px solid var(--line-strong)' }}>
         <span style={{ fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace', fontSize: 11, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{lang || 'code'}</span>
         <button
           onClick={copy}
@@ -261,7 +261,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
           <ICopy size={12} />
         </button>
       </div>
-      <div style={{ display: 'flex', background: 'var(--bg-1)', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', background: 'var(--code-bg)', overflowX: 'auto' }}>
         <div style={{ padding: '12px 8px 12px 14px', textAlign: 'right', userSelect: 'none', fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace', fontSize: 12, lineHeight: 1.65, color: 'var(--fg-2)', minWidth: lineNumW, flexShrink: 0, borderRight: '1px solid var(--line-strong)' }}>
           {lines.map((_, idx) => <div key={idx}>{idx + 1}</div>)}
         </div>
@@ -281,19 +281,63 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
 }
 
 // ── Minimal Markdown renderer (no deps) ───────────────────────────────────────
+
+function InlineLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        color: 'var(--info)', textDecoration: 'none',
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        verticalAlign: 'middle',
+        background: 'rgba(138,180,255,0.08)', borderRadius: 4,
+        padding: '0 4px',
+      }}
+    >
+      {children}
+      <IMoveUpRight style={{ width: 11, height: 11, flexShrink: 0 }} />
+    </a>
+  )
+}
+
+function InlinePath({ path }: { path: string }) {
+  return (
+    <span
+      onClick={() => fetch(`/api/open?path=${encodeURIComponent(path)}`)}
+      style={{
+        cursor: 'pointer',
+        color: 'var(--accent)',
+        fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace',
+        fontSize: '0.88em',
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        verticalAlign: 'middle',
+        background: 'var(--accent-soft)', borderRadius: 4,
+        padding: '0 4px',
+      }}
+    >
+      {path}
+      <IMoveUpRight style={{ width: 10, height: 10, flexShrink: 0, opacity: 0.8 }} />
+    </span>
+  )
+}
+
 function renderInline(text: string, key?: number): React.ReactNode {
   const parts: React.ReactNode[] = []
-  const re = /(`[^`]+`)|(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(__(.+?)__)|(_((?:[^_])+?)_)|(\*(?!\*)((?:[^*])+?)\*)|(\[([^\]]+)\]\(([^)]+)\))/g
+  const re = /(`[^`]+`)|(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(__(.+?)__)|(_((?:[^_])+?)_)|(\*(?!\*)((?:[^*])+?)\*)|(\[([^\]]+)\]\(([^)]+)\))|(https?:\/\/[^\s<>"'()\[\]{},]+)|((?:~\/|\.{1,2}\/|(?:\/[a-zA-Z0-9_.~-]+){2,})[^\s<>"'()\[\]{},]*)/g
   let last = 0; let m: RegExpExecArray | null; let idx = 0
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push(<React.Fragment key={idx++}>{text.slice(last, m.index)}</React.Fragment>)
-    if (m[1])       parts.push(<code key={idx++} style={{ background: 'var(--bg-2)', padding: '1px 5px', borderRadius: 3, fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace', fontSize: '0.88em', color: 'var(--accent)' }}>{m[1].slice(1, -1)}</code>)
+    if (m[1])       parts.push(<code key={idx++} style={{ background: 'var(--inline-code-bg)', padding: '1px 5px', borderRadius: 3, fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace', fontSize: '0.88em', color: 'var(--accent)' }}>{m[1].slice(1, -1)}</code>)
     else if (m[2])  parts.push(<strong key={idx++}><em>{m[3]}</em></strong>)
     else if (m[4])  parts.push(<strong key={idx++}>{m[5]}</strong>)
     else if (m[6])  parts.push(<strong key={idx++}>{m[7]}</strong>)
     else if (m[8])  parts.push(<em key={idx++}>{m[9]}</em>)
     else if (m[10]) parts.push(<em key={idx++}>{m[11]}</em>)
-    else if (m[12]) parts.push(<a key={idx++} href={m[14]} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>{m[13]}</a>)
+    else if (m[12]) parts.push(<InlineLink key={idx++} href={m[14]}>{m[13]}</InlineLink>)
+    else if (m[15]) parts.push(<InlineLink key={idx++} href={m[15]}>{m[15].length > 60 ? m[15].slice(0, 60) + '…' : m[15]}</InlineLink>)
+    else if (m[16]) parts.push(<InlinePath key={idx++} path={m[16]} />)
     last = m.index + m[0].length
   }
   if (last < text.length) parts.push(<React.Fragment key={idx++}>{text.slice(last)}</React.Fragment>)
@@ -1042,28 +1086,27 @@ function HistoryPermissionCard({ data, ts }: { data: Record<string, unknown>; ts
 
 function HistoryErrorCard({ data, ts }: { data: Record<string, unknown>; ts: number }) {
   const message = String(data.message ?? '')
+  const [open, setOpen] = useState(false)
+  const short = message.length > 80 ? message.slice(0, 80) + '…' : message
   return (
-    <div style={{ marginBottom: 10, marginTop: 6, display: 'flex', justifyContent: 'flex-start' }}>
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 4,
-        padding: '8px 12px',
-        background: 'rgba(239,122,122,0.07)',
-        border: '1px solid rgba(239,122,122,0.25)',
-        borderLeft: '3px solid var(--err)',
-        borderRadius: '0 6px 6px 0',
-        maxWidth: '80%', minWidth: 220,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5 }}>
-          <span style={{ color: 'var(--err)', fontWeight: 700 }}>✗</span>
-          <span style={{ color: 'var(--fg-2)', fontWeight: 600 }}>Fehler</span>
-          <span style={{ marginLeft: 'auto', color: 'var(--fg-3)', fontSize: 9.5, opacity: 0.7 }}>{formatTs(ts)}</span>
+    <div style={{ marginBottom: 8, padding: '7px 12px', background: 'rgba(239,122,122,0.07)', border: '1px solid rgba(239,122,122,0.25)', borderRadius: 6 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left' }}
+      >
+        <span style={{ color: '#ef7a7a', fontSize: 12, flexShrink: 0 }}>⚠</span>
+        <span style={{ color: '#ef7a7a', fontSize: 12, flex: 1 }}>{open ? 'Fehler' : short}</span>
+        <span style={{ color: 'var(--fg-3)', fontSize: 9.5, marginRight: 4 }}>{formatTs(ts)}</span>
+        {open
+          ? <IChevUp  style={{ width: 13, height: 13, color: '#ef7a7a', flexShrink: 0 }} />
+          : <IChevDown style={{ width: 13, height: 13, color: '#ef7a7a', flexShrink: 0 }} />
+        }
+      </button>
+      {open && (
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(239,122,122,0.2)', color: '#ef7a7a', ...MONO, fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          {message}
         </div>
-        {message && (
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--err)', opacity: 0.85, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {message.length > 200 ? message.slice(0, 200) + '…' : message}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   )
 }
@@ -1147,7 +1190,6 @@ function BubbleContent({ text }: { text: string }) {
                 display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 6,
                 padding: '4px 9px 4px 6px',
                 background: 'var(--bg-0)', borderRadius: 6,
-                border: '1px solid var(--line-strong)',
                 fontSize: 11, fontFamily: 'var(--font-mono)',
                 color: 'var(--fg-1)',
                 textDecoration: 'none', cursor: 'pointer',
@@ -1171,7 +1213,6 @@ function BubbleContent({ text }: { text: string }) {
               marginTop: 5,
               cursor: 'zoom-in',
               objectFit: 'cover',
-              border: '1px solid rgba(255,255,255,0.2)',
             }}
             title={p.path}
           />
@@ -1191,7 +1232,7 @@ function EventRow({ ev, activeModel, inputTokens }: { ev: AgentEvent; activeMode
             maxWidth: '72%',
             background: 'var(--accent)',
             color: 'var(--accent-fg)',
-            borderRadius: '15px 15px 0 15px',
+            borderRadius: '6px 15px 0 6px',
             padding: '10px 14px',
             fontSize: 13,
             fontWeight: 500,
@@ -2063,7 +2104,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
                 <div key={m.id ?? i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginBottom: 24, marginTop: 10 }}>
                   <div style={{
                     maxWidth: '72%', background: 'var(--accent)', color: 'var(--accent-fg)',
-                    borderRadius: '15px 15px 0 15px', padding: '10px 14px',
+                    borderRadius: '6px 15px 0 6px', padding: '10px 14px',
                     fontSize: 13, fontWeight: 500, lineHeight: 1.65,
                     fontFamily: 'var(--font-ui)',
                   }}>

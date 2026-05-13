@@ -261,15 +261,16 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
 
   // ── Button style helpers ──────────────────────────────────────────────────────
   const btnBase: React.CSSProperties = {
-    background: 'none', border: 'none', padding: '4px 6px',
+    background: 'none', border: 'none', padding: '4px 8px',
     cursor: 'pointer', color: bChrome.color, display: 'flex',
     alignItems: 'center', borderRadius: 5, fontSize: 11.5,
-    fontFamily: 'var(--font-ui)',
+    fontFamily: 'var(--font-ui)', transition: 'background 0.1s',
   }
+  const hoverBg = theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.14)'
   const modeActive = (m: BrowserMode): React.CSSProperties => ({
     ...btnBase,
-    background: mode === m ? (theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)') : 'transparent',
-    color:      mode === m ? 'var(--accent)' : bChrome.color,
+    background: mode === m ? 'var(--accent)' : 'transparent',
+    color:      mode === m ? '#fff' : bChrome.color,
     fontWeight: mode === m ? 600 : 400,
   })
 
@@ -283,13 +284,19 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
         borderBottom: `1px solid ${bChrome.borderColor}`,
         flexShrink: 0,
       }}>
-        <button onClick={back}   style={btnBase} title="Zurück">
+        <button onClick={back}   style={btnBase} title="Zurück"
+          onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
           <IChevLeft style={{ width: 15, height: 15, strokeWidth: 2.2 }} />
         </button>
-        <button onClick={fwd}    style={btnBase} title="Vorwärts">
+        <button onClick={fwd}    style={btnBase} title="Vorwärts"
+          onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
           <IChevLeft style={{ width: 15, height: 15, strokeWidth: 2.2, transform: 'scaleX(-1)' }} />
         </button>
-        <button onClick={reload} style={btnBase} title="Neu laden">
+        <button onClick={reload} style={btnBase} title="Neu laden"
+          onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
           <IRefresh style={{ width: 15, height: 15, strokeWidth: 2.2 }} />
         </button>
 
@@ -300,7 +307,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
             placeholder="http://localhost:3000"
             style={{
               flex: 1, padding: '4px 10px', borderRadius: 6,
-              border: `1px solid ${error ? '#ef4444' : bChrome.borderColor}`,
+              border: error ? '1px solid #ef4444' : 'none',
               background: theme === 'dark' ? '#ffffff' : '#2a2a2a',
               color: theme === 'dark' ? '#111111' : '#e8e8e8',
               fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none',
@@ -308,13 +315,19 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           />
         </form>
 
-        <button onClick={() => onModeChange('normal')} style={modeActive('normal')} title="Normal">
+        <button onClick={() => onModeChange('normal')} style={modeActive('normal')} title="Normal"
+          onMouseEnter={e => { if (mode !== 'normal') e.currentTarget.style.background = hoverBg }}
+          onMouseLeave={e => { if (mode !== 'normal') e.currentTarget.style.background = 'transparent' }}>
           <IMousePointer style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Normal
         </button>
-        <button onClick={() => onModeChange('draw')} style={modeActive('draw')} title="Zeichnen">
+        <button onClick={() => onModeChange('draw')} style={modeActive('draw')} title="Zeichnen"
+          onMouseEnter={e => { if (mode !== 'draw') e.currentTarget.style.background = hoverBg }}
+          onMouseLeave={e => { if (mode !== 'draw') e.currentTarget.style.background = 'transparent' }}>
           <IEdit style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Zeichnen
         </button>
-        <button onClick={() => onModeChange('inspect')} style={modeActive('inspect')} title="Inspect (Shift+Klick)">
+        <button onClick={() => onModeChange('inspect')} style={modeActive('inspect')} title="Inspect (Shift+Klick)"
+          onMouseEnter={e => { if (mode !== 'inspect') e.currentTarget.style.background = hoverBg }}
+          onMouseLeave={e => { if (mode !== 'inspect') e.currentTarget.style.background = 'transparent' }}>
           <IMousePointerClick style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Selektor
         </button>
 
@@ -323,6 +336,8 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           disabled={!url}
           style={{ ...btnBase, gap: 4, opacity: url ? 1 : 0.4, cursor: url ? 'pointer' : 'default' }}
           title={url ? 'Screenshot machen' : 'Zuerst eine URL eingeben'}
+          onMouseEnter={e => { if (url) e.currentTarget.style.background = hoverBg }}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         >
           <ICamera style={{ width: 14, height: 14, strokeWidth: 2.2 }} />Screenshot
         </button>
@@ -360,10 +375,12 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
               onClick={() => setDrawTool(t.id)}
               style={{
                 ...btnBase,
-                background: drawTool === t.id ? (theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)') : 'transparent',
-                color: drawTool === t.id ? 'var(--accent)' : bChrome.color,
+                background: drawTool === t.id ? 'var(--accent)' : 'transparent',
+                color: drawTool === t.id ? '#fff' : bChrome.color,
                 fontWeight: drawTool === t.id ? 600 : 400,
               }}
+              onMouseEnter={e => { if (drawTool !== t.id) e.currentTarget.style.background = hoverBg }}
+              onMouseLeave={e => { if (drawTool !== t.id) e.currentTarget.style.background = 'transparent' }}
             >
               {t.id === 'pen'    && <IEdit          style={{ width: 13, height: 13, marginRight: 4, strokeWidth: 2.2 }} />}
               {t.id === 'eraser' && <IEraser        style={{ width: 13, height: 13, marginRight: 4, strokeWidth: 2.2 }} />}

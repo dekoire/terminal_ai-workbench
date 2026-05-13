@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { Alias, RepoToken, DocTemplate } from '../../store/useAppStore'
-import { IPlus, IDrag, IEdit, ITrash, ISpark, ICheck, IBookmark, IGit, IStar, IMoon, IKeyboard, ICpu, IFileText, IDatabase, ILink, ICloud, ICloudUpload } from '../primitives/Icons'
+import { IPlus, IDrag, IEdit, ITrash, ISpark, ICheck, IBookmark, IGit, IStar, IMoon, ISun, IChevDown, IChevUp, IKeyboard, ICpu, IFileText, IDatabase, ILink, ICloud, ICloudUpload, IShield, IUsers, ILock, ISquareTerminal } from '../primitives/Icons'
 import { Pill } from '../primitives/Pill'
 import { ACCENT_PRESETS, TERMINAL_THEMES, applyPreset } from '../../theme/presets'
 import type { AIProvider, TerminalShortcut, ClaudeProvider } from '../../store/useAppStore'
@@ -70,10 +70,12 @@ const btnGhost: React.CSSProperties = {
   padding: '7px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)',
 }
 
-const NAV = ['Aliases', 'GitHub Integration', 'Prompt templates', 'Aussehen', 'Terminal-Befehle', 'Large Language Models', 'Vorlagen', 'Kontext Management', 'Integrationen']
+const NAV = ['Agents', 'API Credentials', 'KI-Funktionen', 'GitHub Integration', 'Aussehen', 'Vorlagen', 'Kontext Management']
 
 const NAV_DESC: Record<string, string> = {
-  'Aliases':               'Agenten-Shortcuts & Befehle',
+  'Agents':                'Terminal-Aliases & KI-Modelle',
+  'API Credentials':       'API-Keys & Provider-Zugänge',
+  'KI-Funktionen':         'Modellzuweisung für Funktionen',
   'GitHub Integration':    'Repos, Tokens, Git-Anbindung',
   'Prompt templates':      'AI-Prompts & User Stories',
   'Aussehen':              'Themes, Schrift, Farben',
@@ -82,10 +84,18 @@ const NAV_DESC: Record<string, string> = {
   'Vorlagen':              'Dok- & Story-Vorlagen',
   'Kontext Management':    'Referenz-IDs, Kontext-Fenster',
   'Integrationen':         'Supabase, Cloudflare R2',
+  // Admin
+  'Admin: Übersicht':           'Statistiken & Systemstatus',
+  'Admin: Benutzer':            'Rollen & Zugangsverwaltung',
+  'Admin: Integrationen':       'Supabase, Cloudflare R2',
+  'Admin: Claude CLI Konfig':   'tweakcc, Themes, Optionen',
+  'Admin: System':              'Version, Daten, Feature-Flags',
 }
 
 const NAV_ICONS: Record<string, React.ReactNode> = {
-  'Aliases':               <IBookmark style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'Agents':                <ISpark   style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'API Credentials':       <ILock    style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'KI-Funktionen':         <ICpu     style={{ width: 13, height: 13, flexShrink: 0 }} />,
   'GitHub Integration':    <IGit style={{ width: 13, height: 13, flexShrink: 0 }} />,
   'Prompt templates':      <IStar style={{ width: 13, height: 13, flexShrink: 0 }} />,
   'Aussehen':              <IMoon style={{ width: 13, height: 13, flexShrink: 0 }} />,
@@ -94,6 +104,12 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   'Vorlagen':              <IFileText style={{ width: 13, height: 13, flexShrink: 0 }} />,
   'Kontext Management':    <IDatabase style={{ width: 13, height: 13, flexShrink: 0 }} />,
   'Integrationen':         <ILink style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  // Admin
+  'Admin: Übersicht':           <IShield      style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'Admin: Benutzer':            <IUsers       style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'Admin: Integrationen':       <ILink        style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'Admin: Claude CLI Konfig':   <ISquareTerminal style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'Admin: System':              <IDatabase    style={{ width: 13, height: 13, flexShrink: 0 }} />,
 }
 
 type EditMode = { kind: 'new' } | { kind: 'edit'; id: string } | null
@@ -160,9 +176,12 @@ function TitlebarLogo() {
 }
 
 // ── Root component ────────────────────────────────────────────────────────────
+const ADMIN_NAV = ['Admin: Übersicht', 'Admin: Benutzer', 'Admin: Integrationen', 'Admin: Claude CLI Konfig', 'Admin: System']
+
 export function AliasSettings() {
-  const { aliases, addAlias, updateAlias, removeAlias, reorderAliases, setScreen } = useAppStore()
-  const [activeNav, setActiveNav] = useState('Aliases')
+  const { aliases, addAlias, updateAlias, removeAlias, reorderAliases, setScreen, currentUser, adminEmails } = useAppStore()
+  const [activeNav, setActiveNav] = useState('Agents')
+  const isAdmin = !!currentUser?.email && adminEmails.map(e => e.toLowerCase()).includes(currentUser.email.toLowerCase())
   const [editMode, setEditMode] = useState<EditMode>(null)
   const [form, setForm]         = useState(emptyAlias)
   const cmdChecks = useAllCmdChecks(aliases)
@@ -186,28 +205,36 @@ export function AliasSettings() {
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         {/* Sidebar */}
-        <aside style={{ width: 180, background: 'var(--bg-1)', borderRight: '1px solid var(--line)', padding: '12px 0', flexShrink: 0, overflowY: 'auto' }}>
+        <aside style={{ width: 180, background: 'var(--bg-1)', borderRight: '1px solid var(--line)', padding: '12px 0', flexShrink: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {/* User settings */}
+          <div style={{ padding: '2px 14px 6px', fontSize: 8.5, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--fg-3)', fontWeight: 700, opacity: 0.6 }}>Einstellungen</div>
           {NAV.map(label => (
-            <div key={label} onClick={() => { setActiveNav(label); setEditMode(null) }} style={{
-              padding: '5px 12px 5px 14px', cursor: 'pointer',
-              background: label === activeNav ? 'var(--bg-2)' : 'transparent',
-              borderLeft: label === activeNav ? '2px solid var(--accent)' : '2px solid transparent',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: label === activeNav ? 'var(--accent)' : 'var(--fg-3)' }}>
-                {NAV_ICONS[label]}
-                <span style={{ fontSize: 11.5, color: label === activeNav ? 'var(--fg-0)' : 'var(--fg-1)', fontWeight: label === activeNav ? 600 : 400 }}>{label}</span>
-              </div>
-              <div style={{ fontSize: 9.5, color: 'var(--fg-3)', marginTop: 1, paddingLeft: 19 }}>{NAV_DESC[label]}</div>
-            </div>
+            <NavItem key={label} label={label} active={activeNav === label} onClick={() => { setActiveNav(label); setEditMode(null) }} />
           ))}
-          <div style={{ margin: '16px 16px 0', height: 1, background: 'var(--line)' }} />
-          <div onClick={() => setScreen('workspace')} style={{ padding: '8px 16px', fontSize: 12, color: 'var(--fg-3)', cursor: 'pointer', marginTop: 4 }}>← Back</div>
+
+          {/* Admin section */}
+          {isAdmin && <>
+            <div style={{ margin: '10px 14px 6px', height: 1, background: 'var(--line)' }} />
+            <div style={{ padding: '2px 14px 6px', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <IShield style={{ width: 9, height: 9, color: 'var(--accent)' }} />
+              <span style={{ fontSize: 8.5, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--accent)', fontWeight: 700 }}>Admin</span>
+            </div>
+            {ADMIN_NAV.map(label => (
+              <NavItem key={label} label={label} active={activeNav === label} onClick={() => { setActiveNav(label); setEditMode(null) }} isAdmin />
+            ))}
+          </>}
+
+          <div style={{ flex: 1 }} />
+          <div style={{ margin: '0 16px 4px', height: 1, background: 'var(--line)' }} />
+          <div onClick={() => setScreen('workspace')} style={{ padding: '8px 16px', fontSize: 12, color: 'var(--fg-3)', cursor: 'pointer' }}>← Back</div>
         </aside>
 
         {/* Content */}
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-          {activeNav === 'Aliases' && (
-            <AliasesPanel
+          {activeNav === 'API Credentials'    && <AIPanel hideTabs={['provider', 'functions']} />}
+          {activeNav === 'KI-Funktionen'      && <AIPanel hideTabs={['keys', 'provider']} />}
+          {activeNav === 'Agents' && (
+            <AgentsPanel
               aliases={aliases} cmdChecks={cmdChecks}
               activeId={editMode?.kind === 'edit' ? editMode.id : null}
               editMode={editMode} form={form} setForm={setForm}
@@ -221,12 +248,265 @@ export function AliasSettings() {
           {activeNav === 'Darstellung'        && <AppearancePanel />}
           {activeNav === 'Aussehen'           && <AussehenpPanel />}
           {activeNav === 'Terminal-Befehle'   && <TerminalCommandsPanel />}
-          {activeNav === 'Large Language Models' && <AIPanel />}
           {activeNav === 'Vorlagen'           && <DocTemplatesPanel />}
           {activeNav === 'Kontext Management' && <KontextMgmtPanel />}
           {activeNav === 'Integrationen'      && <IntegrationenPanel />}
+          {activeNav === 'Admin: Übersicht'      && <AdminOverviewPanel />}
+          {activeNav === 'Admin: Benutzer'          && <AdminUsersPanel />}
+          {activeNav === 'Admin: Integrationen'     && <IntegrationenPanel />}
+          {activeNav === 'Admin: Claude CLI Konfig' && <ClaudeCLIAdminPanel />}
+          {activeNav === 'Admin: System'            && <AdminSystemPanel />}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Shared NavItem ────────────────────────────────────────────────────────────
+function NavItem({ label, active, onClick, isAdmin }: { label: string; active: boolean; onClick: () => void; isAdmin?: boolean }) {
+  const displayLabel = label.startsWith('Admin: ') ? label.replace('Admin: ', '') : label
+  const accentColor  = isAdmin ? 'var(--accent)' : 'var(--accent)'
+  return (
+    <div onClick={onClick} style={{
+      padding: '5px 12px 5px 14px', cursor: 'pointer',
+      background: active ? 'var(--bg-2)' : 'transparent',
+      borderLeft: active ? `2px solid ${accentColor}` : '2px solid transparent',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: active ? accentColor : 'var(--fg-3)' }}>
+        {NAV_ICONS[label]}
+        <span style={{ fontSize: 11.5, color: active ? 'var(--fg-0)' : 'var(--fg-1)', fontWeight: active ? 600 : 400 }}>{displayLabel}</span>
+      </div>
+      <div style={{ fontSize: 9.5, color: 'var(--fg-3)', marginTop: 1, paddingLeft: 19 }}>{NAV_DESC[label]}</div>
+    </div>
+  )
+}
+
+// ── Admin: Übersicht ──────────────────────────────────────────────────────────
+function AdminOverviewPanel() {
+  const { projects, aliases, currentUser } = useAppStore()
+  const totalSessions = projects.reduce((n, p) => n + p.sessions.length, 0)
+  const totalTasks    = projects.reduce((n, p) => n + p.sessions.reduce((m, s) => m + (s.userStories?.length ?? 0), 0), 0)
+  const stats = [
+    { label: 'Projekte',  value: projects.length },
+    { label: 'Sessions',  value: totalSessions },
+    { label: 'Aliases',   value: aliases.length },
+    { label: 'Tasks',     value: totalTasks },
+  ]
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Übersicht</div>
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Systemstatus & Statistiken</div>
+      </div>
+
+      {/* Aktiver Benutzer */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Eingeloggt als</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+            {(currentUser?.firstName?.charAt(0) ?? '') + (currentUser?.lastName?.charAt(0) ?? '')}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>{currentUser?.firstName} {currentUser?.lastName}</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>{currentUser?.email}</div>
+          </div>
+          <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, letterSpacing: 0.5, color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', borderRadius: 4, padding: '2px 7px', textTransform: 'uppercase' }}>Admin</span>
+        </div>
+      </div>
+
+      {/* Statistiken */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Statistiken</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          {stats.map(({ label, value }) => (
+            <div key={label} style={{ padding: '14px 10px', background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>{value}</div>
+              <div style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 3 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Admin: Benutzer & Zugang ──────────────────────────────────────────────────
+function AdminUsersPanel() {
+  const { adminEmails, addAdminEmail, removeAdminEmail, currentUser } = useAppStore()
+  const [newEmail, setNewEmail] = useState('')
+  const [emailError, setEmailError] = useState('')
+
+  const handleAdd = () => {
+    const email = newEmail.trim().toLowerCase()
+    if (!email) return
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setEmailError('Ungültige E-Mail-Adresse'); return }
+    addAdminEmail(email)
+    setNewEmail('')
+    setEmailError('')
+  }
+
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Benutzer & Zugang</div>
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Verwalte Admin-Rechte und Zugänge</div>
+      </div>
+
+      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Administratoren</div>
+      <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
+        {adminEmails.map((email, i) => (
+          <div key={email} style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+            borderBottom: i < adminEmails.length - 1 ? '1px solid var(--line)' : 'none',
+          }}>
+            <IUsers style={{ width: 13, height: 13, color: 'var(--fg-3)', flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg-0)' }}>{email}</span>
+            {email === currentUser?.email?.toLowerCase() && (
+              <span style={{ fontSize: 9, color: 'var(--accent)', fontWeight: 600, background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--accent-line)' }}>Du</span>
+            )}
+            <button
+              onClick={() => removeAdminEmail(email)}
+              disabled={adminEmails.length <= 1}
+              title={adminEmails.length <= 1 ? 'Letzter Admin — kann nicht entfernt werden' : 'Entfernen'}
+              style={{ background: 'none', border: 'none', cursor: adminEmails.length <= 1 ? 'not-allowed' : 'pointer', color: 'var(--err)', padding: 2, display: 'flex', opacity: adminEmails.length <= 1 ? 0.25 : 1 }}
+            >
+              <ITrash style={{ width: 12, height: 12 }} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Admin hinzufügen</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <input
+            value={newEmail}
+            onChange={e => { setNewEmail(e.target.value); setEmailError('') }}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+            placeholder="admin@beispiel.com"
+            style={{
+              width: '100%', padding: '7px 10px', borderRadius: 6, boxSizing: 'border-box',
+              border: `1px solid ${emailError ? 'var(--err)' : 'var(--line-strong)'}`,
+              background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12,
+              fontFamily: 'var(--font-mono)', outline: 'none',
+            }}
+          />
+          {emailError && <div style={{ fontSize: 10, color: 'var(--err)', marginTop: 4 }}>{emailError}</div>}
+        </div>
+        <button
+          onClick={handleAdd}
+          style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 6, padding: '0 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, flexShrink: 0 }}
+        >
+          <IPlus style={{ width: 12, height: 12 }} />Hinzufügen
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Admin: System ─────────────────────────────────────────────────────────────
+function AdminSystemPanel() {
+  const { projects, aliases, customUiColors, customTerminalColors } = useAppStore()
+  const totalSessions = projects.reduce((n, p) => n + p.sessions.length, 0)
+
+  const infoRows: Array<{ label: string; value: string }> = [
+    { label: 'App-Version',        value: '0.1.0' },
+    { label: 'Vite',               value: '6.x' },
+    { label: 'React',              value: '19.x' },
+    { label: 'Projekte gesamt',    value: String(projects.length) },
+    { label: 'Sessions gesamt',    value: String(totalSessions) },
+    { label: 'Aliases gesamt',     value: String(aliases.length) },
+    { label: 'UI-Farb-Overrides',  value: String(Object.keys(customUiColors).length) },
+    { label: 'Terminal-Overrides', value: String(Object.keys(customTerminalColors).length) },
+  ]
+
+  const exportData = () => {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      projects, aliases,
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a'); a.href = url
+    a.download = `codera-export-${Date.now()}.json`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>System</div>
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Version, Daten & Diagnose</div>
+      </div>
+
+      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>System-Info</div>
+      <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 20 }}>
+        {infoRows.map(({ label, value }, i) => (
+          <div key={label} style={{
+            display: 'flex', alignItems: 'center', padding: '8px 14px',
+            borderBottom: i < infoRows.length - 1 ? '1px solid var(--line)' : 'none',
+          }}>
+            <span style={{ flex: 1, fontSize: 11.5, color: 'var(--fg-2)' }}>{label}</span>
+            <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: 'var(--fg-0)', fontWeight: 600 }}>{value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Daten-Export</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={exportData}
+          style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          <ICloud style={{ width: 13, height: 13 }} />Daten exportieren (JSON)
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Agents panel (wrapper: Terminal + Agent Chat tabs) ────────────────────────
+type AgentsPanelProps = {
+  aliases: Alias[]; cmdChecks: Record<string, boolean>; activeId: string | null
+  editMode: EditMode; form: { name: string; cmd: string; args: string }
+  setForm: React.Dispatch<React.SetStateAction<{ name: string; cmd: string; args: string }>>
+  openEdit: (a: Alias) => void; openNew: () => void; save: () => void
+  setEditMode: (m: EditMode) => void; removeAlias: (id: string) => void
+  reorderAliases: (ids: string[]) => void
+}
+
+function AgentsPanel(props: AgentsPanelProps) {
+  const [agentTab, setAgentTab] = useState<'terminal' | 'agent-chat'>('terminal')
+
+  const tabBtn = (t: 'terminal' | 'agent-chat'): React.CSSProperties => ({
+    padding: '5px 22px', border: 'none', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
+    fontFamily: 'var(--font-ui)', fontWeight: agentTab === t ? 600 : 400,
+    background: agentTab === t ? 'var(--accent-soft)' : 'transparent',
+    color: agentTab === t ? 'var(--accent)' : 'var(--fg-2)',
+  })
+
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
+      {/* Page header */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Agents</div>
+          <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Terminal-Aliases & KI-Modelle</div>
+        </div>
+        <span style={{ flex: 1 }} />
+        {agentTab === 'terminal' && <button style={btnPrimary} onClick={props.openNew}><IPlus />Neu</button>}
+      </div>
+
+      {/* Centered tab bar */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
+          <button style={tabBtn('terminal')}   onClick={() => setAgentTab('terminal')}>Terminal</button>
+          <button style={tabBtn('agent-chat')} onClick={() => setAgentTab('agent-chat')}>Agent Chat</button>
+        </div>
+      </div>
+
+      {agentTab === 'terminal'   && <AliasesPanel {...props} />}
+      {agentTab === 'agent-chat' && <ClaudeProviderTab />}
     </div>
   )
 }
@@ -242,16 +522,12 @@ function AliasesPanel({ aliases, cmdChecks, activeId, editMode, form, setForm, o
 }) {
   const [dragging, setDragging] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
+  const dragIdRef = useRef<string | null>(null)
 
   return (
-    <div style={{ padding: '20px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-        <div>
-          <h2 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 600, color: 'var(--fg-0)' }}>Aliases</h2>
-          <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Die ersten 4 werden als Schnellstart im leeren Workspace angezeigt. Reihenfolge per Drag ändern.</div>
-        </div>
-        <span style={{ flex: 1 }} />
-        <button style={btnPrimary} onClick={openNew}><IPlus />New</button>
+    <div>
+      <div style={{ fontSize: 9.5, color: 'var(--fg-3)', marginBottom: 10, lineHeight: 1.5 }}>
+        Die ersten 4 werden als Schnellstart im leeren Workspace angezeigt. Reihenfolge per Drag ändern.
       </div>
 
       <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: editMode ? 20 : 0 }}>
@@ -268,14 +544,16 @@ function AliasesPanel({ aliases, cmdChecks, activeId, editMode, form, setForm, o
             onDragStart={e => {
               e.dataTransfer.effectAllowed = 'move'
               e.dataTransfer.setData('text/plain', a.id)
+              dragIdRef.current = a.id
               setTimeout(() => setDragging(a.id), 0)
             }}
-            onDragEnd={() => { setDragging(null); setDragOver(null) }}
+            onDragEnd={() => { setDragging(null); setDragOver(null); dragIdRef.current = null }}
             onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOver !== a.id) setDragOver(a.id) }}
             onDragLeave={() => setDragOver(v => v === a.id ? null : v)}
             onDrop={e => {
               e.preventDefault()
-              const from = e.dataTransfer.getData('text/plain')
+              const from = dragIdRef.current ?? e.dataTransfer.getData('text/plain')
+              dragIdRef.current = null
               setDragging(null); setDragOver(null)
               if (!from || from === a.id) return
               const ids = aliases.map(x => x.id)
@@ -300,9 +578,9 @@ function AliasesPanel({ aliases, cmdChecks, activeId, editMode, form, setForm, o
               <IDrag style={{ color: 'var(--fg-3)', cursor: 'grab', flexShrink: 0 }} />
               <span style={{
                 fontSize: 9.5, fontWeight: 700, minWidth: 16, textAlign: 'center',
-                color: i < 4 ? 'var(--accent)' : 'var(--fg-3)',
-                background: i < 4 ? 'var(--accent-soft)' : 'var(--bg-3)',
-                border: `1px solid ${i < 4 ? 'var(--accent-line)' : 'var(--line)'}`,
+                color: 'var(--accent)',
+                background: 'var(--accent-soft)',
+                border: '1px solid var(--accent-line)',
                 borderRadius: 3, padding: '0 4px', lineHeight: '16px',
               }}>
                 {i + 1}
@@ -363,11 +641,13 @@ function AliasesPanel({ aliases, cmdChecks, activeId, editMode, form, setForm, o
 
 // ── Tokens panel ──────────────────────────────────────────────────────────────
 function TokensPanel() {
-  const { tokens, addToken, updateToken, removeToken } = useAppStore()
+  const { tokens, addToken, updateToken, removeToken, githubToken, setGithubToken } = useAppStore()
   const [editId, setEditId]   = useState<string | null>(null)
   const [adding, setAdding]   = useState(false)
   const [form, setForm]       = useState({ label: '', host: 'github.com', token: '' })
   const [showIds, setShowIds] = useState<Set<string>>(new Set())
+  const [editingGhToken, setEditingGhToken] = useState(false)
+  const [ghTokenDraft, setGhTokenDraft]     = useState(githubToken)
 
   const toggleShow = (id: string) =>
     setShowIds(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -390,15 +670,74 @@ function TokensPanel() {
   const HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org', 'dev.azure.com']
 
   return (
-    <div style={{ padding: '20px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--fg-0)' }}>Tokens</h2>
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>GitHub Integration</div>
+          <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Zugangs-Tokens für Git-Hosts — Clone, Push, Pull</div>
+        </div>
         <span style={{ flex: 1 }} />
-        <button style={btnPrimary} onClick={openAdd}><IPlus />Add token</button>
+        <button style={btnPrimary} onClick={openAdd}><IPlus />Token hinzufügen</button>
       </div>
-      <p style={{ margin: '0 0 14px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 500 }}>
-        Personal access tokens for Git hosts. Used for authenticated clone, push, and pull operations.
-      </p>
+
+      {/* ── Primäres GitHub Token (für Push/Clone-Aktionen) ── */}
+      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Primäres GitHub Token</div>
+      <section style={{ border: '1px solid var(--line-strong)', borderRadius: 6, overflow: 'hidden', marginBottom: 20 }}>
+        <div style={{ padding: '10px 14px', background: 'var(--bg-2)', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <IGit style={{ color: 'var(--accent)', width: 13, height: 13 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>GitHub Token</span>
+            <span style={{ flex: 1 }} />
+            {!editingGhToken && (
+              <button onClick={() => { setEditingGhToken(true); setGhTokenDraft(githubToken) }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>
+                {githubToken ? 'Ändern' : 'Hinterlegen'}
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.45 }}>
+            Personal Access Token für GitHub-Aktionen — Repo einrichten, pushen und synchronisieren.
+          </div>
+        </div>
+        <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {editingGhToken ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Personal Access Token</div>
+              <input
+                style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' as const }}
+                type="password" value={ghTokenDraft} onChange={e => setGhTokenDraft(e.target.value)} placeholder="ghp_..." autoFocus
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => { setGithubToken(ghTokenDraft); setEditingGhToken(false) }} style={btnPrimary}>Speichern</button>
+                <button onClick={() => setEditingGhToken(false)} style={btnGhost}>Abbrechen</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
+              {githubToken
+                ? <><ICheck style={{ color: 'var(--ok)', flexShrink: 0, width: 13, height: 13 }} /><span className="mono" style={{ fontSize: 11, color: 'var(--fg-2)' }}>{githubToken.slice(0, 12)}···</span></>
+                : <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>Kein Token hinterlegt — für GitHub-Aktionen benötigt</span>
+              }
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 2 }}>
+            {[
+              { label: 'Token-Typ',       value: 'Fine-grained oder Classic' },
+              { label: 'Benötigte Rechte', value: 'repo, read:user' },
+              { label: 'Erstellen unter', value: 'github.com/settings/tokens' },
+              { label: 'Speicherort',     value: 'Lokal — nur auf diesem Gerät' },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--fg-3)', marginBottom: 2 }}>{label}</div>
+                <div style={{ padding: '5px 10px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--fg-3)' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Weitere Git-Host Tokens ── */}
+      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Weitere Git-Host Tokens</div>
 
       {/* Token list */}
       {tokens.length === 0 && !adding ? (
@@ -543,10 +882,22 @@ const TERMINAL_FONT_MAP_UI: Record<string, string> = {
   system:    'monospace',
 }
 
-type AussehTab = 'themes' | 'terminal' | 'claude-cli'
+type AussehTab = 'themes' | 'terminal'
+
+// Static accent family definitions — each has a dark and light variant
+const ACCENT_FAMILIES = [
+  { id: 'ember',    name: 'Ember',    darkColor: '#ff7f4d', lightColor: '#d95f2a' },
+  { id: 'cobalt',   name: 'Cobalt',   darkColor: '#0073ff', lightColor: '#1e40ff' },
+  { id: 'forest',   name: 'Forest',   darkColor: '#00e229', lightColor: '#1a9e5c' },
+  { id: 'midnight', name: 'Midnight', darkColor: '#9d6fff', lightColor: '#8249ff' },
+  { id: 'rose',     name: 'Rose',     darkColor: '#ff47a6', lightColor: '#e01e8c' },
+  { id: 'crimson',  name: 'Rot',      darkColor: '#ff3b4e', lightColor: '#c0192e' },
+]
 
 function AussehenpPanel() {
-  const [tab, setTab] = useState<AussehTab>('themes')
+  const [tab, setTab]           = useState<AussehTab>('themes')
+  const [advancedOpen, setAdvancedOpen]         = useState(false)
+  const [termAdvancedOpen, setTermAdvancedOpen] = useState(false)
   const {
     accent: _ac, accentFg: _afg, preset: _pr,
     terminalTheme: _tt, uiFont: _uf, uiFontSize: _ufs, uiFontWeight: _ufw,
@@ -603,6 +954,20 @@ function AussehenpPanel() {
     })
   }
 
+  // ── Base + accent helpers ────────────────────────────────────────────────
+  const currentFamily = preset.replace(/-light$/, '')
+  const isDarkBase    = ACCENT_PRESETS.find(p => p.id === preset)?.dark ?? true
+  const applyBase = (dark: boolean) => {
+    const id = dark ? currentFamily : `${currentFamily}-light`
+    const p  = ACCENT_PRESETS.find(x => x.id === id)
+    if (p) applyFull(p)
+  }
+  const applyAccent = (familyId: string) => {
+    const id = isDarkBase ? familyId : `${familyId}-light`
+    const p  = ACCENT_PRESETS.find(x => x.id === id)
+    if (p) applyFull(p)
+  }
+
   const tabStyle = (t: AussehTab): React.CSSProperties => ({
     padding: '5px 14px', borderRadius: 6, fontSize: 11.5, fontFamily: 'var(--font-ui)',
     border: 'none', cursor: 'pointer',
@@ -612,71 +977,132 @@ function AussehenpPanel() {
   })
 
   return (
-    <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 680, margin: '0 auto' }}>
       {/* Inner tab bar */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <div style={{ display: 'flex', gap: 2, padding: '3px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
-          <button style={tabStyle('themes')}     onClick={() => setTab('themes')}>Themes</button>
-          <button style={tabStyle('terminal')}   onClick={() => setTab('terminal')}>Terminal</button>
-          <button style={tabStyle('claude-cli')} onClick={() => setTab('claude-cli')}>Claude CLI</button>
+          <button style={tabStyle('themes')}   onClick={() => setTab('themes')}>Themes</button>
+          <button style={tabStyle('terminal')} onClick={() => setTab('terminal')}>Terminal</button>
         </div>
       </div>
 
       {/* ── Themes ── */}
       {tab === 'themes' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* All themes side by side — no section split needed */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 4 }}>
-            {ACCENT_PRESETS.map(p => <PresetCard key={p.id} preset={p} active={preset === p.id} onApply={() => applyFull(p)} />)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* ── Base: Dunkel / Hell ── */}
+          <div>
+            <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 6 }}>Basis</div>
+            <div style={{ display: 'flex', gap: 0, padding: 3, background: 'var(--bg-2)', borderRadius: 7, border: '1px solid var(--line)' }}>
+              {([{ dark: true, icon: <IMoon style={{ width: 12, height: 12 }} />, label: 'Dunkel' }, { dark: false, icon: <ISun style={{ width: 12, height: 12 }} />, label: 'Hell' }] as const).map(({ dark, icon, label }) => (
+                <button
+                  key={String(dark)}
+                  onClick={() => applyBase(dark)}
+                  style={{
+                    flex: 1, padding: '7px 0', borderRadius: 5, cursor: 'pointer', border: 'none',
+                    fontSize: 12, fontFamily: 'var(--font-ui)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                    background: isDarkBase === dark ? 'var(--accent)' : 'transparent',
+                    color:      isDarkBase === dark ? 'var(--accent-fg)' : 'var(--fg-2)',
+                    fontWeight: isDarkBase === dark ? 600 : 400,
+                    transition: 'background 0.12s, color 0.12s',
+                  }}
+                >{icon}{label}</button>
+              ))}
+            </div>
           </div>
 
-          {/* UI Font + Size + Weight */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 4 }}>UI Schrift</div>
-              <SingleCombobox
-                value={uiFont}
-                onChange={setUiFont}
-                options={UI_FONTS.map(f => ({ value: f.id, label: f.label }))}
-                placeholder="Schrift wählen…"
-              />
-            </div>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Schriftgröße</div>
-                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>{uiFontSize} px</span>
-              </div>
-              <input
-                type="range" min={10} max={18} step={1} value={uiFontSize}
-                onChange={e => setUiFontSize(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--fg-3)', marginTop: 2 }}>
-                <span>10</span><span>14</span><span>18</span>
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 6 }}>Schriftdicke</div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {([300, 400, 500, 600] as const).map(w => (
-                  <button key={w} onClick={() => setUiFontWeight(w)} style={{
-                    flex: 1, padding: '5px 0', borderRadius: 6, border: `1px solid ${uiFontWeight === w ? 'var(--accent)' : 'var(--line-strong)'}`,
-                    background: uiFontWeight === w ? 'var(--accent-soft)' : 'var(--bg-2)',
-                    color: uiFontWeight === w ? 'var(--accent)' : 'var(--fg-2)',
-                    fontWeight: w, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)',
-                  }}>
-                    {w === 300 ? 'Dünn' : w === 400 ? 'Normal' : w === 500 ? 'Mittel' : 'Fett'}
+          {/* ── Akzentfarbe ── */}
+          <div>
+            <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Akzentfarbe</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {ACCENT_FAMILIES.map(f => {
+                const active      = currentFamily === f.id
+                const swatchColor = isDarkBase ? f.darkColor : f.lightColor
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => applyAccent(f.id)}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                      padding: '10px 6px', borderRadius: 8, cursor: 'pointer',
+                      background: active ? `${swatchColor}18` : 'var(--bg-2)',
+                      border: `1.5px solid ${active ? swatchColor : 'var(--line-strong)'}`,
+                      boxShadow: active ? `0 0 0 2px ${swatchColor}33` : 'none',
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    <div style={{
+                      width: 24, height: 24, borderRadius: '50%', background: swatchColor,
+                      boxShadow: active ? `0 0 8px ${swatchColor}80` : 'none',
+                      flexShrink: 0,
+                    }} />
+                    <span style={{
+                      fontSize: 10, fontWeight: active ? 600 : 400,
+                      color: active ? swatchColor : 'var(--fg-2)',
+                      fontFamily: 'var(--font-ui)', lineHeight: 1,
+                    }}>{f.name}</span>
                   </button>
-                ))}
-              </div>
+                )
+              })}
             </div>
           </div>
+
+          {/* UI Font + Size + Weight — compact 3-column dropdowns */}
+          {(() => {
+            const sel: React.CSSProperties = {
+              width: '100%', padding: '5px 7px', borderRadius: 6,
+              border: '1px solid var(--line-strong)', background: 'var(--bg-2)',
+              color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)',
+              cursor: 'pointer', outline: 'none',
+            }
+            const lbl: React.CSSProperties = {
+              fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: 0.6,
+              color: 'var(--fg-3)', fontWeight: 600, marginBottom: 4, display: 'block',
+            }
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px', gap: 8 }}>
+                <div>
+                  <span style={lbl}>Schriftart</span>
+                  <select value={uiFont} onChange={e => setUiFont(e.target.value)} style={sel}>
+                    {UI_FONTS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <span style={lbl}>Größe</span>
+                  <select value={uiFontSize} onChange={e => setUiFontSize(Number(e.target.value))} style={sel}>
+                    {[10,11,12,13,14,15,16,17,18].map(n => <option key={n} value={n}>{n} px</option>)}
+                  </select>
+                </div>
+                <div>
+                  <span style={lbl}>Dicke</span>
+                  <select value={uiFontWeight} onChange={e => setUiFontWeight(Number(e.target.value) as 300|400|500|600)} style={sel}>
+                    <option value={300}>Dünn</option>
+                    <option value={400}>Normal</option>
+                    <option value={500}>Mittel</option>
+                    <option value={600}>Fett</option>
+                  </select>
+                </div>
+              </div>
+            )
+          })()}
 
           <section>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Individuelle UI-Farben</span>
-              <button onClick={resetCustomUiColors} style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>Zurücksetzen</button>
+            {/* ── Advanced Settings header ── */}
+            <div
+              onClick={() => setAdvancedOpen(o => !o)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', marginBottom: advancedOpen ? 10 : 0 }}
+            >
+              {advancedOpen ? <IChevUp style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} /> : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />}
+              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, flex: 1 }}>Advanced Settings</span>
+              {advancedOpen && (
+                <button
+                  onClick={e => { e.stopPropagation(); resetCustomUiColors() }}
+                  style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}
+                >Zurücksetzen</button>
+              )}
             </div>
+            {!advancedOpen ? null : <>
             {/* Helper for reading current value */}
             {(() => {
               const css = getComputedStyle(document.documentElement)
@@ -783,6 +1209,7 @@ function AussehenpPanel() {
                 </div>
               )
             })()}
+            </>}
           </section>
         </div>
       )}
@@ -823,10 +1250,20 @@ function AussehenpPanel() {
           </section>
 
           <section>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Individuelle Terminal-Farben</span>
-              <button onClick={resetCustomTerminalColors} style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>Zurücksetzen</button>
+            <div
+              onClick={() => setTermAdvancedOpen(o => !o)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', marginBottom: termAdvancedOpen ? 10 : 0 }}
+            >
+              {termAdvancedOpen ? <IChevUp style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} /> : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />}
+              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, flex: 1 }}>Erweiterte Einstellungen</span>
+              {termAdvancedOpen && (
+                <button
+                  onClick={e => { e.stopPropagation(); resetCustomTerminalColors() }}
+                  style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}
+                >Zurücksetzen</button>
+              )}
             </div>
+            {termAdvancedOpen && <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7, marginBottom: 10 }}>
               {[
                 { label: 'Hintergrund', key: 'background', fallback: '#0e0d0b' },
@@ -864,12 +1301,12 @@ function AussehenpPanel() {
                   onChange={v => setCustomTerminalColor(key, v)} />
               ))}
             </div>
+            </>}
           </section>
         </div>
       )}
 
-      {/* ── Claude CLI (tweakcc) ── */}
-      {tab === 'claude-cli' && <ClaudeCLITab />}
+      {/* ── Nur CLI (tweakcc) ── */}
     </div>
   )
 }
@@ -896,6 +1333,17 @@ interface TweakccConfig {
     [key: string]: unknown
   }
   [key: string]: unknown
+}
+
+// ── Admin: Claude CLI Konfig wrapper ─────────────────────────────────────────
+function ClaudeCLIAdminPanel() {
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Claude CLI Konfig</div>
+      <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 20 }}>tweakcc-Einstellungen, Themes & CLI-Optionen</div>
+      <ClaudeCLITab />
+    </div>
+  )
 }
 
 function ClaudeCLITab() {
@@ -1309,14 +1757,30 @@ const AI_FUNCTIONS: { key: string; label: string; description: string }[] = [
 
 type AITab = 'keys' | 'functions' | 'provider'
 
-function AIPanel() {
-  const { aiProviders, activeAiProvider, addAiProvider, updateAiProvider, removeAiProvider, setActiveAiProvider, aiFunctionMap, setAiFunctionMap, openrouterKey, setOpenrouterKey } = useAppStore()
-  const [activeTab, setActiveTab] = useState<AITab>('keys')
+const OR_REVIEW_MODELS = [
+  { label: 'Claude Sonnet 4.6',  value: 'anthropic/claude-sonnet-4-6' },
+  { label: 'Claude Opus 4.7',    value: 'anthropic/claude-opus-4-7' },
+  { label: 'Claude Haiku 4.5',   value: 'anthropic/claude-haiku-4-5' },
+  { label: 'GPT-4o',             value: 'openai/gpt-4o' },
+  { label: 'GPT-4o mini',        value: 'openai/gpt-4o-mini' },
+  { label: 'Gemini 2.5 Pro',     value: 'google/gemini-2.5-pro-preview' },
+  { label: 'Gemini 2.5 Flash',   value: 'google/gemini-2.5-flash-preview' },
+  { label: 'DeepSeek R1',        value: 'deepseek/deepseek-r1' },
+  { label: 'DeepSeek V3',        value: 'deepseek/deepseek-chat' },
+  { label: 'Qwen3 235B',         value: 'qwen/qwen3-235b-a22b' },
+]
+
+function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
+  const { aiProviders, activeAiProvider, addAiProvider, updateAiProvider, removeAiProvider, setActiveAiProvider, aiFunctionMap, setAiFunctionMap, openrouterKey, setOpenrouterKey, codeReviewModel, setCodeReviewModel } = useAppStore()
+  const ALL_TABS: AITab[] = ['keys', 'functions', 'provider']
+  const visibleTabs = ALL_TABS.filter(t => !hideTabs.includes(t))
+  const firstVisible = visibleTabs[0] ?? 'keys'
+  const [activeTab, setActiveTab] = useState<AITab>(firstVisible)
   const [editId, setEditId]   = useState<string | null>(null)
   const [adding, setAdding]   = useState(false)
   const [showKeys, setShowKeys] = useState<Set<string>>(new Set())
-  const [editingOrKey, setEditingOrKey] = useState(false)
-  const [orKeyDraft, setOrKeyDraft]     = useState(openrouterKey)
+  const [editingOrKey, setEditingOrKey]   = useState(false)
+  const [orKeyDraft, setOrKeyDraft]       = useState(openrouterKey)
   const emptyForm = () => ({ name: '', provider: 'openai' as AIProvider['provider'], apiKey: '', model: 'gpt-4o' })
   const [form, setForm] = useState(emptyForm)
 
@@ -1339,11 +1803,9 @@ function AIPanel() {
 
   const tabStyle = (t: AITab): React.CSSProperties => ({
     padding: '5px 20px', border: 'none', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
-    fontFamily: 'inherit', fontWeight: activeTab === t ? 600 : 400,
-    background: activeTab === t ? 'var(--bg-0)' : 'transparent',
-    color: activeTab === t ? 'var(--fg-0)' : 'var(--fg-3)',
-    boxShadow: activeTab === t ? '0 1px 4px rgba(0,0,0,0.3)' : 'none',
-    transition: 'all 0.15s',
+    fontFamily: 'var(--font-ui)', fontWeight: activeTab === t ? 600 : 400,
+    background: activeTab === t ? 'var(--accent-soft)' : 'transparent',
+    color: activeTab === t ? 'var(--accent)' : 'var(--fg-2)',
   })
 
   const readonlyField: React.CSSProperties = {
@@ -1352,17 +1814,28 @@ function AIPanel() {
     userSelect: 'all' as const,
   }
 
-  return (
-    <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+  const pageTitle    = firstVisible === 'functions' ? 'KI-Funktionen' : 'API Credentials'
+  const pageSubtitle = firstVisible === 'functions' ? 'Modellzuweisung für interne Funktionen' : 'API-Keys & Provider-Zugänge'
 
-      {/* Centered tab bar */}
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
-          <button style={tabStyle('keys')}      onClick={() => setActiveTab('keys')}>API-Keys</button>
-          <button style={tabStyle('functions')} onClick={() => setActiveTab('functions')}>KI-Funktionen</button>
-          <button style={tabStyle('provider')}  onClick={() => setActiveTab('provider')}>Claude Provider</button>
-        </div>
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Page header */}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>{pageTitle}</div>
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{pageSubtitle}</div>
       </div>
+
+      {/* Centered tab bar — only if more than one tab is visible */}
+      {visibleTabs.length > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
+            {!hideTabs.includes('keys')      && <button style={tabStyle('keys')}      onClick={() => setActiveTab('keys')}>API-Keys</button>}
+            {!hideTabs.includes('functions') && <button style={tabStyle('functions')} onClick={() => setActiveTab('functions')}>KI-Funktionen</button>}
+            {!hideTabs.includes('provider')  && <button style={tabStyle('provider')}  onClick={() => setActiveTab('provider')}>Claude Provider</button>}
+          </div>
+        </div>
+      )}
 
       {/* ── Tab 1: API-Keys ─────────────────────────────────────────────── */}
       {activeTab === 'keys' && (
@@ -1495,6 +1968,7 @@ function AIPanel() {
               )}
             </div>
           </section>
+
         </div>
       )}
 
@@ -1526,6 +2000,29 @@ function AIPanel() {
                   )
                 })
               )}
+            </div>
+          </section>
+
+          {/* OpenRouter functions */}
+          <section>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 3 }}>OpenRouter-Funktionen</div>
+            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 10, lineHeight: 1.45 }}>Welches Modell soll für OpenRouter-basierte Funktionen genutzt werden? (Erfordert OpenRouter API-Key)</div>
+            <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '10px 14px', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>KI-Code-Review</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>Modell für Code-Reviews im GitHub-Tab (Analyse, Sicherheit, Performance, Stil)</div>
+                </div>
+                <select
+                  value={codeReviewModel}
+                  onChange={e => setCodeReviewModel(e.target.value)}
+                  style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 5, color: 'var(--fg-0)', fontSize: 11.5, padding: '5px 8px', fontFamily: 'var(--font-ui)', cursor: 'pointer', width: '100%' }}
+                >
+                  {OR_REVIEW_MODELS.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </section>
 
@@ -1907,16 +2404,14 @@ function DocTemplatesPanel() {
   }
 
   const tabStyle = (t: VorlagenTab): React.CSSProperties => ({
-    padding: '5px 28px', border: 'none', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
-    fontFamily: 'inherit', fontWeight: activeTab === t ? 600 : 400,
-    background: activeTab === t ? 'var(--bg-0)' : 'transparent',
-    color: activeTab === t ? 'var(--fg-0)' : 'var(--fg-3)',
-    boxShadow: activeTab === t ? '0 1px 4px rgba(0,0,0,0.3)' : 'none',
-    transition: 'all 0.15s',
+    padding: '5px 20px', border: 'none', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
+    fontFamily: 'var(--font-ui)', fontWeight: activeTab === t ? 600 : 400,
+    background: activeTab === t ? 'var(--accent-soft)' : 'transparent',
+    color: activeTab === t ? 'var(--accent)' : 'var(--fg-2)',
   })
 
   return (
-    <div style={{ padding: '16px 20px' }}>
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Vorlagen</div>
@@ -2053,10 +2548,10 @@ function KontextMgmtPanel() {
     fontSize: 13, fontFamily: 'var(--font-mono)', outline: 'none',
   }
   const tabBtn = (active: boolean): React.CSSProperties => ({
-    padding: '5px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-    background: active ? 'var(--accent)' : 'transparent',
-    color: active ? 'var(--accent-fg)' : 'var(--fg-2)',
-    transition: 'background 0.15s, color 0.15s',
+    padding: '5px 16px', borderRadius: 6, border: 'none', cursor: 'pointer',
+    fontSize: 11.5, fontFamily: 'var(--font-ui)', fontWeight: active ? 600 : 400,
+    background: active ? 'var(--accent-soft)' : 'transparent',
+    color: active ? 'var(--accent)' : 'var(--fg-2)',
   })
 
   const activeChatId = Object.values(activeOrbitChatId)[0] ?? ''
@@ -2112,12 +2607,12 @@ function KontextMgmtPanel() {
   }
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 680 }}>
+    <div style={{ padding: '28px 32px', maxWidth: 680, margin: '0 auto' }}>
       <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-0)', marginBottom: 20 }}>Kontext Management</div>
 
-      {/* Tab bar — centered */}
+      {/* Tab bar — centered, Aussehen-style */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 28 }}>
-        <div style={{ display: 'flex', gap: 4, background: 'var(--bg-2)', borderRadius: 6, padding: 4 }}>
+        <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
           <button style={tabBtn(tab === 'chat')} onClick={() => setTab('chat')}>Chat</button>
           <button style={tabBtn(tab === 'agent')} onClick={() => setTab('agent')}>Coding Agent</button>
           <button style={tabBtn(tab === 'verdichten')} onClick={() => setTab('verdichten')}>KI-Verdichtung</button>

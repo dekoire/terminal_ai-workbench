@@ -57,7 +57,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     accent: '#0073ff', accentFg: '#ffffff',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
     line: '#333333', lineStrong: '#444444',
-    fg0: '#eceef8', fg1: '#c0c8e8', fg2: '#8898c8', fg3: '#848ca4',
+    fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
   },
@@ -67,7 +67,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     accent: '#9d6fff', accentFg: '#0a0a14',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
     line: '#333333', lineStrong: '#444444',
-    fg0: '#ffffff', fg1: '#b5a8ff', fg2: '#b8adff', fg3: '#918e9f',
+    fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
   },
@@ -77,7 +77,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     accent: '#00e229', accentFg: '#ffffff',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
     line: '#333333', lineStrong: '#444444',
-    fg0: '#e6f4ec', fg1: '#b8d8c4', fg2: '#7aaa8a', fg3: '#8db9a2',
+    fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
   },
@@ -87,7 +87,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     accent: '#ff47a6', accentFg: '#FFFFFFF',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
     line: '#333333', lineStrong: '#444444',
-    fg0: '#ffffff', fg1: '#ffccee', fg2: '#ffc2e9', fg3: '#9c778d',
+    fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
   },
@@ -99,17 +99,17 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     accent: '#d95f2a', accentFg: '#ffffff',
     bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
-    fg0: '#1a1510', fg1: '#3a2f26', fg2: '#6a5e52', fg3: '#545454',
+    fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
     orbit: '#7c5cf0',
   },
 
   {
     id: 'cobalt-light', name: 'Cobalt Light', dark: false,
-    accent: '#0073ff', accentFg: '#ffffff',
+    accent: '#1e40ff', accentFg: '#ffffff',
     bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
-    fg0: '#0a1428', fg1: '#1a2e50', fg2: '#3a5480', fg3: '#6a80aa',
+    fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
     orbit: '#7c5cf0',
   },
@@ -119,34 +119,24 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     accent: '#8249ff', accentFg: '#ffffff',
     bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
-    fg0: '#0f0a1e', fg1: '#2a1a50', fg2: '#504080', fg3: '#806898',
+    fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
     orbit: '#6a38d4',
   },
 
   {
     id: 'forest-light', name: 'Forest Light', dark: false,
-    accent: '#44ff98', accentFg: '#ffffff',
+    accent: '#1a9e5c', accentFg: '#ffffff',
     bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
-    fg0: '#091c10', fg1: '#163824', fg2: '#306848', fg3: '#66706b',
+    fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#2e8a58', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
     orbit: '#7c5cf0',
   },
 
   {
     id: 'rose-light', name: 'Rose Light', dark: false,
-    accent: '#ff54b2', accentFg: '#ffffff',
-    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
-    line: '#D5D5D5', lineStrong: '#cccccc',
-    fg0: '#1f0818', fg1: '#3c1430', fg2: '#70305a', fg3: '#9a6080',
-    ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
-    orbit: '#7c5cf0',
-  },
-
-  {
-    id: 'light-slate', name: 'Slate Light', dark: false,
-    accent: '#ff7734', accentFg: '#ffffff',
+    accent: '#e01e8c', accentFg: '#ffffff',
     bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
     fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
@@ -154,17 +144,27 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     orbit: '#7c5cf0',
   },
 
+  // ── Crimson / Rot ───────────────────────────────────────────────────────────
+
   {
-    id: 'light-blue', name: 'Blue Light', dark: false,
-    accent: '#1e40ff', accentFg: '#ffffff',
+    id: 'crimson', name: 'Crimson', dark: true,
+    accent: '#ff3b4e', accentFg: '#ffffff',
+    bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
+    line: '#333333', lineStrong: '#444444',
+    fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
+    ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
+    orbit: '#8b6cf7',
+  },
+
+  {
+    id: 'crimson-light', name: 'Crimson Light', dark: false,
+    accent: '#c0192e', accentFg: '#ffffff',
     bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
     fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
     orbit: '#7c5cf0',
   },
-
-
 ]
 
 // ── Apply preset to DOM ───────────────────────────────────────────────────────
