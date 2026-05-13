@@ -126,6 +126,7 @@ a { text-decoration: none; color: inherit; }
 @keyframes cc-blink-green { 0%, 100% { color: var(--fg-2); } 50% { color: #22c55e; } }
 @keyframes cc-blink-blue  { 0%, 100% { color: var(--fg-2); } 50% { color: #3b82f6; } }
 @keyframes cc-orch-pulse  { 0%, 100% { color: #ffb080; } 50% { color: #cc4a18; } }
+@keyframes perm-bell { 0%, 100% { transform: rotate(0deg); } 20% { transform: rotate(-18deg); } 40% { transform: rotate(18deg); } 60% { transform: rotate(-10deg); } 80% { transform: rotate(10deg); } }
 
 .anim-pulse { animation: cc-pulse 1.4s ease-in-out infinite; }
 .anim-blink { animation: cc-blink 1s steps(2) infinite; }

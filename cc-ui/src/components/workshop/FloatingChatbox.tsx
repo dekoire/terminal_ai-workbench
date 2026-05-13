@@ -137,15 +137,33 @@ export function FloatingChatbox({ items, onRemoveItem, onTransfer }: Props) {
                       </span>
                     </>
                   ) : (
-                    <>
-                      <ISearch style={{ width: 11, height: 11, color: '#ef4444', flexShrink: 0 }} />
-                      <span style={{ fontSize: 9, padding: '1px 4px', borderRadius: 3, background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontWeight: 700, flexShrink: 0 }}>
-                        {item.ref?.component ?? item.ref?.tag ?? '?'}
-                      </span>
-                      <span style={{ flex: 1, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {item.ref?.selector}{item.ref?.text ? ` "${item.ref.text.slice(0, 22)}"` : ''}
-                      </span>
-                    </>
+                    // ── Inspect element — new structured format ──────────────
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <ISearch style={{ width: 10, height: 10, color: '#ef4444', flexShrink: 0 }} />
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>
+                          {item.ref?.component ?? item.ref?.tag ?? '?'}
+                        </span>
+                        {item.ref?.position && (
+                          <span style={{ fontSize: 8, padding: '0px 4px', borderRadius: 3, background: 'rgba(59,130,246,0.15)', color: '#3b82f6', fontWeight: 600, flexShrink: 0 }}>
+                            {item.ref.position}
+                          </span>
+                        )}
+                      </div>
+                      {item.ref?.page && (
+                        <div style={{ fontSize: 8.5, color: 'var(--fg-3)', fontFamily: 'var(--font-ui)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ opacity: 0.6 }}>Seite: </span>{item.ref.page}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 8.5, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.ref?.hierarchy ?? item.ref?.selector}
+                      </div>
+                      {item.ref?.text && (
+                        <div style={{ fontSize: 8.5, color: 'var(--fg-3)', fontFamily: 'var(--font-ui)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
+                          „{item.ref.text}"
+                        </div>
+                      )}
+                    </div>
                   )}
                   <button
                     onClick={() => onRemoveItem(idx)}

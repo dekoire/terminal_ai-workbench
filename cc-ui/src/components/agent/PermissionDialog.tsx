@@ -249,68 +249,75 @@ export function PermissionDialog({ req, cwd, agentName }: Props) {
       : linClr}`,
   })
 
-  // ── Resolved state ──────────────────────────────────────────────────────────
+  // ── Resolved state — plain flat row (no card) ──────────────────────────────
   if (req.resolved) {
     const { allow, scope: resolvedScope } = req.resolved
 
-    const decisionLabel = allow
-      ? `${scopeLabel(resolvedScope) === 'Einmal' ? 'Einmal' : scopeLabel(resolvedScope) === 'Session' ? 'Für diese Session' : 'Immer'} erlaubt`
+    const statusLabel = allow
+      ? scopeLabel(resolvedScope) === 'Immer' ? 'Immer erlaubt' : scopeLabel(resolvedScope) === 'Session' ? 'Session erlaubt' : 'Einmal erlaubt'
       : 'Abgelehnt'
 
+    const statusColor  = allow ? '#22c55e' : '#ef4444'
+    const statusBg     = allow ? 'rgba(34,197,94,0.10)' : 'rgba(239,68,68,0.10)'
+    const statusBorder = allow ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'
+
     return (
-      <div style={{ marginBottom: 32 }}>
-      <div style={{ ...cardStyle, opacity: 0.62 }}>
-        {/* Header — same as active */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: accentClr, display: 'flex' }}>{meta.icon}</span>
-          <span style={{ fontSize: 12, color: textMain, fontWeight: 600 }}>{agentName ?? 'Claude'} wollte</span>
-          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', background: `${accentClr}22`, borderRadius: 3, padding: '1px 7px', color: accentClr, fontWeight: 600 }}>
-            {req.toolName}
-          </span>
-          <span style={{ fontSize: 11, color: textSub }}>nutzen · {meta.label}</span>
-        </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 7,
+        padding: '7px 14px', borderRadius: 6, marginBottom: 8,
+        background: surface, border: `1px solid ${linClr}`,
+        boxShadow: shadow, opacity: 0.75,
+        overflow: 'hidden', width: '100%',
+      }}>
+        {/* Icon */}
+        <span style={{ color: textSub, display: 'flex', flexShrink: 0 }}>{meta.icon}</span>
 
-        {/* Tool body */}
-        <ToolBody toolName={req.toolName} input={req.input} fallbackText={req.fallbackText} actionLabel={meta.actionLabel} isDark={isDark} />
+        {/* Agent + tool */}
+        <span style={{ fontSize: 11, color: textSub, whiteSpace: 'nowrap' }}>
+          {agentName ?? 'Claude'} hat
+        </span>
+        <span style={{
+          fontSize: 10.5, fontFamily: 'var(--font-mono)',
+          background: `${accentClr}18`, borderRadius: 3,
+          padding: '1px 5px', color: accentClr, fontWeight: 600,
+          whiteSpace: 'nowrap', flexShrink: 0,
+        }}>
+          {req.toolName}
+        </span>
+        <span style={{ fontSize: 11, color: textSub, whiteSpace: 'nowrap' }}>
+          · {meta.label}
+        </span>
 
-        {/* Button row — identical layout to active, non-interactive */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', pointerEvents: 'none' }}>
-          {/* Left: scope chips — chosen one highlighted */}
-          {(['once', 'session', 'always'] as Scope[]).map(s => (
-            <span key={s} style={scopeBtn(s, resolvedScope, false)}>
-              {scopeLabel(s)}
-            </span>
-          ))}
+        {/* Content preview — truncated */}
+        <span style={{
+          flex: 1, fontSize: 10.5, color: textSub,
+          fontFamily: 'var(--font-mono)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          opacity: 0.55,
+        }}>
+          {(() => {
+            const t = req.toolName.toLowerCase()
+            if (t === 'bash')   return String(req.input.command ?? req.input.cmd ?? '')
+            if (t === 'read' || t === 'write' || t === 'edit' || t === 'multiedit')
+              return String(req.input.file_path ?? '')
+            if (t === 'webfetch') return String(req.input.url ?? '')
+            if (t === 'websearch') return String(req.input.query ?? '')
+            return req.fallbackText ?? ''
+          })()}
+        </span>
 
-          <div style={{ flex: 1 }} />
-
-          {/* Right: Abbrechen | Bestätigen — outcome highlighted */}
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            padding: '5px 10px', borderRadius: 5, fontSize: 11, fontFamily: 'inherit',
-            color: !allow ? (isDark ? '#c0463f' : '#ef7a7a') : textSub,
-            fontWeight: !allow ? 700 : 400,
-            border: 'none', background: !allow ? 'rgba(192,70,63,0.12)' : 'transparent',
-          }}>
-            {!allow && <IClose size={11} />} Abbrechen
-          </span>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            padding: '5px 14px', borderRadius: 5, fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
-            background: allow ? btnClr : (isDark ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'),
-            color: allow ? 'var(--accent-fg)' : textSub,
-            border: 'none',
-            opacity: allow ? 1 : 0.4,
-          }}>
-            <ICheck size={11} /> Bestätigen
-          </span>
-        </div>
-      </div>
-      {/* Decision label */}
-      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 5, fontSize: 11, color: allow ? btnClr : '#c0463f', fontWeight: 600 }}>
-        {allow ? <ICheck size={11} /> : <IClose size={11} />}
-        <span>{decisionLabel}</span>
-      </div>
+        {/* Status badge */}
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '2px 8px', borderRadius: 5,
+          fontSize: 10, fontWeight: 700, fontFamily: 'inherit',
+          color: statusColor, background: statusBg,
+          border: `1px solid ${statusBorder}`,
+          flexShrink: 0, whiteSpace: 'nowrap',
+        }}>
+          {allow ? <ICheck size={9} /> : <IClose size={9} />}
+          {statusLabel}
+        </span>
       </div>
     )
   }

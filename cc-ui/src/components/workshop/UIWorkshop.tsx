@@ -27,6 +27,9 @@ export function UIWorkshop() {
   const session = project?.sessions.find(s => s.id === activeSessionId)
   const sessionLabel = session?.name ?? project?.name ?? 'Workspace'
 
+  // Auto-URL from project's configured port
+  const initialUrl = project?.appPort ? `http://localhost:${project.appPort}` : ''
+
   // ── Screenshot from BrowserPane (page or drawing saved) ──────────────────
   const onScreenshot = useCallback((dataUrl: string) => {
     screenshotCount++
@@ -66,7 +69,7 @@ export function UIWorkshop() {
         </button>
 
         <div style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: 'var(--fg-2)', fontFamily: 'var(--font-ui)', letterSpacing: 0.3 }}>
-          UI Workshop
+          Live Browser / Selektor
         </div>
 
         <button
@@ -85,6 +88,7 @@ export function UIWorkshop() {
           onModeChange={setMode}
           onElementCaptured={onElementCaptured}
           onScreenshot={onScreenshot}
+          initialUrl={initialUrl}
         />
 
         {/* Floating chatbox */}

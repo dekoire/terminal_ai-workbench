@@ -11,6 +11,12 @@ export type WorkshopElementRef = {
   component?: string
   text?: string
   selector: string
+  /** HTML page (document.title or pathname) */
+  page?: string
+  /** Position label in viewport, e.g. "oben rechts", "mitte" */
+  position?: string
+  /** CSS ancestor chain, e.g. ".navbar > .nav-item > button" */
+  hierarchy?: string
 }
 
 export type PendingWorkshopTransfer = {

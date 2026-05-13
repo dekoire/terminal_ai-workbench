@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { IClose, IEdit, ITrash } from './Icons'
+import { IClose, ITrash } from './Icons'
 
 interface Props {
   src: string
@@ -34,6 +34,39 @@ const MAX_UNDO = 30
 
 let _id = 0
 const uid = () => String(++_id)
+
+// ── Sub-component: auto-focuses after mount (avoids autoFocus + pointerup race) ──
+interface TextInputProps {
+  value: string
+  onChange: (v: string) => void
+  onConfirm: () => void
+  onRemove: () => void
+  inputStyle: React.CSSProperties
+}
+function TextInputOverlay({ value, onChange, onConfirm, onRemove, inputStyle }: TextInputProps) {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    // Delay focus so that the pointerup event from the canvas click has already fired
+    const t = setTimeout(() => ref.current?.focus(), 60)
+    return () => clearTimeout(t)
+  }, [])
+  return (
+    <input
+      ref={ref}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onPointerDown={e => e.stopPropagation()}
+      onPointerUp={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); onConfirm() }
+        if (e.key === 'Escape') onRemove()
+      }}
+      onBlur={onConfirm}
+      style={inputStyle}
+    />
+  )
+}
 
 export function ImageAnnotator({ src, fileName, onDone, onCancel }: Props) {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
@@ -142,6 +175,7 @@ export function ImageAnnotator({ src, fileName, onDone, onCancel }: Props) {
   // ── Drawing handlers ──────────────────────────────────────────────────────
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (tool === 'text') {
+      e.preventDefault() // prevent browser focus-management interference
       const pos = toCanvas(e)
       setTextItems(prev => [...prev, { id: uid(), x: pos.x, y: pos.y, content: '', color, fontSize, editing: true }])
       return
@@ -361,7 +395,7 @@ export function ImageAnnotator({ src, fileName, onDone, onCancel }: Props) {
       {/* ── Canvas + text overlay area ── */}
       <div
         ref={containerRef}
-        style={{ position: 'relative', flexShrink: 1, flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', overflow: 'hidden' }}
+        style={{ position: 'relative', flexShrink: 1, flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', overflow: 'visible' }}
       >
         <canvas
           ref={canvasRef}
@@ -399,16 +433,12 @@ export function ImageAnnotator({ src, fileName, onDone, onCancel }: Props) {
               }}
             >
               {item.editing ? (
-                <input
-                  autoFocus
+                <TextInputOverlay
                   value={item.content}
-                  onChange={e => setTextItems(prev => prev.map(i => i.id === item.id ? { ...i, content: e.target.value } : i))}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') { e.preventDefault(); finalizeText(item.id) }
-                    if (e.key === 'Escape') removeText(item.id)
-                  }}
-                  onBlur={() => finalizeText(item.id)}
-                  style={{
+                  onChange={val => setTextItems(prev => prev.map(i => i.id === item.id ? { ...i, content: val } : i))}
+                  onConfirm={() => finalizeText(item.id)}
+                  onRemove={() => removeText(item.id)}
+                  inputStyle={{
                     background: 'transparent', border: 'none',
                     outline: '1.5px dashed rgba(255,255,255,0.7)',
                     color: item.color,

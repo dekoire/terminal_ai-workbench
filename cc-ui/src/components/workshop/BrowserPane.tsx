@@ -2,10 +2,14 @@
  * BrowserPane — iframe browser with URL bar + unified mode toolbar.
  * Draw mode shows an integrated sub-toolbar (Speichern / Abbrechen + drawing tools).
  * DrawCanvas is positioned inside the iframe container so pointer coords are correct.
+ *
+ * Anforderung: In dark mode the browser chrome uses light colours (and vice versa)
+ * so the embedded browser is visually distinct from the rest of the UI.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { WorkshopElementRef } from '../../store/useAppStore'
+import { useAppStore } from '../../store/useAppStore'
 import {
   IChevLeft, ISearch, IEdit, IMousePointer, ISave, IClose, IEraser,
   IUndo, ITrash, IRefresh, ICamera, IMessageSquare,
@@ -29,6 +33,8 @@ interface Props {
   onModeChange: (m: BrowserMode) => void
   onElementCaptured: (ref: WorkshopElementRef) => void
   onScreenshot: (dataUrl: string) => void
+  /** Pre-filled URL from the active project's appPort. Empty = show placeholder. */
+  initialUrl?: string
 }
 
 // ── Inject inspect script into iframe ────────────────────────────────────────
@@ -48,7 +54,9 @@ function injectInspect(doc: Document, onCapture: (r: WorkshopElementRef) => void
     if (!e.shiftKey) return
     e.preventDefault(); e.stopPropagation()
     const el = e.target as HTMLElement
+    const win = doc.defaultView!
 
+    // ── React component name ──────────────────────────────────────────────────
     let component: string | undefined
     try {
       const fk = Object.keys(el).find(k => k.startsWith('__reactFiber'))
@@ -61,11 +69,34 @@ function injectInspect(doc: Document, onCapture: (r: WorkshopElementRef) => void
 
     const classes = [...el.classList].slice(0, 5)
     const selector = el.id ? '#' + el.id : classes.length ? '.' + classes[0] : el.tagName.toLowerCase()
-    onCapture({
-      tag: el.tagName.toLowerCase(), id: el.id, classes,
-      text: el.textContent?.trim().replace(/\s+/g, ' ').slice(0, 60),
-      component, selector,
-    })
+
+    // ── Page label ────────────────────────────────────────────────────────────
+    const page = doc.title?.trim() || win.location.pathname.split('/').filter(Boolean).pop() || win.location.pathname || 'unbekannt'
+
+    // ── Viewport position label ───────────────────────────────────────────────
+    const rect = el.getBoundingClientRect()
+    const vw = win.innerWidth
+    const vh = win.innerHeight
+    const cx = rect.left + rect.width  / 2
+    const cy = rect.top  + rect.height / 2
+    const hPos = cx < vw * 0.33 ? 'links' : cx < vw * 0.67 ? 'mitte' : 'rechts'
+    const vPos = cy < vh * 0.33 ? 'oben'  : cy < vh * 0.67 ? 'mitte' : 'unten'
+    const position = vPos === 'mitte' && hPos === 'mitte' ? 'mitte' : vPos === hPos ? vPos : `${vPos} ${hPos}`
+
+    // ── Ancestor hierarchy (max 2 levels) ─────────────────────────────────────
+    const ancestors: string[] = []
+    let parent = el.parentElement
+    for (let i = 0; i < 2 && parent && parent.tagName !== 'BODY' && parent.tagName !== 'HTML'; i++, parent = parent.parentElement) {
+      const pSel = parent.id ? '#' + parent.id : parent.classList[0] ? '.' + parent.classList[0] : parent.tagName.toLowerCase()
+      ancestors.unshift(pSel)
+    }
+    const hierarchy = ancestors.length > 0 ? ancestors.join(' › ') + ' › ' + selector : undefined
+
+    // ── Text preview ─────────────────────────────────────────────────────────
+    const rawText = el.textContent?.trim().replace(/\s+/g, ' ') ?? ''
+    const text = rawText.length > 15 ? rawText.slice(0, 15) + '…' : rawText || undefined
+
+    onCapture({ tag: el.tagName.toLowerCase(), id: el.id, classes, text, component, selector, page, position, hierarchy })
     clearHl()
   }
 
@@ -74,14 +105,38 @@ function injectInspect(doc: Document, onCapture: (r: WorkshopElementRef) => void
   return () => { clearHl(); doc.removeEventListener('mousemove', onMove); doc.removeEventListener('click', onClick, true) }
 }
 
-export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreenshot }: Props) {
-  const iframeRef   = useRef<HTMLIFrameElement>(null)
-  const drawRef     = useRef<DrawCanvasHandle>(null)
+// ── Server-side Playwright screenshot ────────────────────────────────────────
+// Calls the Express /api/screenshot route which uses headless Chromium.
+// Much more reliable than getDisplayMedia (no permissions, no black frames).
+async function captureViaServer(url: string, width: number, height: number): Promise<string | null> {
+  try {
+    const resp = await fetch('/api/screenshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, width: Math.round(width) || 1280, height: Math.round(height) || 800 }),
+    })
+    const data: { ok: boolean; dataUrl?: string; error?: string } = await resp.json()
+    if (data.ok && data.dataUrl) return data.dataUrl
+    console.warn('[Workshop] Server screenshot failed:', data.error)
+    return null
+  } catch (err) {
+    console.warn('[Workshop] Server screenshot fetch error:', err)
+    return null
+  }
+}
+
+export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreenshot, initialUrl = '' }: Props) {
+  // Only subscribe to `theme` — avoids re-rendering BrowserPane on every store change
+  const theme = useAppStore(s => s.theme)
+  const iframeRef      = useRef<HTMLIFrameElement>(null)
+  const drawRef        = useRef<DrawCanvasHandle>(null)
   const cleanupInspect = useRef<(() => void) | null>(null)
 
-  const [url, setUrl]           = useState('http://localhost:2002')
-  const [inputUrl, setInputUrl] = useState('http://localhost:2002')
+  // Start with the project's app URL if known; otherwise blank (user enters manually)
+  const [url, setUrl]           = useState(initialUrl)
+  const [inputUrl, setInputUrl] = useState(initialUrl)
   const [error, setError]       = useState(false)
+  const [loading, setLoading]   = useState(!!initialUrl) // show "Lädt…" if we have an initial URL
 
   // Draw sub-toolbar state
   const [drawTool,  setDrawTool]  = useState<DrawTool>('pen')
@@ -90,16 +145,25 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
 
   // Screenshot crop modal
   const [snipData, setSnipData] = useState<string | null>(null)
+  const [saving,   setSaving]   = useState(false)
+
+  // ── Inverted browser chrome colours ─────────────────────────────────────────
+  // Dark app theme → light browser chrome (so it looks like a real browser window)
+  // Light app theme → dark browser chrome
+  const bChrome: React.CSSProperties = theme === 'dark'
+    ? { background: '#f0f0f0', borderColor: '#d0d0d0', color: '#1a1a1a' }
+    : { background: '#1e1e1e', borderColor: '#3a3a3a', color: '#e0e0e0' }
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   const navigate = useCallback((target: string) => {
     let u = target.trim()
+    if (!u) { setUrl(''); setInputUrl(''); setError(false); return }
     if (!u.startsWith('http://') && !u.startsWith('https://') && !u.startsWith('/')) u = 'http://' + u
-    setUrl(u); setInputUrl(u); setError(false)
+    setUrl(u); setInputUrl(u); setError(false); setLoading(true)
   }, [])
 
-  const reload = () => { if (iframeRef.current) iframeRef.current.src = url }
-  const back   = () => { try { iframeRef.current?.contentWindow?.history.back() } catch {} }
+  const reload = () => { if (iframeRef.current && url) { setLoading(true); iframeRef.current.src = url } }
+  const back   = () => { try { iframeRef.current?.contentWindow?.history.back()    } catch {} }
   const fwd    = () => { try { iframeRef.current?.contentWindow?.history.forward() } catch {} }
 
   // ── Inspect injection ───────────────────────────────────────────────────────
@@ -113,7 +177,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
   }, [mode, onElementCaptured, url])
 
   const onIframeLoad = useCallback(() => {
-    setError(false)
+    setError(false); setLoading(false)
     try { const iwin = iframeRef.current?.contentWindow; if (iwin) setInputUrl(iwin.location.href) } catch {}
     if (mode === 'inspect') {
       if (cleanupInspect.current) cleanupInspect.current()
@@ -124,109 +188,91 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
     }
   }, [mode, onElementCaptured])
 
-  // ── Draw: Speichern / Abbrechen ──────────────────────────────────────────────
+  // ── Draw: Speichern ──────────────────────────────────────────────────────────
+  // Screenshots the current URL via Playwright, composites drawing strokes on top.
   const saveDraw = useCallback(async () => {
-    const cv = drawRef.current
-    if (cv?.hasStrokes()) {
-      const dataUrl = await cv.screenshot()
-      if (dataUrl) onScreenshot(dataUrl)
-      cv.clear()
+    const dc = drawRef.current
+    if (!dc?.hasStrokes()) { onModeChange('normal'); return }
+
+    setSaving(true)
+    try {
+      const iframe    = iframeRef.current
+      const rect      = iframe?.getBoundingClientRect() ?? { width: 1280, height: 800 }
+      const w         = Math.round(rect.width)  || 1280
+      const h         = Math.round(rect.height) || 800
+
+      // 1. Screenshot the current URL via headless Chromium
+      const bgUrl = await captureViaServer(url, w, h)
+
+      // 2. Get drawing strokes (transparent PNG at canvas resolution = w×h)
+      const strokesUrl = await dc.screenshot()
+      if (!strokesUrl) { onModeChange('normal'); return }
+
+      // 3. Composite: page screenshot + drawing strokes
+      const composite = document.createElement('canvas')
+      composite.width = w; composite.height = h
+      const ctx = composite.getContext('2d')!
+
+      if (bgUrl) {
+        await new Promise<void>(resolve => {
+          const img = new Image()
+          img.onload = () => { ctx.drawImage(img, 0, 0, w, h); resolve() }
+          img.onerror = resolve; img.src = bgUrl
+        })
+      } else {
+        ctx.fillStyle = '#f8f8f8'; ctx.fillRect(0, 0, w, h)
+      }
+
+      await new Promise<void>(resolve => {
+        const img = new Image()
+        img.onload = () => { ctx.drawImage(img, 0, 0, w, h); resolve() }
+        img.onerror = resolve; img.src = strokesUrl
+      })
+
+      onScreenshot(composite.toDataURL('image/png'))
+      dc.clear()
+    } finally {
+      setSaving(false)
+      onModeChange('normal')
     }
-    onModeChange('normal')
-  }, [onModeChange, onScreenshot])
+  }, [onModeChange, onScreenshot, url])
 
   const cancelDraw = useCallback(() => {
     drawRef.current?.clear()
     onModeChange('normal')
   }, [onModeChange])
 
-  // ── Screenshot via getDisplayMedia → opens ScreenshotCrop ──────────────────
+  // ── Screenshot button → captures via Playwright → opens ScreenshotCrop ──────
+  const [screenshotError, setScreenshotError] = useState<string | null>(null)
+
   const takeScreenshot = useCallback(async () => {
-    // ── Try real screen capture ────────────────────────────────────────────────
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const gd = (navigator.mediaDevices as any)?.getDisplayMedia
-    if (typeof gd === 'function') {
-      try {
-        const stream: MediaStream = await gd.call(navigator.mediaDevices, {
-          video: { frameRate: 1 },
-          audio: false,
-          preferCurrentTab: true,   // Chrome 107+: auto-select current tab
-        })
-
-        const video = document.createElement('video')
-        video.muted = true
-        video.playsInline = true
-        video.srcObject = stream
-
-        // Wait until at least one frame is available
-        await new Promise<void>((resolve, reject) => {
-          video.onloadedmetadata = () => {
-            video.play().then(() => {
-              requestAnimationFrame(() => requestAnimationFrame(resolve))
-            }).catch(reject)
-          }
-          video.onerror = reject
-          setTimeout(reject, 8000)  // hard timeout
-        })
-
-        const canvas = document.createElement('canvas')
-        canvas.width  = video.videoWidth  || 1280
-        canvas.height = video.videoHeight || 720
-        canvas.getContext('2d')!.drawImage(video, 0, 0)
-
-        stream.getTracks().forEach(t => t.stop())
-        video.srcObject = null
-
-        setSnipData(canvas.toDataURL('image/png'))
-        return
-      } catch (err) {
-        // User cancelled the picker — just do nothing
-        const name = (err as { name?: string }).name
-        if (name === 'NotAllowedError' || name === 'AbortError') return
-        // Other errors fall through to fallback
-        console.warn('[Workshop] getDisplayMedia error:', err)
-      }
-    }
-
-    // ── Fallback: white canvas + any active drawing strokes ────────────────────
+    if (!url) return
+    setScreenshotError(null)
     const iframe = iframeRef.current
-    const { width, height } = iframe?.getBoundingClientRect() ?? { width: 1280, height: 800 }
-    const w = Math.round(width) || 1280
-    const h = Math.round(height) || 800
+    const rect   = iframe?.getBoundingClientRect() ?? { width: 1280, height: 800 }
+    const w      = Math.round(rect.width)  || 1280
+    const h      = Math.round(rect.height) || 800
 
-    const canvas = document.createElement('canvas')
-    canvas.width = w; canvas.height = h
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, w, h)
+    const captured = await captureViaServer(url, w, h)
+    if (captured) { setSnipData(captured); return }
 
-    const drawingUrl = drawRef.current?.hasStrokes() ? await drawRef.current.screenshot() : null
-    if (drawingUrl) {
-      await new Promise<void>(resolve => {
-        const img = new Image()
-        img.onload = () => { ctx.drawImage(img, 0, 0); resolve() }
-        img.onerror = resolve
-        img.src = drawingUrl
-      })
-    }
+    setScreenshotError('Screenshot fehlgeschlagen. Ist die Seite erreichbar?')
+  }, [url])
 
-    setSnipData(canvas.toDataURL('image/png'))
-  }, [])
-
-  // ── Styles ───────────────────────────────────────────────────────────────────
+  // ── Button style helpers ──────────────────────────────────────────────────────
   const btnBase: React.CSSProperties = {
     background: 'none', border: 'none', padding: '4px 6px',
-    cursor: 'pointer', color: 'var(--fg-2)', display: 'flex',
+    cursor: 'pointer', color: bChrome.color, display: 'flex',
     alignItems: 'center', borderRadius: 5, fontSize: 11.5,
     fontFamily: 'var(--font-ui)',
   }
   const modeActive = (m: BrowserMode): React.CSSProperties => ({
     ...btnBase,
-    background: mode === m ? 'var(--accent-soft)' : 'transparent',
-    color:      mode === m ? 'var(--accent)'      : 'var(--fg-2)',
+    background: mode === m ? (theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)') : 'transparent',
+    color:      mode === m ? (theme === 'dark' ? '#0055cc' : '#60aaff') : bChrome.color,
     fontWeight: mode === m ? 600 : 400,
   })
-  const sep: React.CSSProperties = { width: 1, height: 18, background: 'var(--line-strong)', flexShrink: 0 }
+  const sep: React.CSSProperties = { width: 1, height: 18, background: bChrome.borderColor, flexShrink: 0 }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -234,21 +280,31 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
       {/* ── Main toolbar ── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
-        background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', flexShrink: 0,
+        background: bChrome.background,
+        borderBottom: `1px solid ${bChrome.borderColor}`,
+        flexShrink: 0,
       }}>
-        <button onClick={back}   style={btnBase} title="Zurück"><IChevLeft style={{ width: 12, height: 12 }} /></button>
-        <button onClick={fwd}    style={btnBase} title="Vorwärts" ><IChevLeft style={{ width: 12, height: 12, transform: 'scaleX(-1)' }} /></button>
-        <button onClick={reload} style={btnBase} title="Neu laden"><IRefresh style={{ width: 12, height: 12 }} /></button>
+        <button onClick={back}   style={btnBase} title="Zurück">
+          <IChevLeft style={{ width: 12, height: 12 }} />
+        </button>
+        <button onClick={fwd}    style={btnBase} title="Vorwärts">
+          <IChevLeft style={{ width: 12, height: 12, transform: 'scaleX(-1)' }} />
+        </button>
+        <button onClick={reload} style={btnBase} title="Neu laden">
+          <IRefresh style={{ width: 12, height: 12 }} />
+        </button>
 
         <form onSubmit={e => { e.preventDefault(); navigate(inputUrl) }} style={{ flex: 1, display: 'flex' }}>
           <input
             value={inputUrl}
             onChange={e => setInputUrl(e.target.value)}
+            placeholder="http://localhost:3000"
             style={{
               flex: 1, padding: '4px 10px', borderRadius: 6,
-              border: `1px solid ${error ? 'var(--err)' : 'var(--line-strong)'}`,
-              background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12,
-              fontFamily: 'var(--font-mono)', outline: 'none',
+              border: `1px solid ${error ? '#ef4444' : bChrome.borderColor}`,
+              background: theme === 'dark' ? '#ffffff' : '#2a2a2a',
+              color: theme === 'dark' ? '#111111' : '#e8e8e8',
+              fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none',
             }}
           />
         </form>
@@ -262,21 +318,44 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           <IEdit style={{ width: 11, height: 11, marginRight: 3 }} />Zeichnen
         </button>
         <button onClick={() => onModeChange('inspect')} style={modeActive('inspect')} title="Inspect (Shift+Klick)">
-          <ISearch style={{ width: 11, height: 11, marginRight: 3 }} />Inspect
+          <ISearch style={{ width: 11, height: 11, marginRight: 3 }} />Selektor
         </button>
 
         <div style={sep} />
 
-        <button onClick={takeScreenshot} style={{ ...btnBase, gap: 4 }} title="Screenshot machen">
+        <button
+          onClick={takeScreenshot}
+          disabled={!url}
+          style={{ ...btnBase, gap: 4, opacity: url ? 1 : 0.4, cursor: url ? 'pointer' : 'default' }}
+          title={url ? 'Screenshot machen' : 'Zuerst eine URL eingeben'}
+        >
           <ICamera style={{ width: 11, height: 11 }} />Screenshot
         </button>
       </div>
+
+      {/* ── Screenshot error toast ── */}
+      {screenshotError && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '4px 12px', background: 'rgba(239,68,68,0.12)',
+          borderBottom: '1px solid rgba(239,68,68,0.3)', flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 11, color: '#ef4444', fontFamily: 'var(--font-ui)' }}>
+            {screenshotError}
+          </span>
+          <button
+            onClick={() => setScreenshotError(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 14, lineHeight: 1, padding: '0 2px' }}
+          >×</button>
+        </div>
+      )}
 
       {/* ── Draw sub-toolbar (only in draw mode) ── */}
       {mode === 'draw' && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px',
-          background: 'var(--bg-2)', borderBottom: '1px solid var(--line)',
+          background: bChrome.background,
+          borderBottom: `1px solid ${bChrome.borderColor}`,
           flexShrink: 0, flexWrap: 'wrap',
         }}>
           {/* Tool buttons */}
@@ -284,7 +363,12 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
             <button
               key={t.id}
               onClick={() => setDrawTool(t.id)}
-              style={{ ...btnBase, background: drawTool === t.id ? 'var(--accent-soft)' : 'transparent', color: drawTool === t.id ? 'var(--accent)' : 'var(--fg-2)', fontWeight: drawTool === t.id ? 600 : 400 }}
+              style={{
+                ...btnBase,
+                background: drawTool === t.id ? (theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)') : 'transparent',
+                color: drawTool === t.id ? (theme === 'dark' ? '#0055cc' : '#60aaff') : bChrome.color,
+                fontWeight: drawTool === t.id ? 600 : 400,
+              }}
             >
               {t.id === 'pen'    && <IEdit          style={{ width: 11, height: 11, marginRight: 3 }} />}
               {t.id === 'eraser' && <IEraser        style={{ width: 11, height: 11, marginRight: 3 }} />}
@@ -298,11 +382,10 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           {/* Color presets */}
           {COLOR_PRESETS.map(c => (
             <button
-              key={c}
-              onClick={() => setDrawColor(c)}
+              key={c} onClick={() => setDrawColor(c)}
               style={{
                 width: 16, height: 16, borderRadius: '50%',
-                border: drawColor === c ? '2px solid var(--fg-0)' : '2px solid transparent',
+                border: drawColor === c ? `2px solid ${theme === 'dark' ? '#333' : '#ccc'}` : '2px solid transparent',
                 background: c, cursor: 'pointer', padding: 0, flexShrink: 0,
               }}
             />
@@ -314,42 +397,37 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
 
           <div style={sep} />
 
-          {/* Size — brush thickness or text font size */}
-          <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-ui)' }}>
+          <span style={{ fontSize: 10, color: bChrome.color, fontFamily: 'var(--font-ui)', opacity: 0.7 }}>
             {drawTool === 'text' ? 'Größe' : 'Stärke'}
           </span>
           <input
             type="range" min={1} max={30} value={drawSize}
             onChange={e => setDrawSize(+e.target.value)}
-            style={{ width: 70, accentColor: 'var(--accent)' }}
+            style={{ width: 70, accentColor: theme === 'dark' ? '#0055cc' : '#60aaff' }}
           />
-          <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', minWidth: 14 }}>{drawSize}</span>
+          <span style={{ fontSize: 10, color: bChrome.color, fontFamily: 'var(--font-mono)', minWidth: 14, opacity: 0.7 }}>{drawSize}</span>
 
           <div style={sep} />
 
-          {/* Undo / Clear */}
           <button onClick={() => drawRef.current?.undo()} style={btnBase} title="Rückgängig (⌘Z)">
             <IUndo style={{ width: 11, height: 11 }} />
           </button>
-          <button onClick={() => drawRef.current?.clear()} style={{ ...btnBase, color: 'var(--err)' }} title="Löschen">
+          <button onClick={() => drawRef.current?.clear()} style={{ ...btnBase, color: '#ef4444' }} title="Löschen">
             <ITrash style={{ width: 11, height: 11 }} />
           </button>
 
           <div style={{ flex: 1 }} />
 
-          {/* Save / Cancel */}
           <button
             onClick={saveDraw}
-            style={{ ...btnBase, background: 'var(--accent)', color: 'var(--accent-fg)', fontWeight: 600, padding: '4px 12px', gap: 4 }}
-            title="Zeichnung speichern"
+            disabled={saving}
+            style={{ ...btnBase, background: theme === 'dark' ? '#0055cc' : '#3b82f6', color: '#ffffff', fontWeight: 600, padding: '4px 12px', gap: 4, opacity: saving ? 0.6 : 1 }}
+            title="Zeichnung mit Browser-Inhalt speichern"
           >
-            <ISave style={{ width: 11, height: 11 }} />Speichern
+            <ISave style={{ width: 11, height: 11 }} />
+            {saving ? 'Wird erfasst…' : 'Speichern'}
           </button>
-          <button
-            onClick={cancelDraw}
-            style={{ ...btnBase, color: 'var(--fg-2)', gap: 4 }}
-            title="Abbrechen"
-          >
+          <button onClick={cancelDraw} style={{ ...btnBase, gap: 4 }} title="Abbrechen">
             <IClose style={{ width: 11, height: 11 }} />Abbrechen
           </button>
         </div>
@@ -370,6 +448,39 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           </div>
         )}
 
+        {/* Empty-state: no URL entered yet */}
+        {!url && !error && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 4,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 10, background: 'var(--bg-1)',
+          }}>
+            <span style={{ fontSize: 36 }}>🌐</span>
+            <span style={{ color: 'var(--fg-1)', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-ui)' }}>
+              Live Browser / Selektor
+            </span>
+            <span style={{ color: 'var(--fg-3)', fontSize: 12, fontFamily: 'var(--font-ui)' }}>
+              URL oben eingeben und Enter drücken
+            </span>
+            <span style={{ color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+              z.B. http://localhost:3000
+            </span>
+          </div>
+        )}
+
+        {/* Loading spinner */}
+        {loading && url && (
+          <div style={{
+            position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 3, pointerEvents: 'none',
+            padding: '3px 10px', borderRadius: 5,
+            background: 'rgba(0,0,0,0.55)', color: '#fff',
+            fontSize: 10, fontFamily: 'var(--font-ui)',
+          }}>
+            Lädt…
+          </div>
+        )}
+
         {/* Error overlay */}
         {error && (
           <div style={{
@@ -380,28 +491,31 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
             <span style={{ fontSize: 32 }}>🌐</span>
             <span style={{ color: 'var(--fg-2)', fontSize: 13, fontFamily: 'var(--font-ui)' }}>Seite nicht erreichbar: {url}</span>
             <button
-              onClick={() => { navigate('http://localhost:2002'); reload() }}
+              onClick={() => navigate(inputUrl || 'http://localhost:3000')}
               style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: 'var(--accent-fg)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}
             >
-              localhost:2002 öffnen
+              Neu versuchen
             </button>
           </div>
         )}
 
-        {/* iframe */}
-        <iframe
-          ref={iframeRef}
-          src={url}
-          onLoad={onIframeLoad}
-          onError={() => setError(true)}
-          style={{
-            width: '100%', height: '100%',
-            border: 'none', display: 'block',
-            pointerEvents: mode === 'draw' ? 'none' : 'auto',
-          }}
-          title="UI Workshop Browser"
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-        />
+        {/* iframe — only render when url is set; absolute positioning for reliable sizing */}
+        {url && (
+          <iframe
+            ref={iframeRef}
+            src={url}
+            onLoad={onIframeLoad}
+            onError={() => { setError(true); setLoading(false) }}
+            style={{
+              position: 'absolute', inset: 0,
+              width: '100%', height: '100%',
+              border: 'none', display: 'block',
+              pointerEvents: mode === 'draw' ? 'none' : 'auto',
+            }}
+            title="Live Browser"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+          />
+        )}
 
         {/* DrawCanvas — positioned inside iframe container so coords are correct */}
         <DrawCanvas

@@ -791,4 +791,52 @@ router.post('/api/perm-bridge', async (req, res) => {
   } catch { res.status(400).end() }
 })
 
+// ── POST /api/screenshot ──────────────────────────────────────────────────────
+// Uses Playwright (headless Chromium) to capture a given URL.
+// Body: { url: string, width?: number, height?: number }
+// Returns: { ok: true, dataUrl: 'data:image/png;base64,...' }
+//       or { ok: false, error: string }
+router.post('/api/screenshot', async (req, res) => {
+  const body = await readBody(req)
+  let url = '', width = 1280, height = 800
+  try {
+    const parsed = JSON.parse(body)
+    url    = String(parsed.url ?? '')
+    width  = Math.round(Number(parsed.width)  || 1280)
+    height = Math.round(Number(parsed.height) || 800)
+  } catch {
+    res.status(400).json({ ok: false, error: 'Invalid JSON' }); return
+  }
+  if (!url) { res.status(400).json({ ok: false, error: 'url required' }); return }
+
+  try {
+    // Dynamic import so the module is not loaded at startup (keeps boot fast)
+    const { chromium } = await import('playwright')
+    const browser = await chromium.launch({ headless: true })
+    const context = await browser.newContext({
+      viewport: { width, height },
+      // Bypass CSP so localhost pages with strict CSP still render
+      bypassCSP: true,
+    })
+    const page = await context.newPage()
+    // Use 'load' (not 'networkidle') — networkidle never fires for apps with
+    // WebSockets / SSE / polling (e.g. dev servers, real-time apps).
+    await page.goto(url, { waitUntil: 'load', timeout: 15_000 })
+    // Small extra delay so React / hydration finishes rendering
+    await page.waitForTimeout(600)
+    const buffer = await page.screenshot({ type: 'png', fullPage: false })
+    await browser.close()
+    res.json({ ok: true, dataUrl: 'data:image/png;base64,' + buffer.toString('base64') })
+  } catch (err) {
+    const msg = String(err)
+    const needsInstall = msg.includes("Executable doesn't exist") || msg.includes('browserType.launch')
+    res.status(500).json({
+      ok: false,
+      error: needsInstall
+        ? 'Playwright-Browser fehlt — bitte im Terminal ausführen: npx playwright install chromium'
+        : msg,
+    })
+  }
+})
+
 export default router

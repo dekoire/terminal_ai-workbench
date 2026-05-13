@@ -5,7 +5,7 @@ import logoBlack from '../../assets/codera_logo_black.png'
 import { ProjectSidebar } from './ProjectSidebar'
 import { CenterPane } from './CenterPane'
 import { UtilityPanel } from './UtilityPanel'
-import { IMoon, ISun, ILogout, ITerminal, IPlay, ICpu, IScrollText, ITrophy, IWeb } from '../primitives/Icons'
+import { IMoon, ISun, ILogout, ITerminal, IPlay, ICpu, IScrollText, ITrophy, ICompass, ISquareTerminal } from '../primitives/Icons'
 import { ModelBrowserModal } from '../modals/ModelBrowserModal'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
@@ -197,7 +197,13 @@ export function Workspace() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
               <button onClick={openWorkshop} title="UI Workshop — Browser, Inspect & Annotate"
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                <IWeb style={{ width: 15, height: 15 }} />
+                <ICompass style={{ width: 15, height: 15 }} />
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('cc:open-project-terminal'))}
+                title="Projekt-Terminal öffnen"
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
+                <ISquareTerminal style={{ width: 15, height: 15 }} />
               </button>
               <button onClick={triggerPlay} title="Dev Server starten"
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: playBlink ? '#22c55e' : 'var(--fg-2)', display: 'flex', alignItems: 'center', transition: 'color 0.15s', animation: playBlink ? 'cc-blink-green 0.4s ease-in-out 3' : 'none' }}>

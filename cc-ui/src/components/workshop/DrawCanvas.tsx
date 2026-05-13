@@ -38,6 +38,46 @@ interface Props {
 let _id = 0
 const uid = () => String(++_id)
 
+// ── Sub-component: focuses after mount to avoid autoFocus + pointerup race ───
+interface TextInputProps {
+  value: string
+  color: string
+  fontSize: number
+  onChange: (v: string) => void
+  onConfirm: () => void
+  onRemove: () => void
+}
+function TextInput({ value, color, fontSize, onChange, onConfirm, onRemove }: TextInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 60)
+    return () => clearTimeout(t)
+  }, [])
+  return (
+    <input
+      ref={inputRef}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onPointerDown={e => e.stopPropagation()}
+      onPointerUp={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); onConfirm() }
+        if (e.key === 'Escape') onRemove()
+      }}
+      onBlur={onConfirm}
+      style={{
+        background: 'transparent', border: 'none',
+        outline: '1.5px dashed rgba(255,255,255,0.7)',
+        color, fontSize, fontWeight: 700, fontFamily: 'sans-serif',
+        padding: '1px 3px', minWidth: 60,
+        textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+        lineHeight: 1,
+      }}
+    />
+  )
+}
+
 export const DrawCanvas = React.forwardRef<DrawCanvasHandle, Props>(
   function DrawCanvas({ active, tool, color, size }, ref) {
     const canvasRef    = useRef<HTMLCanvasElement>(null)
@@ -116,6 +156,7 @@ export const DrawCanvas = React.forwardRef<DrawCanvasHandle, Props>(
     // ── Drawing handlers ──────────────────────────────────────────────────────
     const onDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
       if (tool === 'text') {
+        e.preventDefault() // prevent browser focus-management from stealing focus
         const cv = canvasRef.current!
         const r  = cv.getBoundingClientRect()
         const x  = e.clientX - r.left
@@ -274,28 +315,13 @@ export const DrawCanvas = React.forwardRef<DrawCanvasHandle, Props>(
             }}
           >
             {item.editing ? (
-              <input
-                autoFocus
+              <TextInput
                 value={item.content}
-                onChange={e => setTextItems(prev => prev.map(i => i.id === item.id ? { ...i, content: e.target.value } : i))}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { e.preventDefault(); finalizeText(item.id) }
-                  if (e.key === 'Escape') removeText(item.id)
-                }}
-                onBlur={() => finalizeText(item.id)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  outline: '1.5px dashed rgba(255,255,255,0.7)',
-                  color: item.color,
-                  fontSize: item.fontSize,
-                  fontWeight: 700,
-                  fontFamily: 'sans-serif',
-                  padding: '1px 3px',
-                  minWidth: 60,
-                  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                  lineHeight: 1,
-                }}
+                color={item.color}
+                fontSize={item.fontSize}
+                onChange={val => setTextItems(prev => prev.map(i => i.id === item.id ? { ...i, content: val } : i))}
+                onConfirm={() => finalizeText(item.id)}
+                onRemove={() => removeText(item.id)}
               />
             ) : (
               <>

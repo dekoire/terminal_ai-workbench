@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { Project, Session } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
-import { IChev, IFolder, IFolderOpen, IBranch, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IGitFork, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IOrbit, IBell } from '../primitives/Icons'
+import { IChev, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IOrbit, IBell } from '../primitives/Icons'
 import avatarDefault from '../../assets/avatar.jpg'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
 import { Kbd } from '../primitives/Kbd'
@@ -349,11 +349,11 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px 5px 8px',
-          margin: '0', borderRadius: 0, cursor: 'pointer',
-          background: active ? 'var(--bg-2)' : 'transparent',
-          borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
+          display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px',
+          margin: '1px 6px', borderRadius: 6, cursor: 'pointer',
+          background: active ? 'var(--bg-2)' : hovered ? 'var(--bg-2)' : 'transparent',
           color: active ? 'var(--fg-0)' : 'var(--fg-1)',
+          transition: 'background 0.1s',
         }}
       >
         <IChev style={{ transform: open ? 'rotate(90deg)' : 'none', color: 'var(--fg-3)', flexShrink: 0 }} />
@@ -364,44 +364,32 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
           <span style={{ fontSize: 12, fontWeight: active ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {project.name}
           </span>
+          {/* Pfad — nur anzeigen wenn aktiv oder gehovered */}
+          {(active || hovered) && project.path && (
+            <span
+              onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(project.path) }}
+              title={`Pfad kopieren: ${project.path}`}
+              style={{ fontSize: 9.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+              onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--fg-3)')}
+            >
+              {project.path.split('/').slice(-2).join('/')}
+            </span>
+          )}
         </div>
         {isDocApplying && (
           <ILoader className="anim-spin" style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} title="Docu wird angelegt…" />
         )}
-        <>
-          {hasGit && (
-            <IGitFork
-              style={{
-                color: '#a855f7',
-                flexShrink: 0, width: 12, height: 12, cursor: 'pointer',
-                opacity: hovered ? 1 : 0.7,
-                transition: 'opacity 0.12s',
-              }}
-              onClick={(e: React.MouseEvent) => {
-                e.stopPropagation()
-                if (githubUrl) window.open(githubUrl, '_blank')
-                else window.dispatchEvent(new CustomEvent('cc:goto-git-tab'))
-              }}
-              title={githubUrl ? `Zum Repository ↗ ${githubUrl}` : 'Git-Details'}
-            />
-          )}
-          {!hasGit && (
-            <IFolder
-              style={{ color: 'var(--fg-3)', flexShrink: 0, width: 10, height: 10, cursor: 'pointer' }}
-              onClick={(e: React.MouseEvent) => { e.stopPropagation(); openFolder() }}
-            />
-          )}
-          <IKanban
-            style={{ color: 'var(--fg-3)', flexShrink: 0, width: 11, height: 11, cursor: 'pointer' }}
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); setKanbanOpen(true) }}
-            title="Kanban Board"
-          />
-          {project.dirty != null && hasGit && (
-            <span className="mono" style={{ fontSize: 9.5, color: 'var(--warn)', background: 'rgba(244,195,101,0.10)', padding: '1px 5px', borderRadius: 3 }}>
-              {project.dirty}
-            </span>
-          )}
-        </>
+        <IKanban
+          style={{ color: 'var(--fg-3)', flexShrink: 0, width: 11, height: 11, cursor: 'pointer', opacity: hovered ? 1 : 0.5, transition: 'opacity 0.1s' }}
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); setKanbanOpen(true) }}
+          title="Kanban Board"
+        />
+        {project.dirty != null && hasGit && (
+          <span className="mono" style={{ fontSize: 9.5, color: 'var(--warn)', background: 'rgba(244,195,101,0.10)', padding: '1px 5px', borderRadius: 3 }}>
+            {project.dirty}
+          </span>
+        )}
       </div>
 
       {open && (
@@ -460,16 +448,21 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
 
   const isExited   = session.status === 'exited'
   const isOffline  = isAgent && (isExited || session.status === 'error' || !session.status)
-  const dotColor   = isDangerous
+
+  // Ampel: status dot color
+  const dotColor = isDangerous
     ? 'var(--err)'
     : isOrbit  ? 'var(--orbit)'
     : session.status === 'active' ? 'var(--ok)'
     : session.status === 'error'  ? 'var(--err)'
     : isOffline ? 'var(--warn)'
     : 'var(--fg-3)'
-  const borderColor = isDangerous ? 'var(--err)' : isOrbit && active ? 'var(--orbit)' : active ? 'var(--accent)' : 'transparent'
-  const bgColor     = isDangerous && active ? 'rgba(239,122,122,0.1)' : isOrbit && active ? 'rgba(139,108,247,0.10)' : active ? 'var(--bg-2)' : 'transparent'
-  const textColor   = isDangerous ? (active ? 'var(--err)' : 'var(--fg-1)') : isOrbit && active ? 'var(--orbit)' : isOffline ? 'var(--fg-2)' : active ? 'var(--fg-0)' : 'var(--fg-1)'
+
+  const bgColor   = isDangerous && active ? 'rgba(239,122,122,0.1)' : isOrbit && active ? 'rgba(139,108,247,0.10)' : active ? 'var(--accent-soft)' : 'transparent'
+  const textColor = isDangerous ? (active ? 'var(--err)' : 'var(--fg-1)') : isOrbit && active ? 'var(--orbit)' : isOffline ? 'var(--fg-2)' : active ? 'var(--fg-0)' : 'var(--fg-1)'
+
+  // Type icon color
+  const iconColor = isDangerous ? 'var(--err)' : isOrbit ? (active ? 'var(--orbit)' : 'var(--fg-3)') : isAgent ? (isOffline ? 'var(--warn)' : active ? 'var(--accent)' : 'var(--fg-3)') : (active ? 'var(--fg-2)' : 'var(--fg-3)')
 
   return (
     <div>
@@ -480,35 +473,42 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 7, padding: '5px 8px 5px 8px',
-        margin: '1px 6px', borderRadius: 3, cursor: 'pointer',
-        background: active ? bgColor || 'var(--bg-2)' : bgColor,
+        display: 'flex', alignItems: 'center', gap: 7, padding: '5px 10px 5px 14px',
+        margin: '1px 6px', borderRadius: 6, cursor: 'pointer',
+        background: active ? bgColor || 'var(--accent-soft)' : hovered ? 'var(--bg-2)' : 'transparent',
         color: textColor,
-        border: active ? `1px solid ${borderColor}` : '1px solid transparent',
         opacity: isOffline && !active ? 0.55 : 1,
+        transition: 'background 0.1s',
       }}
     >
+      {/* ── Typ-Icon links ── */}
       {isDangerous
         ? <IShieldPlus title="--dangerously-skip-permissions" style={{ width: 11, height: 11, color: 'var(--err)', flexShrink: 0 }} />
         : isOrbit
-          ? <IOrbit  style={{ color: active ? 'var(--orbit)' : 'var(--fg-3)', flexShrink: 0, width: 12, height: 12 }} />
+          ? <IOrbit  style={{ width: 11, height: 11, color: iconColor, flexShrink: 0 }} />
           : isAgent
-            ? <ISpark  style={{ color: isOffline ? 'var(--warn)' : active ? 'var(--accent)' : 'var(--fg-3)', flexShrink: 0, width: 11, height: 11 }} />
-            : <ITerminal style={{ color: active ? 'var(--fg-2)' : 'var(--fg-3)', flexShrink: 0 }} />
+            ? <ISpark  style={{ width: 11, height: 11, color: iconColor, flexShrink: 0 }} />
+            : <ITerminal style={{ width: 11, height: 11, color: iconColor, flexShrink: 0 }} />
       }
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span style={{ fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {session.name}
-        </span>
-      </div>
+
+      {/* ── Name (once) ── */}
+      <span style={{ flex: 1, fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isExited ? 'line-through' : 'none' }}>
+        {session.name}
+      </span>
+
+      {/* ── Rechts: Bell → Ampel-Dot → Close on hover ── */}
       {permPending && !hovered && (
-        <IBell style={{ width: 11, height: 11, color: 'var(--accent)', flexShrink: 0, animation: 'perm-bell 1s ease-in-out infinite' }} />
+        <IBell style={{ width: 10, height: 10, color: 'var(--accent)', flexShrink: 0, animation: 'perm-bell 1s ease-in-out infinite' }} />
       )}
       {hovered
         ? <IClose style={{ width: 9, height: 9, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.8 }} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onClose() }} />
-        : isExited
-          ? <span style={{ width: 8, height: 2, borderRadius: 1, background: isAgent ? 'var(--warn)' : 'var(--fg-3)', flexShrink: 0, opacity: isAgent ? 0.9 : 0.5 }} />
-          : <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+        : (
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+            background: dotColor,
+            ...(session.status === 'active' && !isDangerous ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}),
+          }} />
+        )
       }
     </div>
     </div>

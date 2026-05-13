@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { TurnMessage, Template, TerminalShortcut, Session } from '../../store/useAppStore'
-import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, IOrbit, IPaperclip, IEdit } from '../primitives/Icons'
+import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, IOrbit, IPaperclip, IEdit, IBell } from '../primitives/Icons'
 import { useFileAttachments, useDragDrop, usePasteFiles, FileAttachmentBar, DragOverlay } from '../primitives/FileAttachmentArea'
 import { ImageAnnotator } from '../primitives/ImageAnnotator'
 import simpleLogo from '../../assets/simple_logo.svg'
@@ -371,6 +371,25 @@ export function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTa
   onCloseFileTab: (path: string) => void
 }) {
   const { activeProjectId, removeSession, aliases } = useAppStore()
+  const [pendingBells, setPendingBells] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    const onPending = (e: Event) => {
+      const { sessionId, pending } = (e as CustomEvent).detail as { sessionId: string; pending: boolean }
+      setPendingBells(prev => ({ ...prev, [sessionId]: pending }))
+    }
+    const onDecision = (e: Event) => {
+      const { sessionId } = (e as CustomEvent).detail as { sessionId: string }
+      if (sessionId) setPendingBells(prev => ({ ...prev, [sessionId]: false }))
+      else setPendingBells({})
+    }
+    window.addEventListener('cc:permission-pending', onPending)
+    window.addEventListener('cc:permission-decision', onDecision)
+    return () => {
+      window.removeEventListener('cc:permission-pending', onPending)
+      window.removeEventListener('cc:permission-decision', onDecision)
+    }
+  }, [])
 
   return (
     <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', paddingLeft: 6, paddingRight: 4, gap: 2, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none' }} className="hide-scrollbar">
@@ -380,8 +399,9 @@ export function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTa
         const isOrbit = s.kind === 'orbit'
         const isDangerous = !isOrbit && (s.permMode === 'dangerous' || alias?.args?.includes('--dangerously-skip-permissions') || alias?.permMode === 'dangerous')
         const isExited = s.status === 'exited'
-        const accentColor = isOrbit ? 'var(--orbit)' : isDangerous ? 'var(--err)' : 'var(--accent)'
+        const hasBell = !!pendingBells[s.id]
         const dotColor = isDangerous ? 'var(--err)' : isOrbit ? 'var(--orbit)' : s.status === 'active' ? 'var(--ok)' : s.status === 'error' ? 'var(--err)' : 'var(--fg-3)'
+        const accentColor = isOrbit ? 'var(--orbit)' : isDangerous ? 'var(--err)' : 'var(--accent)'
         return (
           <div
             key={s.id}
@@ -411,6 +431,11 @@ export function SessionTabs({ sessions, activeId, onNew, onSelectSession, fileTa
 
             {/* Name */}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isExited ? 'line-through' : 'none', flex: 1 }}>{s.name}</span>
+
+            {/* Bell indicator for pending permission */}
+            {hasBell && (
+              <IBell style={{ width: 10, height: 10, color: 'var(--accent)', flexShrink: 0, animation: 'perm-bell 1s ease-in-out infinite' }} />
+            )}
 
             {/* Right side: alias sub-label, status dot */}
             {s.alias && s.alias !== s.name && (

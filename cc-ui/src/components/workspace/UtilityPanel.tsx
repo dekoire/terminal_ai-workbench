@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import simpleLogo from '../../assets/simple_logo.svg'
 import { useAppStore } from '../../store/useAppStore'
 import type { OrbitMessage } from '../../store/useAppStore'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
@@ -6,6 +7,7 @@ import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages } from '../../lib/agentSync'
 import { IMore, IEdit, IChev, IChevDown, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
+import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
 
 const OPENROUTER_MODELS = [
@@ -1360,31 +1362,34 @@ function AiSearchTab({ projectId }: { projectId: string }) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 6, borderBottom: '1px solid var(--line)' }}>
         <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <ISearch style={{ width: 13, height: 13, color: 'var(--accent)' }} />
+          <img src={simpleLogo} alt="" style={{ width: 14, height: 14 }} />
         </div>
         <div>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Kontext Research</div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Kontext Search</div>
           <div style={{ fontSize: 9.5, color: 'var(--fg-3)', lineHeight: 1.2 }}>Durchsucht Agent + Orbit Chat-Verlauf</div>
         </div>
       </div>
 
-      {/* Query input + button stacked */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* Query input + button stacked — no gap, merged borders */}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
         <textarea
           ref={taRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void search() } }}
           placeholder="Frage stellen… (z.B. chatbox, login, welche html seiten wurden aufgerufen)"
-          style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none', resize: 'none', lineHeight: 1.5, minHeight: 36, overflow: 'hidden' }}
+          style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderTop: '1px solid var(--line-strong)', borderBottom: 'none', borderRadius: '4px 4px 0 0', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none', resize: 'none', lineHeight: 1.5, minHeight: 72, overflow: 'hidden' }}
         />
         <button
           onClick={loading ? stopSearch : () => void search()}
           disabled={!loading && !query.trim()}
           title={loading ? 'Abbrechen (Esc)' : 'Suchen (Enter)'}
-          style={{ width: '100%', background: loading ? 'rgba(239,122,122,0.12)' : !query.trim() ? 'var(--bg-3)' : 'var(--accent)', border: loading ? '1px solid rgba(239,122,122,0.3)' : 'none', borderRadius: 6, padding: '8px 10px', cursor: loading || query.trim() ? 'pointer' : 'default', color: loading ? 'var(--err)' : !query.trim() ? 'var(--fg-3)' : 'var(--accent-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, fontFamily: 'var(--font-ui)', transition: 'background 0.15s' }}
+          style={{ width: '100%', background: loading ? 'rgba(239,122,122,0.12)' : !query.trim() ? 'var(--bg-3)' : 'var(--accent)', border: loading ? '1px solid rgba(239,122,122,0.3)' : '1px solid var(--line-strong)', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '8px 10px', cursor: loading || query.trim() ? 'pointer' : 'default', color: loading ? 'var(--err)' : !query.trim() ? 'var(--fg-3)' : 'var(--accent-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontFamily: 'var(--font-ui)', transition: 'background 0.15s', boxSizing: 'border-box' }}
         >
-          {loading ? <><IX style={{ width: 13, height: 13 }} /> Stopp</> : <><ISearch style={{ width: 13, height: 13 }} /> Suchen</>}
+          {loading
+            ? <><IX style={{ width: 12, height: 12 }} /> Stopp</>
+            : <><img src={simpleLogo} alt="" style={{ width: 13, height: 13, opacity: !query.trim() ? 0.35 : 1, filter: !query.trim() ? 'none' : 'brightness(10)' }} /> Kontext Search</>
+          }
         </button>
       </div>
 
@@ -1587,14 +1592,70 @@ export function UtilityPanel() {
   // Check if active session is orbit
   const isOrbitSession = session?.kind === 'orbit'
 
-  // Tab order: Session | Chat (orbit only) | Git | Files | Data (only if files open)
-  const tabs = isOrbitSession ? ['Chat', 'Session', 'Git', 'Files', 'Data', 'Research'] : ['Session', 'Git', 'Files', 'Data', 'Research']
-  const noPadding = isOrbitSession ? [0, 2, 3, 4] : [1, 2, 3]
+  // ── Project Terminal tab ──────────────────────────────────────────────────
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const termSessionId = `__proj_term_${activeProjectId ?? 'none'}`
+
+  useEffect(() => {
+    const handler = () => {
+      setTerminalOpen(true)
+      // switch to terminal tab (last index)
+      setTimeout(() => {
+        setTab(prev => {
+          const base = isOrbitSession ? 6 : 5
+          return base
+        })
+      }, 0)
+    }
+    window.addEventListener('cc:open-project-terminal', handler)
+    return () => window.removeEventListener('cc:open-project-terminal', handler)
+  }, [isOrbitSession])
+
+  // Tab order: Session | Chat (orbit only) | Git | Files | Data | Research [| Terminal]
+  const baseTabs = isOrbitSession ? ['Chat', 'Session', 'Git', 'Files', 'Data', 'Research'] : ['Session', 'Git', 'Files', 'Data', 'Research']
+  const tabs = terminalOpen ? [...baseTabs, 'Terminal'] : baseTabs
+  const terminalTabIdx = terminalOpen ? tabs.length - 1 : -1
+  const noPaddingBase = isOrbitSession ? [0, 2, 3, 4] : [1, 2, 3]
+
+  // ── Terminal-Vollbild-Modus ───────────────────────────────────────────────
+  if (terminalOpen && tab === terminalTabIdx) {
+    return (
+      <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-0)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        {/* Thin header mit Titel + Close */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+          <ITerminal style={{ width: 12, height: 12, color: 'var(--fg-3)', flexShrink: 0 }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-1)', flex: 1, fontFamily: 'var(--font-ui)' }}>
+            Terminal · {project?.name ?? ''}
+          </span>
+          <button
+            onClick={() => { setTerminalOpen(false); setTab(0) }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: 2, borderRadius: 4 }}
+            title="Terminal schließen"
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--fg-1)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--fg-3)')}
+          >
+            <IClose style={{ width: 12, height: 12 }} />
+          </button>
+        </div>
+        {/* Terminal füllt alles */}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {project && (
+            <XTermPane
+              sessionId={termSessionId}
+              cmd="zsh"
+              args=""
+              cwd={project.path}
+            />
+          )}
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-1)', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', flexShrink: 0 }}>
-        {tabs.map((t, i) => {
+      <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid var(--line)' }}>
+        {tabs.filter(t => t !== 'Terminal').map((t, i) => {
           if (t === 'Data' && dataFiles.length === 0) return null
           return (
             <div key={t} onClick={() => setTab(i)} style={{
@@ -1604,18 +1665,16 @@ export function UtilityPanel() {
               cursor: 'pointer', fontWeight: i === tab ? 600 : 400, marginBottom: -1,
               position: 'relative',
             }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 10.5 }}>{t}</span>
-                {t === 'Git' && gitDirty > 0 && (
-                  <span title={`${gitDirty} geänderte Dateien`} style={{ position: 'absolute', top: 4, right: 4, fontSize: 8, fontWeight: 700, minWidth: 12, height: 12, borderRadius: 99, background: 'rgba(244,195,101,0.18)', border: '1px solid rgba(244,195,101,0.4)', color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{gitDirty}</span>
-                )}
-              </span>
+              <span style={{ fontSize: 10.5 }}>{t}</span>
+              {t === 'Git' && gitDirty > 0 && (
+                <span title={`${gitDirty} geänderte Dateien`} style={{ position: 'absolute', top: 4, right: 4, fontSize: 8, fontWeight: 700, minWidth: 12, height: 12, borderRadius: 99, background: 'rgba(244,195,101,0.18)', border: '1px solid rgba(244,195,101,0.4)', color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{gitDirty}</span>
+              )}
             </div>
           )
         })}
       </div>
 
-      <div style={{ flex: 1, overflowY: noPadding.includes(tab) ? 'hidden' : 'auto', padding: noPadding.includes(tab) ? 0 : 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: noPaddingBase.includes(tab) ? 'hidden' : 'auto', padding: noPaddingBase.includes(tab) ? 0 : 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
         {/* ── Tab 0: Chat (orbit only) ── */}
         {isOrbitSession && tab === 0 && project && session && <ChatTab projectId={project.id} sessionId={session.id} />}
@@ -1624,15 +1683,29 @@ export function UtilityPanel() {
         {tab === (isOrbitSession ? 1 : 0) && (
           <>
             <div style={{ marginBottom: 14, paddingTop: 14 }}>
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 3 }}>
-                  {session?.alias ?? project?.name ?? '—'}
-                </div>
-                <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{modelLabel}</div>
+              {/* ── Session-Header: Ampel + Icon + Name ── */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                {/* Ampel: status dot */}
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                  background: session?.status === 'active' ? 'var(--ok)' : session?.status === 'error' ? 'var(--err)' : 'var(--fg-3)',
+                  ...(session?.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}),
+                }} />
+                {/* Type icon */}
+                {isOrbitSession
+                  ? <IOrbit style={{ width: 13, height: 13, color: 'var(--orbit)', flexShrink: 0 }} />
+                  : session?.kind === 'openrouter-claude'
+                    ? <ISpark style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
+                    : <ITerminal style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
+                }
+                {/* Name — einmal */}
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {session?.name ?? project?.name ?? '—'}
+                </span>
               </div>
-              <Field label="Gestartet" value={startedLabel} />
-              <Field label="Pfad" value={project?.path ?? '—'} mono />
-              <Field label="Branch" value={project?.branch ?? '—'} mono accent />
+              {/* ── Info-Felder ohne Trennlinien ── */}
+              <FieldPlain label="Gestartet" value={startedLabel} />
+              <FieldPath label="Pfad" path={project?.path ?? '—'} />
             </div>
             <UserStoriesCard projectId={project?.id} sessionId={session?.id ?? ''} />
           </>
@@ -2132,6 +2205,39 @@ function Field({ label, value, mono, accent }: { label: string; value: string; m
     <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', fontSize: 11.5, borderBottom: '1px solid var(--line)' }}>
       <span style={{ width: 90, color: 'var(--fg-3)', flexShrink: 0 }}>{label}</span>
       <span className={mono ? 'mono' : ''} style={{ color: accent ? 'var(--accent)' : 'var(--fg-0)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+    </div>
+  )
+}
+
+function FieldPlain({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', padding: '3px 0', fontSize: 11.5 }}>
+      <span style={{ width: 90, color: 'var(--fg-3)', flexShrink: 0 }}>{label}</span>
+      <span style={{ color: 'var(--fg-1)', flex: 1 }}>{value}</span>
+    </div>
+  )
+}
+
+function FieldPath({ label, path }: { label: string; path: string }) {
+  const [copied, setCopied] = React.useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(path)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', padding: '3px 0', fontSize: 11.5, gap: 6 }}>
+      <span style={{ width: 90, color: 'var(--fg-3)', flexShrink: 0 }}>{label}</span>
+      <span className="mono" style={{ color: 'var(--fg-1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{path}</span>
+      <button
+        onClick={copy}
+        title="Pfad kopieren"
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: copied ? 'var(--ok)' : 'var(--fg-3)', padding: '2px', display: 'flex', alignItems: 'center', flexShrink: 0, borderRadius: 4 }}
+        onMouseEnter={e => { if (!copied) (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }}
+        onMouseLeave={e => { if (!copied) (e.currentTarget as HTMLElement).style.color = 'var(--fg-3)' }}
+      >
+        {copied ? <ICheck style={{ width: 11, height: 11 }} /> : <ICopy style={{ width: 11, height: 11 }} />}
+      </button>
     </div>
   )
 }

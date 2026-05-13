@@ -9,7 +9,7 @@ import {
   ExternalLink, Download, FileText, Bug, Star, User, PanelLeft,
   Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown,
   Link2, Cloud, CloudUpload, Camera, Lock, Bell, Paperclip, ChevronLeft,
-  MousePointer2, MessageSquare, Save, Eraser, Undo2, RefreshCw,
+  MousePointer2, MessageSquare, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal,
   type LucideProps,
 } from 'lucide-react'
 
@@ -109,6 +109,8 @@ export const ISave            = ic(Save)
 export const IEraser          = ic(Eraser)
 export const IUndo            = ic(Undo2)
 export const IRefresh         = ic(RefreshCw)
+export const ICompass         = ic(Compass)
+export const ISquareTerminal  = ic(SquareTerminal)
 
 // ── Logo spinner (SVG from assets/spinner.html) ───────────────────────────────
 export function ISpinner({ size = 20 }: { size?: number }) {

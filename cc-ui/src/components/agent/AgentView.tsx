@@ -975,51 +975,64 @@ function HistoryPermissionCard({ data, ts }: { data: Record<string, unknown>; ts
   const scope    = String(data.scope ?? 'once')
   const input    = data.input as Record<string, unknown> ?? {}
 
-  // Extract the most meaningful detail from input
   const detail = (() => {
+    const t = toolName.toLowerCase()
+    if (t === 'bash')   return String(input.command ?? input.cmd ?? '')
+    if (t === 'read' || t === 'write' || t === 'edit' || t === 'multiedit') return String(input.file_path ?? input.path ?? '')
+    if (t === 'webfetch') return String(input.url ?? '')
+    if (t === 'websearch') return String(input.query ?? '')
     const fp = input.file_path ?? input.path ?? input.url ?? input.query ?? input.command ?? input.cmd
     if (fp) return String(fp)
-    const keys = Object.keys(input)
-    if (keys.length > 0) return String(input[keys[0]]).slice(0, 120)
     return ''
   })()
 
-  const scopeLabel = scope === 'always' ? 'Immer' : scope === 'session' ? 'Session' : 'Einmal'
+  const scopeLabel = scope === 'always' ? 'Immer erlaubt' : scope === 'session' ? 'Session erlaubt' : 'Einmal erlaubt'
+  const statusColor  = allow ? '#22c55e' : '#ef4444'
+  const statusBg     = allow ? 'rgba(34,197,94,0.10)' : 'rgba(239,68,68,0.10)'
+  const statusBorder = allow ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'
 
   return (
-    <div style={{ marginBottom: 10, marginTop: 6, display: 'flex', justifyContent: 'flex-start' }}>
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 5,
-        padding: '8px 12px',
-        background: allow ? 'rgba(124,217,168,0.07)' : 'rgba(239,122,122,0.07)',
-        border: `1px solid ${allow ? 'rgba(124,217,168,0.25)' : 'rgba(239,122,122,0.25)'}`,
-        borderLeft: `3px solid ${allow ? 'var(--ok)' : 'var(--err)'}`,
-        borderRadius: '0 6px 6px 0',
-        maxWidth: '80%',
-        minWidth: 220,
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 7,
+      padding: '7px 14px', borderRadius: 6, marginBottom: 8,
+      background: 'var(--bg-2)', border: '1px solid var(--line)',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.18)', opacity: 0.75,
+      overflow: 'hidden', width: '100%',
+    }}>
+      {/* Tool badge */}
+      <span style={{
+        fontSize: 10.5, fontFamily: 'var(--font-mono)',
+        background: 'var(--accent-soft)', borderRadius: 3,
+        padding: '1px 5px', color: 'var(--accent)', fontWeight: 600,
+        whiteSpace: 'nowrap', flexShrink: 0,
       }}>
-        {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5 }}>
-          <span style={{ color: allow ? 'var(--ok)' : 'var(--err)', fontWeight: 700 }}>
-            {allow ? '✓' : '✗'}
-          </span>
-          <span style={{ color: 'var(--fg-2)', fontWeight: 600 }}>
-            {allow ? 'Freigegeben' : 'Abgelehnt'}
-          </span>
-          <span style={{ color: 'var(--fg-3)' }}>·</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent)', background: 'var(--accent-soft)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>
-            {toolName}
-          </span>
-          <span style={{ color: 'var(--fg-3)', fontSize: 10 }}>{scopeLabel}</span>
-          <span style={{ marginLeft: 'auto', color: 'var(--fg-3)', fontSize: 9.5, opacity: 0.7 }}>{formatTs(ts)}</span>
-        </div>
-        {/* Detail */}
-        {detail && (
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-2)', wordBreak: 'break-all', opacity: 0.8 }}>
-            {detail.length > 100 ? detail.slice(0, 100) + '…' : detail}
-          </div>
-        )}
-      </div>
+        {toolName}
+      </span>
+
+      {/* Content preview */}
+      <span style={{
+        flex: 1, fontSize: 10.5, color: 'var(--fg-3)',
+        fontFamily: 'var(--font-mono)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        opacity: 0.6,
+      }}>
+        {detail.length > 120 ? detail.slice(0, 120) + '…' : detail}
+      </span>
+
+      {/* Timestamp */}
+      <span style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.5 }}>{formatTs(ts)}</span>
+
+      {/* Status badge */}
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '2px 8px', borderRadius: 5,
+        fontSize: 10, fontWeight: 700, fontFamily: 'inherit',
+        color: statusColor, background: statusBg,
+        border: `1px solid ${statusBorder}`,
+        flexShrink: 0, whiteSpace: 'nowrap',
+      }}>
+        {allow ? '✓' : '✗'} {scopeLabel}
+      </span>
     </div>
   )
 }
@@ -2089,12 +2102,14 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
           style={{
             position: 'absolute', top: 50, left: '50%', marginLeft: -22, zIndex: 50,
             width: 44, height: 44, borderRadius: '50%',
-            background: 'var(--bg-1)',
-            border: '2px solid var(--accent)',
-            boxShadow: 'none',
+            background: 'rgba(99,130,255,0.18)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            border: '2px solid rgba(99,130,255,0.55)',
+            boxShadow: '0 2px 12px rgba(99,130,255,0.18)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',
-            color: 'var(--accent)', fontSize: 20,
+            color: '#6382ff', fontSize: 20,
             transition: 'opacity 0.2s',
             animation: 'scroll-bounce 1.4s ease-in-out infinite',
             padding: 0,
