@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BUBHUZBU</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a1a;
+      color: #fff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .hero {
+      text-align: center;
+      padding: 4rem 2rem;
+      position: relative;
+      z-index: 2;
+    }
+    .hero h1 {
+      font-size: clamp(3rem, 10vw, 8rem);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #ff00cc, #3333ff, #00ffcc, #ffcc00);
+      background-size: 400% 400%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradientMove 6s ease infinite;
+      text-shadow: none;
+      filter: drop-shadow(0 0 30px rgba(255,0,204,0.3));
+    }
+    @keyframes gradientMove {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .hero p {
+      margin-top: 1rem;
+      font-size: 1.25rem;
+      color: #8899aa;
+      max-width: 500px;
+      line-height: 1.6;
+    }
+    .bubbles {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+    }
+    .bubble {
+      position: absolute;
+      bottom: -100px;
+      border-radius: 50%;
+      opacity: 0.6;
+      animation: rise linear infinite;
+    }
+    @keyframes rise {
+      0% { transform: translateY(0) scale(1); opacity: 0.6; }
+      100% { transform: translateY(-120vh) scale(0.5); opacity: 0; }
+    }
+    .cta {
+      margin-top: 2.5rem;
+      display: inline-flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn {
+      padding: 0.9rem 2rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      text-decoration: none;
+    }
+    .btn:hover {
+      background: rgba(255,255,255,0.15);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #ff00cc, #3333ff);
+      border: none;
+    }
+    .btn-primary:hover {
+      filter: brightness(1.2);
+    }
+    .marquee {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background: rgba(255,255,255,0.03);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding: 0.75rem 0;
+      overflow: hidden;
+      z-index: 2;
+    }
+    .marquee-inner {
+      display: inline-block;
+      white-space: nowrap;
+      animation: marquee 20s linear infinite;
+      color: #556677;
+      font-size: 0.9rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bubbles" id="bubbles"></div>
+
+  <div class="hero">
+    <h1>BUBHUZBU</h1>
+    <p>Willkommen in der seltsam-wunderbaren Welt von Bubhuzbu. Hier schweben Ideen, Blasen träumen und Kreativität kennt keine Grenzen.</p>
+    <div class="cta">
+      <a href="#" class="btn btn-primary" onclick="burst()">Blasen platzen</a>
+      <a href="index.html" class="btn">Zurück zur Startseite</a>
+    </div>
+  </div>
+
+  <div class="marquee">
+    <div class="marquee-inner">
+      BUBHUZBU • KREATIVITÄT • BLASEN • TRÄUME • IDEEN • MAGIE • BUBHUZBU • KREATIVITÄT • BLASEN • TRÄUME • IDEEN • MAGIE • BUBHUZBU • KREATIVITÄT • BLASEN • TRÄUME • IDEEN • MAGIE • 
+    </div>
+  </div>
+
+  <script>
+    const colors = ['#ff00cc','#3333ff','#00ffcc','#ffcc00','#ff4444','#44ff44'];
+    const bubblesContainer = document.getElementById('bubbles');
+
+    function createBubble() {
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      const size = Math.random() * 60 + 20;
+      b.style.width = size + 'px';
+      b.style.height = size + 'px';
+      b.style.left = Math.random() * 100 + 'vw';
+      b.style.background = colors[Math.floor(Math.random() * colors.length)];
+      b.style.animationDuration = (Math.random() * 5 + 5) + 's';
+      b.style.filter = 'blur(' + (Math.random() * 4 + 1) + 'px)';
+      bubblesContainer.appendChild(b);
+      setTimeout(() => b.remove(), 10000);
+    }
+
+    setInterval(createBubble, 400);
+
+    function burst() {
+      for (let i = 0; i < 30; i++) setTimeout(createBubble, i * 50);
+    }
+  </script>
+
+</body>
+</html>

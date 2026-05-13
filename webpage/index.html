@@ -1,0 +1,697 @@
+<!--
+================================================================================
+  Codera IDE – Landing Page (Deutsch)
+  Architektur: Semantic HTML5 | BEM-artige Klassen | Responsive-ready
+  Stand: Entwurf – Bilder/Logos als Platzhalter markiert
+================================================================================
+-->
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codera IDE – KI-gestützte Entwicklungsumgebung für Multi-LLM-Workflows</title>
+  <meta name="description" content="Codera IDE vereint mehrere Large Language Models in einer Entwicklungsumgebung. Orchestriere Coder, Architect, Researcher, Reviewer und Texter für deine Softwareprojekte.">
+
+  <!-- Lucide Icons — lightweight SVG icon set -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+
+  <meta name="robots" content="index, follow">
+  <meta name="author" content="Codera IDE">
+  <link rel="canonical" href="https://codera.dev/">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://codera.dev/">
+  <meta property="og:title" content="Codera IDE – KI-native Entwicklungsumgebung für Multi-LLM-Workflows">
+  <meta property="og:description" content="Orchestriere GPT-4, Claude, Gemini und lokale Modelle in einer IDE. Spezialisierte KI-Rollen: Coder, Architect, Researcher, Reviewer, Texter.">
+  <meta property="og:image" content="https://codera.dev/assets/og-image.png">
+  <meta property="og:locale" content="de_DE">
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://codera.dev/">
+  <meta property="twitter:title" content="Codera IDE – KI-native Entwicklungsumgebung">
+  <meta property="twitter:description" content="Multi-LLM IDE mit integriertem Koordinator für spezialisierte KI-Rollen.">
+  <meta property="twitter:image" content="https://codera.dev/assets/og-image.png">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="./assets/simple_logo.svg">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  HEADER / NAVIGATION
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<header class="nav" role="banner">
+  <div class="nav__inner">
+    <a href="/" class="nav__logo" aria-label="Codera IDE – Startseite">
+      <img src="./assets/simple_logo.svg" alt="" class="nav__logo-img" aria-hidden="true">
+      Codera
+    </a>
+
+    <!-- PLACEHOLDER: Mobile-Hamburger (z. B. nav__toggle) -->
+    <nav aria-label="Hauptnavigation">
+      <ul class="nav__links">
+        <li><a href="#features">Funktionen</a></li>
+        <li><a href="#orchestrator">LLM-Koordinator</a></li>
+        <li><a href="#orbit-chat">Orbit Chat</a></li>
+        <li><a href="#workflow">Workflow</a></li>
+        <li><a href="#testing">Sicherheit</a></li>
+      </ul>
+    </nav>
+
+    <button class="theme-toggle" id="themeToggle" aria-label="Design wechseln" title="Design wechseln">
+      <i data-lucide="sun" style="width:16px;height:16px;" class="theme-toggle__icon--light"></i>
+      <i data-lucide="moon" style="width:16px;height:16px;" class="theme-toggle__icon--dark"></i>
+    </button>
+
+    <button class="nav__cta" onclick="document.getElementById('cta-target').scrollIntoView({behavior:'smooth'})">
+      Kostenlos starten
+    </button>
+  </div>
+</header>
+
+<main>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  1. HERO SECTION
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<section class="section section--dark hero" aria-labelledby="hero-heading">
+  <div class="hero__bg-glow" aria-hidden="true"></div>
+  <div class="container">
+    <p class="section__label">Codera IDE</p>
+    <h1 id="hero-heading" class="hero__title">
+      Die <span class="hero__title-accent">KI-native</span><br>
+      Entwicklungsumgebung
+    </h1>
+    <p class="hero__subtitle">
+      Mehrere Large Language Models, eine Oberfläche. Orchestriere spezialisierte KI-Rollen –
+      vom Architekten bis zum Reviewer – und entwickle Software in einem völlig neuen Workflow.
+    </p>
+    <div class="hero__actions">
+      <a href="#cta-target" class="btn btn--primary">
+        Jetzt ausprobieren
+      </a>
+      <a href="#orbit-chat" class="btn btn--secondary">
+        Demo ansehen
+      </a>
+    </div>
+
+    <!-- PLACEHOLDER: Hero-Visual – Dashboard-Screenshot (1920×840px) -->
+    <div class="hero__visual" role="img" aria-label="Codera IDE Dashboard Vorschau">
+      [ Screenshot: Codera IDE – Multi-LLM-Dashboard mit Orbit Chat, Terminal & Datei-Explorer ]
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  2. KEY FEATURES
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="features" class="section section--darker" aria-labelledby="features-heading">
+  <div class="container">
+    <p class="section__label">Funktionen</p>
+    <h2 id="features-heading" class="section__title">Alles, was moderne KI-Entwicklung braucht</h2>
+    <p class="section__subtitle">
+      Codera IDE wurde von Grund auf für die Zusammenarbeit mit großen Sprachmodellen konzipiert –
+      nicht als nachträgliches Add-on, sondern als architektonischer Kern.
+    </p>
+
+    <div class="features-grid">
+
+      <!-- Feature 1: Multi-LLM App Development -->
+      <article class="feature-card">
+        <div class="feature-card__icon" aria-hidden="true">
+          <!-- PLACEHOLDER: Icon multi-llm.svg -->
+          <i data-lucide="brain" style="width:28px;height:28px;"></i>
+        </div>
+        <h3 class="feature-card__title">Multi-LLM-App-Entwicklung</h3>
+        <p class="feature-card__desc">
+          Binde parallel GPT-4, Claude, Gemini, lokale Modelle via Ollama oder benutzerdefinierte
+          Endpunkte ein. Wechsle Modelle pro Session, pro Datei oder sogar pro Prompt –
+          ohne den Kontext zu verlieren.
+        </p>
+      </article>
+
+      <!-- Feature 2: Gephify Docs -->
+      <article class="feature-card">
+        <div class="feature-card__icon" aria-hidden="true">
+          <!-- PLACEHOLDER: Icon gephify.svg -->
+          <i data-lucide="book-open" style="width:28px;height:28px;"></i>
+        </div>
+        <h3 class="feature-card__title">Gephify-Dokumentation</h3>
+        <p class="feature-card__desc">
+          Aus Code wird automatisch lebendige Dokumentation. Gephify analysiert
+          Abhängigkeiten, erzeugt interaktive Graph-Visualisierungen und hält
+          deine Doku synchron zum Quellcode – Branch-übergreifend.
+        </p>
+      </article>
+
+      <!-- Feature 3: GitHub Integration -->
+      <article class="feature-card">
+        <div class="feature-card__icon" aria-hidden="true">
+          <!-- PLACEHOLDER: Icon github.svg -->
+          <i data-lucide="link" style="width:28px;height:28px;"></i>
+        </div>
+        <h3 class="feature-card__title">Nahtlose GitHub-Integration</h3>
+        <p class="feature-card__desc">
+          Klone Repositories, erstelle Pull Requests, reviewt Code und führt
+          automatisierte Merges durch – alles innerhalb der IDE. Dein LLM-Team
+          kommentiert direkt in der Diff-Ansicht.
+        </p>
+      </article>
+
+      <!-- Feature 4: File Analysis -->
+      <article class="feature-card">
+        <div class="feature-card__icon" aria-hidden="true">
+          <!-- PLACEHOLDER: Icon file-analysis.svg -->
+          <i data-lucide="search" style="width:28px;height:28px;"></i>
+        </div>
+        <h3 class="feature-card__title">Intelligente Dateianalyse</h3>
+        <p class="feature-card__desc">
+          Drag & Drop beliebiger Dateien: Quellcode, Logs, CSVs, JSON, PDFs.
+          Codera indexiert den Inhalt semantisch und stellt ihn als kontextuelles
+          Wissen für alle LLM-Sessions bereit.
+        </p>
+      </article>
+
+      <!-- Feature 5: Session Types -->
+      <article class="feature-card">
+        <div class="feature-card__icon" aria-hidden="true">
+          <!-- PLACEHOLDER: Icon sessions.svg -->
+          <i data-lucide="zap" style="width:28px;height:28px;"></i>
+        </div>
+        <h3 class="feature-card__title">Flexible Session-Typen</h3>
+        <p class="feature-card__desc">
+          Wähle zwischen Ad-hoc-Chat, persistenter Projekt-Session,
+          Code-Review-Modus oder Architektur-Workshop. Jede Session speichert
+          ihren eigenen Kontext, Verlauf und Modell-Zustand.
+        </p>
+      </article>
+
+      <!-- Feature 6: Prompt Library -->
+      <article class="feature-card">
+        <div class="feature-card__icon" aria-hidden="true">
+          <!-- PLACEHOLDER: Icon prompt-lib.svg -->
+          <i data-lucide="clipboard-list" style="width:28px;height:28px;"></i>
+        </div>
+        <h3 class="feature-card__title">Wiederverwendbare Prompt-Bibliothek</h3>
+        <p class="feature-card__desc">
+          Speichere, versioniere und teile bewährte Prompts im Team.
+          Parametrisierte Vorlagen mit {{Platzhaltern}} machen wiederkehrende
+          Aufgaben zum Einzeiler.
+        </p>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  3. LLM COORDINATOR – SPEZIALISTEN-ROLLEN
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="orchestrator" class="section section--dark" aria-labelledby="orchestrator-heading">
+  <div class="container">
+    <p class="section__label">LLM-Koordinator</p>
+    <h2 id="orchestrator-heading" class="section__title">
+      Ein Team aus KI-Spezialisten –<br>für jede Aufgabe der richtige Experte
+    </h2>
+    <p class="section__subtitle">
+      Der Codera-Koordinator verteilt Aufgaben automatisch an die fünf spezialisierten
+      LLM-Rollen. Jede Rolle arbeitet mit einem optimierten System-Prompt und kann bei
+      Bedarf ein eigenes Modell nutzen.
+    </p>
+
+    <!-- Solar System: Orchestrator + Agents -->
+    <div class="solar-system" aria-label="LLM Koordinator und Agenten">
+      <div class="sun" aria-label="Orchestrator">
+        <div class="sun__core">
+          <img src="./assets/simple_logo.svg" alt="" style="width:40px;height:40px;filter:brightness(0) invert(1);">
+        </div>
+        <div class="sun__label">Orchestrator</div>
+      </div>
+
+      <!-- Ring 1 -->
+      <div class="orbit-ring orbit-ring--1">
+        <div class="planet" data-role="Coder">
+          <span class="planet__dot planet__dot--coder"></span>
+          <span class="planet__label">Coder</span>
+        </div>
+      </div>
+
+      <!-- Ring 2 -->
+      <div class="orbit-ring orbit-ring--2">
+        <div class="planet" data-role="Architect">
+          <span class="planet__dot planet__dot--architect"></span>
+          <span class="planet__label">Architect</span>
+        </div>
+      </div>
+
+      <!-- Ring 3 -->
+      <div class="orbit-ring orbit-ring--3">
+        <div class="planet" data-role="Reviewer">
+          <span class="planet__dot planet__dot--reviewer"></span>
+          <span class="planet__label">Reviewer</span>
+        </div>
+      </div>
+
+      <!-- Ring 4 -->
+      <div class="orbit-ring orbit-ring--4">
+        <div class="planet" data-role="Researcher">
+          <span class="planet__dot planet__dot--researcher"></span>
+          <span class="planet__label">Researcher</span>
+        </div>
+      </div>
+
+      <!-- Ring 5 -->
+      <div class="orbit-ring orbit-ring--5">
+        <div class="planet" data-role="Texter">
+          <span class="planet__dot planet__dot--texter"></span>
+          <span class="planet__label">Texter</span>
+        </div>
+      </div>
+
+      <!-- Background drifting LLM labels -->
+      <div class="llm-bg llm-bg--1">
+        <span class="llm-bg__role">Coder</span>
+        <span class="llm-bg__name">GPT-4</span>
+      </div>
+      <div class="llm-bg llm-bg--2">
+        <span class="llm-bg__role">Architect</span>
+        <span class="llm-bg__name">Claude 3.5</span>
+      </div>
+      <div class="llm-bg llm-bg--3">
+        <span class="llm-bg__role">Reviewer</span>
+        <span class="llm-bg__name">Llama 3</span>
+      </div>
+      <div class="llm-bg llm-bg--4">
+        <span class="llm-bg__role">Researcher</span>
+        <span class="llm-bg__name">Mistral</span>
+      </div>
+      <div class="llm-bg llm-bg--5">
+        <span class="llm-bg__role">Texter</span>
+        <span class="llm-bg__name">DeepSeek</span>
+      </div>
+    </div>
+
+    <p style="text-align:center;margin-top:1.5rem;font-size:0.85rem;color:var(--fg-2);">
+      <i data-lucide="settings-2" style="width:12px;height:12px;display:inline-block;vertical-align:-2px;"></i>
+      Alle Rollennamen, Prompts und Modelle sind vollständig anpassbar.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  4. ORBIT CHAT
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="orbit-chat" class="section section--darker" aria-labelledby="orbit-heading">
+  <div class="container">
+    <p class="section__label">Orbit Chat</p>
+    <h2 id="orbit-heading" class="section__title">Kommunikation, die sich um deinen Code dreht</h2>
+    <p class="section__subtitle">
+      Der Orbit Chat ist das zentrale Kommunikationsmodul von Codera. Anders als
+      herkömmliche Chat-Fenster versteht er den gesamten Projektkontext und
+      verknüpft jede Nachricht mit der relevanten Code-Stelle.
+    </p>
+
+    <div class="orbit-layout">
+      <div class="orbit-gallery">
+        <div class="orbit-gallery__main" role="img" aria-label="Orbit Chat Hauptinterface">
+          [ Screenshot: Orbit Chat – Hauptinterface mit Nachrichtenverlauf ]
+        </div>
+        <div class="orbit-gallery__side" role="img" aria-label="Kontext-Panel">
+          [ Kontext-Panel ]
+        </div>
+        <div class="orbit-gallery__side orbit-gallery__side--offset" role="img" aria-label="Diff-Ansicht">
+          [ Diff-Ansicht ]
+        </div>
+      </div>
+
+      <div>
+        <ul class="orbit-layout__list">
+          <li>
+            <span class="orbit-layout__list-icon" aria-hidden="true"><i data-lucide="check" style="width:12px;height:12px;"></i></span>
+            <div>
+              <strong style="color:var(--fg-0);">Kontextbewusst</strong><br>
+              <span style="font-size:0.9rem;color:var(--fg-2);">
+                Jede Nachricht referenziert automatisch die aktuelle Datei, Cursor-Position und den aktiven Branch.
+              </span>
+            </div>
+          </li>
+          <li>
+            <span class="orbit-layout__list-icon" aria-hidden="true"><i data-lucide="check" style="width:12px;height:12px;"></i></span>
+            <div>
+              <strong style="color:var(--fg-0);">Multi-Turn mit Gedächtnis</strong><br>
+              <span style="font-size:0.9rem;color:var(--fg-2);">
+                Der Chatverlauf bleibt über Sessions hinweg erhalten und wird semantisch indexiert.
+              </span>
+            </div>
+          </li>
+          <li>
+            <span class="orbit-layout__list-icon" aria-hidden="true"><i data-lucide="check" style="width:12px;height:12px;"></i></span>
+            <div>
+              <strong style="color:var(--fg-0);">Diff-Vorschau & Apply</strong><br>
+              <span style="font-size:0.9rem;color:var(--fg-2);">
+                Code-Vorschläge erscheinen direkt als Diff. Mit einem Klick übernehmen – oder verwerfen.
+              </span>
+            </div>
+          </li>
+          <li>
+            <span class="orbit-layout__list-icon" aria-hidden="true"><i data-lucide="check" style="width:12px;height:12px;"></i></span>
+            <div>
+              <strong style="color:var(--fg-0);">Rollen-Routing</strong><br>
+              <span style="font-size:0.9rem;color:var(--fg-2);">
+                Weise Nachrichten gezielt einer Rolle zu: <em>@architect</em>, <em>@coder</em>, <em>@reviewer</em> etc.
+              </span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  5. TERMINAL VS UI
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="comparison" class="section section--dark" aria-labelledby="comparison-heading">
+  <div class="container">
+    <p class="section__label">Warum eine IDE?</p>
+    <h2 id="comparison-heading" class="section__title">Terminal trifft Interface –<br>das Beste aus beiden Welten</h2>
+    <p class="section__subtitle">
+      CLI-Tools sind mächtig, aber für komplexe KI-Workflows fehlt die Übersicht.
+      Web-UIs sind bequem, aber zu langsam für echte Entwicklung. Codera vereint beides.
+    </p>
+
+    <div class="comparison">
+      <!-- Terminal-Seite -->
+      <div class="comparison__col">
+        <h3 class="comparison__heading">Terminal / CLI</h3>
+        <ul class="comparison__list">
+          <li><span class="comparison__cross"><i data-lucide="x" style="width:14px;height:14px;"></i></span> Kontextverlust bei langen Sessions</li>
+          <li><span class="comparison__cross"><i data-lucide="x" style="width:14px;height:14px;"></i></span> Keine visuelle Diff-Vorschau</li>
+          <li><span class="comparison__cross"><i data-lucide="x" style="width:14px;height:14px;"></i></span> Manuelle Datei-Referenzierung</li>
+          <li><span class="comparison__cross"><i data-lucide="x" style="width:14px;height:14px;"></i></span> Kein Multi-Modell-Management</li>
+          <li><span class="comparison__cross"><i data-lucide="x" style="width:14px;height:14px;"></i></span> Keine Rollen-Orchestrierung</li>
+          <li><span class="comparison__check"><i data-lucide="check" style="width:14px;height:14px;"></i></span> Extrem schnell für Einzelschritte</li>
+        </ul>
+      </div>
+
+      <!-- UI-Seite (hervorgehoben) -->
+      <div class="comparison__col comparison__col--highlight">
+        <h3 class="comparison__heading">Codera IDE</h3>
+        <ul class="comparison__list">
+          <li><span class="comparison__check"><i data-lucide="check" style="width:14px;height:14px;"></i></span> Persistenter Kontext über Sessions</li>
+          <li><span class="comparison__check"><i data-lucide="check" style="width:14px;height:14px;"></i></span> Interaktive Diff-Ansicht mit Apply</li>
+          <li><span class="comparison__check"><i data-lucide="check" style="width:14px;height:14px;"></i></span> Automatische Kontext-Erkennung</li>
+          <li><span class="comparison__check"><i data-lucide="check" style="width:14px;height:14px;"></i></span> Parallele LLM-Verwaltung</li>
+          <li><span class="comparison__check"><i data-lucide="check" style="width:14px;height:14px;"></i></span> Integrierter Rollen-Koordinator</li>
+          <li><span class="comparison__check"><i data-lucide="check" style="width:14px;height:14px;"></i></span> CLI-Modus für Power-User</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  6. REQUIREMENTS ENGINEERING WORKFLOW
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="workflow" class="section section--darker" aria-labelledby="workflow-heading">
+  <div class="container">
+    <p class="section__label">Requirements Engineering</p>
+    <h2 id="workflow-heading" class="section__title">Vom Stakeholder-Wunsch zum validierten Code</h2>
+    <p class="section__subtitle">
+      Codera bildet den gesamten Anforderungsprozess ab – von der ersten
+      User Story über Architekturentscheidungen bis zum automatisierten Test.
+    </p>
+
+    <div class="workflow-timeline">
+      <div class="workflow-timeline__endpoint workflow-timeline__endpoint--start">
+        <span class="workflow-timeline__endpoint__label">Start</span>
+        <div class="workflow-timeline__endpoint__dot"></div>
+      </div>
+      <div class="workflow-timeline__item">
+        <div class="workflow-timeline__card">
+          <div class="workflow-timeline__content">
+            <h4 class="workflow-timeline__title">Anforderungsanalyse</h4>
+            <p class="workflow-timeline__desc">
+              Stakeholder beschreiben das Problem. Der <strong>Researcher</strong>
+              identifiziert Unklarheiten und präzisiert.
+            </p>
+          </div>
+          <div class="workflow-timeline__icon"><i data-lucide="clipboard-list" style="width:45px;height:45px;"></i></div>
+        </div>
+      </div>
+      <div class="workflow-timeline__item">
+        <div class="workflow-timeline__card">
+          <div class="workflow-timeline__content">
+            <h4 class="workflow-timeline__title">Architektur-Entscheidung</h4>
+            <p class="workflow-timeline__desc">
+              Der <strong>Architect</strong> entwirft Datenstrukturen und
+              liefert ADRs mit Begründung.
+            </p>
+          </div>
+          <div class="workflow-timeline__icon"><i data-lucide="layers" style="width:45px;height:45px;"></i></div>
+        </div>
+      </div>
+      <div class="workflow-timeline__item">
+        <div class="workflow-timeline__card">
+          <div class="workflow-timeline__content">
+            <h4 class="workflow-timeline__title">Akzeptanzkriterien</h4>
+            <p class="workflow-timeline__desc">
+              Der <strong>Texter</strong> formuliert Gherkin-Szenarien
+              (Given/When/Then) als lebende Spezifikation.
+            </p>
+          </div>
+          <div class="workflow-timeline__icon"><i data-lucide="list-checks" style="width:45px;height:45px;"></i></div>
+        </div>
+      </div>
+      <div class="workflow-timeline__item">
+        <div class="workflow-timeline__card">
+          <div class="workflow-timeline__content">
+            <h4 class="workflow-timeline__title">Implementierung</h4>
+            <p class="workflow-timeline__desc">
+              Der <strong>Coder</strong> setzt um. Jeder Commit wird gegen
+              die Akzeptanzkriterien geprüft.
+            </p>
+          </div>
+          <div class="workflow-timeline__icon"><i data-lucide="code-2" style="width:45px;height:45px;"></i></div>
+        </div>
+      </div>
+      <div class="workflow-timeline__item">
+        <div class="workflow-timeline__card">
+          <div class="workflow-timeline__content">
+            <h4 class="workflow-timeline__title">Validierung</h4>
+            <p class="workflow-timeline__desc">
+              Der <strong>Reviewer</strong> prüft Code, Tests und Coverage.
+              Erst dann Merge.
+            </p>
+          </div>
+          <div class="workflow-timeline__icon"><i data-lucide="shield-check" style="width:45px;height:45px;"></i></div>
+        </div>
+      </div>
+      <div class="workflow-timeline__endpoint workflow-timeline__endpoint--end">
+        <div class="workflow-timeline__endpoint__dot"></div>
+        <span class="workflow-timeline__endpoint__label">Ende</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  7. TESTING & SECURITY
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="testing" class="section section--dark" aria-labelledby="testing-heading">
+  <div class="container">
+    <p class="section__label">Testing & Sicherheit</p>
+    <h2 id="testing-heading" class="section__title">Qualität, die mit jeder Iteration steigt</h2>
+    <p class="section__subtitle">
+      Codera verankert Test- und Sicherheitsprüfungen als First-Class-Citizens
+      im Entwicklungsworkflow – nicht als nachträglichen Checklisten-Punkt.
+    </p>
+
+    <div class="testsec-grid">
+
+      <!-- Test: Unit Tests -->
+      <div class="testsec-card">
+        <div class="testsec-card__icon"><i data-lucide="flask-conical" style="width:28px;height:28px;"></i></div>
+        <h3 class="testsec-card__title">Automatische Testgenerierung</h3>
+        <p class="testsec-card__desc">
+          Der <strong>Coder</strong> erzeugt Unit- und Integrationstests parallel
+          zur Implementierung. Edge Cases werden vom Reviewer identifiziert und
+          als zusätzliche Testfälle eingebracht.
+        </p>
+      </div>
+
+      <!-- Test: Approval Tests -->
+      <div class="testsec-card">
+        <div class="testsec-card__icon"><i data-lucide="scan" style="width:28px;height:28px;"></i></div>
+        <h3 class="testsec-card__title">Snapshot- & Approval-Tests</h3>
+        <p class="testsec-card__desc">
+          Änderungen an Outputs, APIs oder UI-Komponenten werden automatisch
+          gegen genehmigte Snapshots geprüft. Abweichungen landen als Review-Vorschlag.
+        </p>
+      </div>
+
+      <!-- Security: Prompt Injection -->
+      <div class="testsec-card">
+        <div class="testsec-card__icon"><i data-lucide="shield-check" style="width:28px;height:28px;"></i></div>
+        <h3 class="testsec-card__title">Prompt-Injection-Schutz</h3>
+        <p class="testsec-card__desc">
+          Eingaben durchlaufen einen mehrstufigen Filter: Erkennung von
+          Jailbreak-Mustern, Kontext-Grenzen und Rollen-Bypass-Versuchen.
+          Verdächtige Prompts werden protokolliert und blockiert.
+        </p>
+      </div>
+
+      <!-- Security: Secrets -->
+      <div class="testsec-card">
+        <div class="testsec-card__icon"><i data-lucide="key-round" style="width:28px;height:28px;"></i></div>
+        <h3 class="testsec-card__title">Secrets-Erkennung</h3>
+        <p class="testsec-card__desc">
+          Kein API-Key, Token oder Passwort gelangt ungeprüft ins LLM.
+          Automatische Redaktion sensibler Strings in Prompts und Code-Kontext.
+          Integration mit .gitignore und pre-commit-Hooks.
+        </p>
+      </div>
+
+      <!-- Security: Code Audit -->
+      <div class="testsec-card">
+        <div class="testsec-card__icon"><i data-lucide="search-code" style="width:28px;height:28px;"></i></div>
+        <h3 class="testsec-card__title">KI-gestütztes Code-Audit</h3>
+        <p class="testsec-card__desc">
+          Der <strong>Reviewer</strong> scannt jede Änderung auf OWASP-Top-10-Schwachstellen,
+          unsichere Abhängigkeiten und Compliance-Verstöße (GDPR, SOC2).
+        </p>
+      </div>
+
+      <!-- Security: Sandbox -->
+      <div class="testsec-card">
+        <div class="testsec-card__icon"><i data-lucide="package" style="width:28px;height:28px;"></i></div>
+        <h3 class="testsec-card__title">Sandbox-Ausführung</h3>
+        <p class="testsec-card__desc">
+          Vom LLM generierter Code wird optional in einer isolierten
+          Container-Umgebung ausgeführt, bevor er deinen Workspace erreicht.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  CTA BANNER
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="cta-target" class="section section--darker" aria-labelledby="cta-heading">
+  <div class="container">
+    <div class="cta-banner">
+      <img src="./assets/simple_logo.svg" alt="" class="cta-banner__logo">
+      <p class="section__label">Bereit?</p>
+      <h2 id="cta-heading" class="cta-banner__title">
+        Starte noch heute mit Codera IDE
+      </h2>
+      <p class="cta-banner__text">
+        Kostenlos für Open-Source-Projekte. Teams ab 5 Entwicklern mit
+        SSO, Audit-Log und Priority-Support.
+      </p>
+      <div class="hero__actions">
+        <a href="#" class="btn btn--primary">
+          Kostenlos herunterladen
+        </a>
+        <a href="#" class="btn btn--secondary">
+          Demo buchen
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+  FOOTER
+  ═══════════════════════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="footer__grid">
+    <div>
+      <div class="footer__col-title">Produkt</div>
+      <p><a href="#">Funktionen</a></p>
+      <p><a href="#">Changelog</a></p>
+      <p><a href="#">Roadmap</a></p>
+      <p><a href="#">Preise</a></p>
+    </div>
+    <div>
+      <div class="footer__col-title">Entwickler</div>
+      <p><a href="#">Dokumentation</a></p>
+      <p><a href="#">API-Referenz</a></p>
+      <p><a href="#">GitHub</a></p>
+      <p><a href="#">Community</a></p>
+    </div>
+    <div>
+      <div class="footer__col-title">Unternehmen</div>
+      <p><a href="#">Über uns</a></p>
+      <p><a href="#">Blog</a></p>
+      <p><a href="#">Karriere</a></p>
+      <p><a href="#">Kontakt</a></p>
+    </div>
+    <div>
+      <div class="footer__col-title">Rechtliches</div>
+      <p><a href="#">Datenschutz</a></p>
+      <p><a href="#">AGB</a></p>
+      <p><a href="#">Impressum</a></p>
+      <p><a href="#">Cookie-Einstellungen</a></p>
+    </div>
+  </div>
+  <div class="footer__bottom">
+    <svg class="footer__logo-icon" aria-hidden="true" viewBox="0 0 3508 3508" fill="var(--fg-3)" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2">
+      <g transform="matrix(40.987701,0,0,47.017293,-1066.181752,-723.213702)"><path d="M73,19.923L73,34.077C73,36.242 70.984,38 68.5,38C66.016,38 64,36.242 64,34.077L64,19.923C64,17.758 66.016,16 68.5,16C70.984,16 73,17.758 73,19.923Z"/></g>
+      <g transform="matrix(29.580315,28.930009,-31.91902,33.931797,1407.038703,-1975.472569)"><path d="M73,19.998L73,34.002C73,36.209 70.984,38 68.5,38C66.016,38 64,36.209 64,34.002L64,19.998C64,17.791 66.016,16 68.5,16C70.984,16 73,17.791 73,19.998Z"/></g>
+      <g transform="matrix(29.238983,29.28855,-31.868474,33.077201,819.147115,-352.119241)"><path d="M73,20.055L73,33.945C73,36.183 70.984,38 68.5,38C66.016,38 64,36.183 64,33.945L64,20.055C64,17.817 66.016,16 68.5,16C70.984,16 73,17.817 73,20.055Z"/></g>
+      <g transform="matrix(-40.986978,0.248248,-0.232396,-39.892632,4554.901946,4098.265856)"><path d="M73,20.623L73,33.377C73,35.928 70.984,38 68.5,38C66.016,38 64,35.928 64,33.377L64,20.623C64,18.072 66.016,16 68.5,16C70.984,16 73,18.072 73,20.623Z"/></g>
+      <g transform="matrix(-27.307354,-31.16698,34.160049,-31.117626,1985.168069,4522.127633)"><path d="M73,20.036L73,33.964C73,36.191 70.984,38 68.5,38C66.016,38 64,36.191 64,33.964L64,20.036C64,17.809 66.016,16 68.5,16C70.984,16 73,17.809 73,20.036Z"/></g>
+      <g transform="matrix(-29.582967,-33.764229,13.546438,-12.339941,2363.40733,3358.078607)"><path d="M73,27C73,33.071 70.988,38 68.511,38L68.489,38C66.012,38 64,33.071 64,27C64,20.929 66.012,16 68.489,16L68.511,16C70.988,16 73,20.929 73,27Z"/></g>
+      <g transform="matrix(-29.582967,-33.764229,13.546438,-12.339941,3408.593705,4455.148787)"><path d="M73,27C73,33.071 70.988,38 68.511,38L68.489,38C66.012,38 64,33.071 64,27C64,20.929 66.012,16 68.489,16L68.511,16C70.988,16 73,20.929 73,27Z"/></g>
+      <g transform="matrix(-29.582967,-33.764229,13.546438,-12.339941,4423.039305,5458.184379)"><path d="M73,27C73,33.071 70.988,38 68.511,38L68.489,38C66.012,38 64,33.071 64,27C64,20.929 66.012,16 68.489,16L68.511,16C70.988,16 73,20.929 73,27Z"/></g>
+      <g transform="matrix(-28.982321,-29.552586,32.605921,-33.245834,2047.144742,5568.348688)"><path d="M73,20.001L73,33.999C73,36.207 70.984,38 68.5,38C66.016,38 64,36.207 64,33.999L64,20.001C64,17.793 66.016,16 68.5,16C70.984,16 73,17.793 73,20.001Z"/></g>
+      <g transform="matrix(0.231081,-41.792485,46.110431,0.265075,1710.296113,4624.331086)"><path d="M73,20.079L73,33.921C73,36.172 70.984,38 68.5,38C66.016,38 64,36.172 64,33.921L64,20.079C64,17.828 66.016,16 68.5,16C70.984,16 73,17.828 73,20.079Z"/></g>
+      <g transform="matrix(-0.543775,-41.789472,43.312489,-0.585961,-625.339269,4646.686721)"><path d="M73,20.342L73,33.658C73,36.055 70.984,38 68.5,38C66.016,38 64,36.055 64,33.658L64,20.342C64,17.945 66.016,16 68.5,16C70.984,16 73,17.945 73,20.342Z"/></g>
+    </svg>
+    © 2025 Codera IDE. Alle Rechte vorbehalten.
+  </div>
+</footer>
+
+<script src="./js/main.js" defer></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Codera IDE",
+  "description": "KI-native Entwicklungsumgebung für Multi-LLM-Workflows. Orchestriere spezialisierte KI-Rollen wie Coder, Architect, Researcher, Reviewer und Texter.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, macOS, Linux",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "EUR"
+  },
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.8",
+    "ratingCount": "128"
+  },
+  "url": "https://codera.dev/",
+  "image": "https://codera.dev/assets/og-image.png"
+}
+</script>
+</body>
+</html>

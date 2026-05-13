@@ -1,2 +1,21 @@
 .DS_Store
 node_modules/
+
+# Claude Code tool files
+.claude/
+.agents/
+.mcp.json
+skills-lock.json
+
+# Runtime / app data (not source)
+cc-ui/context/
+
+# Generated / analysis outputs
+graphify-out/
+cc-ui/src/graphify-out/
+sec_findings.yaml
+analyse
+doc-update
+text-refine
+user-story-format
+start-detect
