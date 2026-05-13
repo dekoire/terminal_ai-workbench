@@ -1208,11 +1208,15 @@ export function OrbitView({ sessionId }: OrbitViewProps) {
           onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
           style={{
             position: 'absolute', bottom: 80, right: 22, zIndex: 50,
-            width: 30, height: 30, borderRadius: '50%',
-            background: 'var(--bg-2)', border: '1px solid var(--line)',
+            width: 36, height: 36, borderRadius: '50%',
+            background: 'var(--accent-soft)',
+            backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+            border: '2px solid var(--accent-line)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            color: 'var(--fg-2)', fontSize: 14, transition: 'opacity 0.15s',
+            cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 16, transition: 'opacity 0.2s',
+            animation: 'scroll-bounce 1.4s ease-in-out infinite',
           }}
           title="Ganz nach unten"
         >↓</button>

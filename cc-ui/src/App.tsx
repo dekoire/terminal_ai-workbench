@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppStore } from './store/useAppStore'
 import { LoginScreen } from './components/screens/LoginScreen'
 import { RegisterScreen } from './components/screens/RegisterScreen'
@@ -8,13 +8,21 @@ import { PromptTemplates } from './components/screens/PromptTemplates'
 import { HistoryBrowser } from './components/screens/HistoryBrowser'
 import { ProfileSettings } from './components/screens/ProfileSettings'
 import { UIWorkshop } from './components/workshop/UIWorkshop'
+import { KanbanBoard } from './components/workspace/KanbanBoard'
 import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSessionModal } from './components/modals/NewSessionModal'
 import { DESIGN_PRESETS, applyPreset } from './theme/presets'
 import { useSupabaseSync } from './lib/useSupabaseSync'
 
 export default function App() {
-  const { screen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors } = useAppStore()
+  const { screen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId } = useAppStore()
+  const [kanbanOpen, setKanbanOpen] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setKanbanOpen(true)
+    window.addEventListener('cc:open-kanban', handler)
+    return () => window.removeEventListener('cc:open-kanban', handler)
+  }, [])
 
   // Cloud sync — loads on login, saves debounced on every store change
   useSupabaseSync()
@@ -84,6 +92,32 @@ export default function App() {
 
       {newProjectOpen && <NewProjectModal />}
       {newSessionOpen && <NewSessionModal />}
+
+      {/* Kanban Board — full-screen modal overlay */}
+      {kanbanOpen && (() => {
+        const project = projects.find(p => p.id === activeProjectId)
+        if (!project) return null
+        return (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 8000,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+            onClick={() => setKanbanOpen(false)}
+          >
+            <div style={{ width: '90vw', height: '88vh', borderRadius: 12, overflow: 'hidden', boxShadow: '0 16px 48px rgba(0,0,0,0.5)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <KanbanBoard
+                projectId={project.id}
+                projectName={project.name}
+                projectPath={project.path}
+                onClose={() => setKanbanOpen(false)}
+              />
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

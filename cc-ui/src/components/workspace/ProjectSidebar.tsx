@@ -115,16 +115,16 @@ function AvatarPopoverBtn() {
         onMouseLeave={() => setHovered(false)}
         title={fullName ?? 'Profil'}
         style={{
-          display: 'flex', alignItems: 'center', gap: 7,
+          display: 'flex', alignItems: 'center', gap: 8,
           background: open || hovered ? 'var(--bg-3)' : 'none',
           border: open ? '1px solid var(--line)' : hovered ? '1px solid var(--line)' : '1px solid transparent',
-          borderRadius: 6, cursor: 'pointer', padding: '3px 6px 3px 3px',
-          transition: 'background 0.12s, border-color 0.12s', maxWidth: 140, overflow: 'hidden',
+          borderRadius: 99, cursor: 'pointer', padding: '4px 10px 4px 4px',
+          transition: 'background 0.12s, border-color 0.12s', maxWidth: 160, overflow: 'hidden',
         }}
       >
         {/* Avatar circle — custom image or white initials */}
         <div style={{
-          width: 24, height: 24, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+          width: 26, height: 26, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
           background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 9.5, fontWeight: 700, color: '#fff',
         }}>
@@ -141,7 +141,7 @@ function AvatarPopoverBtn() {
         </div>
         {/* Name */}
         {fullName && (
-          <span style={{ fontSize: 11, color: 'var(--fg-1)', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--fg-0)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {fullName}
           </span>
         )}

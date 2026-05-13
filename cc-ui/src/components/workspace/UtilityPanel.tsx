@@ -1360,10 +1360,8 @@ function AiSearchTab({ projectId }: { projectId: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 12, gap: 10, minHeight: 0 }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 6, borderBottom: '1px solid var(--line)' }}>
-        <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <img src={simpleLogo} alt="" style={{ width: 14, height: 14 }} />
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 6 }}>
+        <img src={simpleLogo} alt="" style={{ width: 22, height: 22, flexShrink: 0 }} />
         <div>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Kontext Search</div>
           <div style={{ fontSize: 9.5, color: 'var(--fg-3)', lineHeight: 1.2 }}>Durchsucht Agent + Orbit Chat-Verlauf</div>
@@ -1384,7 +1382,7 @@ function AiSearchTab({ projectId }: { projectId: string }) {
           onClick={loading ? stopSearch : () => void search()}
           disabled={!loading && !query.trim()}
           title={loading ? 'Abbrechen (Esc)' : 'Suchen (Enter)'}
-          style={{ width: '100%', background: loading ? 'rgba(239,122,122,0.12)' : !query.trim() ? 'var(--bg-3)' : 'var(--accent)', border: loading ? '1px solid rgba(239,122,122,0.3)' : '1px solid var(--line-strong)', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '8px 10px', cursor: loading || query.trim() ? 'pointer' : 'default', color: loading ? 'var(--err)' : !query.trim() ? 'var(--fg-3)' : 'var(--accent-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontFamily: 'var(--font-ui)', transition: 'background 0.15s', boxSizing: 'border-box' }}
+          style={{ width: '100%', background: loading ? 'rgba(239,122,122,0.12)' : !query.trim() ? 'var(--bg-3)' : 'var(--accent)', border: loading ? '1px solid rgba(239,122,122,0.3)' : '1px solid var(--line-strong)', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '8px 10px', cursor: loading || query.trim() ? 'pointer' : 'default', color: loading ? 'var(--err)' : !query.trim() ? 'var(--fg-3)' : 'var(--accent-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-ui)', transition: 'background 0.15s', boxSizing: 'border-box' }}
         >
           {loading
             ? <><IX style={{ width: 12, height: 12 }} /> Stopp</>
@@ -1616,65 +1614,47 @@ export function UtilityPanel() {
   const tabs = terminalOpen ? [...baseTabs, 'Terminal'] : baseTabs
   const terminalTabIdx = terminalOpen ? tabs.length - 1 : -1
   const noPaddingBase = isOrbitSession ? [0, 2, 3, 4] : [1, 2, 3]
-
-  // ── Terminal-Vollbild-Modus ───────────────────────────────────────────────
-  if (terminalOpen && tab === terminalTabIdx) {
-    return (
-      <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-0)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-        {/* Thin header mit Titel + Close */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
-          <ITerminal style={{ width: 12, height: 12, color: 'var(--fg-3)', flexShrink: 0 }} />
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-1)', flex: 1, fontFamily: 'var(--font-ui)' }}>
-            Terminal · {project?.name ?? ''}
-          </span>
-          <button
-            onClick={() => { setTerminalOpen(false); setTab(0) }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: 2, borderRadius: 4 }}
-            title="Terminal schließen"
-            onMouseEnter={e => (e.currentTarget.style.color = 'var(--fg-1)')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'var(--fg-3)')}
-          >
-            <IClose style={{ width: 12, height: 12 }} />
-          </button>
-        </div>
-        {/* Terminal füllt alles */}
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          {project && (
-            <XTermPane
-              sessionId={termSessionId}
-              cmd="zsh"
-              args=""
-              cwd={project.path}
-            />
-          )}
-        </div>
-      </aside>
-    )
-  }
+  const noPadding = terminalOpen ? [...noPaddingBase, terminalTabIdx] : noPaddingBase
 
   return (
-    <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-1)', display: 'flex', flexDirection: 'column' }}>
+    <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid var(--line)' }}>
-        {tabs.filter(t => t !== 'Terminal').map((t, i) => {
+        {tabs.map((t, i) => {
           if (t === 'Data' && dataFiles.length === 0) return null
+          const isTermTab = t === 'Terminal'
+          const active = i === tab
           return (
             <div key={t} onClick={() => setTab(i)} style={{
-              flex: 1, padding: '8px 0', textAlign: 'center', fontSize: 10.5,
-              color: i === tab ? 'var(--fg-0)' : 'var(--fg-2)',
-              borderBottom: i === tab ? `2px solid ${isOrbitSession ? 'var(--orbit)' : 'var(--accent)'}` : '2px solid transparent',
-              cursor: 'pointer', fontWeight: i === tab ? 600 : 400, marginBottom: -1,
+              flex: isTermTab ? 'none' : 1,
+              padding: isTermTab ? '8px 6px 8px 10px' : '8px 0',
+              textAlign: 'center', fontSize: 10.5,
+              color: active ? 'var(--fg-0)' : 'var(--fg-2)',
+              borderBottom: active ? `2px solid ${isOrbitSession ? 'var(--orbit)' : 'var(--accent)'}` : '2px solid transparent',
+              cursor: 'pointer', fontWeight: active ? 600 : 400, marginBottom: -1,
               position: 'relative',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
             }}>
               <span style={{ fontSize: 10.5 }}>{t}</span>
               {t === 'Git' && gitDirty > 0 && (
                 <span title={`${gitDirty} geänderte Dateien`} style={{ position: 'absolute', top: 4, right: 4, fontSize: 8, fontWeight: 700, minWidth: 12, height: 12, borderRadius: 99, background: 'rgba(244,195,101,0.18)', border: '1px solid rgba(244,195,101,0.4)', color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{gitDirty}</span>
+              )}
+              {isTermTab && (
+                <button
+                  onClick={e => { e.stopPropagation(); setTerminalOpen(false); setTab(0) }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '1px 2px', borderRadius: 3, flexShrink: 0 }}
+                  title="Terminal schließen"
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--fg-1)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--fg-3)')}
+                >
+                  <IClose style={{ width: 9, height: 9 }} />
+                </button>
               )}
             </div>
           )
         })}
       </div>
 
-      <div style={{ flex: 1, overflowY: noPaddingBase.includes(tab) ? 'hidden' : 'auto', padding: noPaddingBase.includes(tab) ? 0 : 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: noPadding.includes(tab) ? 'hidden' : 'auto', padding: noPadding.includes(tab) ? 0 : 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
         {/* ── Tab 0: Chat (orbit only) ── */}
         {isOrbitSession && tab === 0 && project && session && <ChatTab projectId={project.id} sessionId={session.id} />}
@@ -1737,6 +1717,16 @@ export function UtilityPanel() {
         {tab === (isOrbitSession ? 5 : 4) && project && <AiSearchTab projectId={project.id} />}
         {tab === (isOrbitSession ? 5 : 4) && !project && (
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
+        )}
+
+        {/* ── Tab Terminal ── */}
+        {terminalOpen && tab === terminalTabIdx && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+            {project
+              ? <XTermPane sessionId={termSessionId} cmd="zsh" args="" cwd={project.path} />
+              : <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
+            }
+          </div>
         )}
 
       </div>

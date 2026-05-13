@@ -8,7 +8,7 @@ import {
   Wand2, Play, Cpu, FileCheck2, ScrollText, Image, Keyboard, Table2, FilePlus,
   ExternalLink, Download, FileText, Bug, Star, User, PanelLeft,
   Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown,
-  Link2, Cloud, CloudUpload, Camera, Lock, Bell, Paperclip, ChevronLeft,
+  Link2, Cloud, CloudUpload, Camera, Lock, Bell, Paperclip, ChevronLeft, ChevronUp,
   MousePointer2, MessageSquare, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal,
   type LucideProps,
 } from 'lucide-react'
@@ -32,6 +32,7 @@ export const IFolder       = ic(Folder)
 export const IFolderOpen   = ic(FolderOpen)
 export const IChev         = ic(ChevronRight)
 export const IChevDown     = ic(ChevronDown)
+export const IChevUp       = ic(ChevronUp)
 export const IPlus         = ic(Plus)
 export const IClose        = ic(X)
 export const ISearch       = ic(Search)

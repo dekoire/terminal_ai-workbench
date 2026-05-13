@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { useAppStore } from '../../store/useAppStore'
 import type { SessionKind } from '../../store/useAppStore'
-import { ISpinner, ICopy, IExternalLink, IBookmark } from '../primitives/Icons'
+import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
 import { saveAgentMessage, loadLastProjectMessages, loadLatestContextSummary, saveContextSummary, compressAgentHistory, loadAgentMessageById, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { resolveRefs } from '../../lib/resolveRefs'
@@ -579,7 +579,7 @@ function ThinkingCard({ ev }: { ev: Extract<AgentEvent, { type: 'thinking' }> })
         <span style={{ color: 'var(--fg-3)', fontSize: 10 }}>{open ? '↑' : '›'}</span>
       </button>
       {open && (
-        <div style={{ marginTop: 4, padding: '7px 12px', background: 'var(--bg-2)', borderRadius: 6, fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', borderLeft: '2px solid var(--line-strong)' }}>
+        <div style={{ marginTop: 4, padding: '7px 12px', background: 'var(--bg-2)', borderRadius: 6, fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', borderLeft: '2px solid var(--accent)', borderRadius: '0 6px 6px 0' }}>
           <span style={{
             background: 'linear-gradient(135deg, var(--fg-3) 0%, var(--fg-0) 35%, var(--fg-1) 65%, var(--fg-3) 100%)',
             backgroundSize: '300% auto',
@@ -861,7 +861,10 @@ function CollapsibleError({ message }: { message: string }) {
       >
         <span style={{ color: '#ef7a7a', fontSize: 12, flexShrink: 0 }}>⚠</span>
         <span style={{ color: '#ef7a7a', fontSize: 12, flex: 1 }}>{open ? 'Fehler' : short}</span>
-        <span style={{ color: 'var(--fg-3)', fontSize: 10, ...MONO, flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
+        {open
+          ? <IChevUp  style={{ width: 13, height: 13, color: '#ef7a7a', flexShrink: 0 }} />
+          : <IChevDown style={{ width: 13, height: 13, color: '#ef7a7a', flexShrink: 0 }} />
+        }
       </button>
       {open && (
         <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(239,122,122,0.2)', color: '#ef7a7a', ...MONO, fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
@@ -2102,14 +2105,14 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
           style={{
             position: 'absolute', top: 50, left: '50%', marginLeft: -22, zIndex: 50,
             width: 44, height: 44, borderRadius: '50%',
-            background: 'rgba(99,130,255,0.18)',
+            background: 'var(--accent-soft)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
-            border: '2px solid rgba(99,130,255,0.55)',
-            boxShadow: '0 2px 12px rgba(99,130,255,0.18)',
+            border: '2px solid var(--accent-line)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',
-            color: '#6382ff', fontSize: 20,
+            color: 'var(--accent)', fontSize: 20,
             transition: 'opacity 0.2s',
             animation: 'scroll-bounce 1.4s ease-in-out infinite',
             padding: 0,

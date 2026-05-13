@@ -684,6 +684,7 @@ export interface AppState {
   addTemplate: (t: Template) => void
   updateTemplate: (id: string, patch: Partial<Omit<Template, 'id'>>) => void
   removeTemplate: (id: string) => void
+  reorderTemplates: (fromIdx: number, toIdx: number) => void
   sendMessage: (attachments?: string[], text?: string) => void
   allowTool: (turnId: string) => void
   denyTool: (turnId: string) => void
@@ -995,6 +996,12 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   updateTemplate: (id, patch) =>
     set((s) => ({ templates: s.templates.map((t) => t.id === id ? { ...t, ...patch } : t) })),
   removeTemplate: (id) => set((s) => ({ templates: s.templates.filter((t) => t.id !== id) })),
+  reorderTemplates: (fromIdx, toIdx) => set((s) => {
+    const arr = [...s.templates]
+    const [moved] = arr.splice(fromIdx, 1)
+    arr.splice(toIdx, 0, moved)
+    return { templates: arr }
+  }),
 
   addSession: (projectId, session) =>
     set((s) => ({

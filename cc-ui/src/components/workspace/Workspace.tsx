@@ -5,7 +5,7 @@ import logoBlack from '../../assets/codera_logo_black.png'
 import { ProjectSidebar } from './ProjectSidebar'
 import { CenterPane } from './CenterPane'
 import { UtilityPanel } from './UtilityPanel'
-import { IMoon, ISun, ILogout, ITerminal, IPlay, ICpu, IScrollText, ITrophy, ICompass, ISquareTerminal } from '../primitives/Icons'
+import { IMoon, ISun, ILogout, ITerminal, IPlay, ITrophy, ICompass, ISquareTerminal, IKanban } from '../primitives/Icons'
 import { ModelBrowserModal } from '../modals/ModelBrowserModal'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
@@ -152,19 +152,12 @@ export function Workspace() {
   const [sidebarW, setSidebarW] = useState(248)
   const [utilityW, setUtilityW] = useState(280)
   const [playBlink, setPlayBlink] = useState(false)
-  const [docsBlink, setDocsBlink] = useState(false)
   const [modelBrowserOpen, setModelBrowserOpen] = useState(false)
 
   const triggerPlay = useCallback(() => {
     window.dispatchEvent(new CustomEvent('cc:hdr-play'))
     setPlayBlink(true)
     setTimeout(() => setPlayBlink(false), 1200)
-  }, [])
-
-  const triggerDocs = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('cc:hdr-docs'))
-    setDocsBlink(true)
-    setTimeout(() => setDocsBlink(false), 1200)
   }, [])
 
   const dragLeft  = useResizeDrag(useCallback((dx: number) => {
@@ -176,7 +169,7 @@ export function Workspace() {
   }, []))
 
   // suppress unused-import warnings for theme toggle icons
-  void theme; void setScreen; void IMoon; void ISun; void ILogout
+  void theme; void setScreen; void IMoon; void ISun; void ILogout; void ITerminal
 
   return (
     <div
@@ -209,13 +202,11 @@ export function Workspace() {
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: playBlink ? '#22c55e' : 'var(--fg-2)', display: 'flex', alignItems: 'center', transition: 'color 0.15s', animation: playBlink ? 'cc-blink-green 0.4s ease-in-out 3' : 'none' }}>
                 <IPlay style={{ width: 15, height: 15 }} />
               </button>
-              <button onClick={() => window.dispatchEvent(new CustomEvent('cc:hdr-config'))} title="Port / Befehl konfigurieren"
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('cc:open-kanban'))}
+                title="Kanban Board"
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                <ICpu style={{ width: 15, height: 15 }} />
-              </button>
-              <button onClick={triggerDocs} title="Docs aktualisieren"
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: docsBlink ? '#3b82f6' : 'var(--fg-2)', display: 'flex', alignItems: 'center', transition: 'color 0.15s', animation: docsBlink ? 'cc-blink-blue 0.4s ease-in-out 3' : 'none' }}>
-                <IScrollText style={{ width: 15, height: 15 }} />
+                <IKanban style={{ width: 15, height: 15 }} />
               </button>
               <button onClick={() => setModelBrowserOpen(true)} title="Modell-Browser"
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>

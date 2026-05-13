@@ -450,16 +450,35 @@ router.post('/api/kill-port', async (req, res) => {
 // ── POST /api/start-app ────────────────────────────────────────────────────────
 router.post('/api/start-app', async (req, res) => {
   try {
-    const { projectPath, port, startCmd } = JSON.parse(await readBody(req)) as { projectPath: string; port?: number; startCmd: string }
+    const { projectPath, port, startCmd, extraPorts = [] } = JSON.parse(await readBody(req)) as {
+      projectPath: string; port?: number; startCmd: string; extraPorts?: number[]
+    }
     const logFile = `/tmp/cc-app-${port ?? 'unknown'}.log`
-    const killCmd = port ? `lsof -ti tcp:${port} | xargs kill -9 2>/dev/null; true` : 'true'
-    exec(killCmd, () => {
-      const child = spawn('bash', ['-c', `cd ${JSON.stringify(projectPath)} && ${startCmd}`], {
-        detached: true, stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
-      })
-      child.unref()
-      if (port) setTimeout(() => exec(`open http://localhost:${port}`), 2000)
-      res.json({ ok: true, pid: child.pid ?? 0, logFile })
+
+    // ── Kill by project CWD (catches all node/npm/python/bun processes in the dir) ──
+    // Use ps + grep to find processes with the project path in their args or CWD
+    const escaped = projectPath.replace(/'/g, "'\\''")
+    const killByDir = `ps -eo pid,args | grep -E '(node|npm|yarn|pnpm|python3?|bun|deno|uvicorn|flask|cargo)' | grep '${escaped}' | grep -v grep | awk '{print $1}' | xargs kill -9 2>/dev/null; true`
+
+    // ── Kill by all known ports (frontend + backend) ──
+    const allPorts = [...new Set([port, ...extraPorts].filter((p): p is number => !!p))]
+    const killByPorts = allPorts.length > 0
+      ? allPorts.map(p => `lsof -ti tcp:${p} | xargs kill -9 2>/dev/null`).join('; ')
+      : 'true'
+
+    const killAll = `${killByDir}; ${killByPorts}`
+
+    exec(killAll, () => {
+      // Wait 400ms for processes to fully exit before spawning
+      setTimeout(() => {
+        const child = spawn('bash', ['-c', `cd ${JSON.stringify(projectPath)} && ${startCmd}`], {
+          detached: true, stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
+        })
+        child.unref()
+        // Open the primary port in default browser (macOS: `open`, fallback: ignore)
+        if (port) setTimeout(() => exec(`open http://localhost:${port} 2>/dev/null || true`), 2500)
+        res.json({ ok: true, pid: child.pid ?? 0, logFile })
+      }, 400)
     })
   } catch (e) { res.json({ ok: false, error: String(e) }) }
 })

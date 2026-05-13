@@ -110,9 +110,11 @@ export function CenterPane({ fileTabs, activeFilePath, setActiveFilePath, closeF
         })}
       </div>
 
-      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
-        <InputArea />
-      </div>
+      {sessions.length > 0 && (
+        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+          <InputArea />
+        </div>
+      )}
 
       {popup && <PopupDialog popup={popup} onClose={() => setPopup(null)} />}
     </main>
@@ -247,22 +249,103 @@ function ProjectHeader() {
     } finally { setDetecting(false) }
   }
 
-  const launchDevServer = async () => {
-    if (!devCmd || launching) return
+  // ── Port heuristic from start command ──────────────────────────────────────
+  const guessPort = (cmd: string, knownPort?: number): number | undefined => {
+    if (knownPort) return knownPort
+    const m = cmd.match(/(?:--port[= ]|PORT=|:)(\d{4,5})/)
+    if (m) return parseInt(m[1])
+    if (/vite|npm run dev|yarn dev|pnpm dev/.test(cmd)) return 5173
+    if (/next(js)?|next dev/.test(cmd)) return 3000
+    if (/react-scripts|react-app/.test(cmd)) return 3000
+    if (/flask/.test(cmd)) return 5000
+    if (/manage\.py|django/.test(cmd)) return 8000
+    if (/uvicorn|fastapi/.test(cmd)) return 8000
+    if (/rails/.test(cmd)) return 3000
+    if (/cargo run/.test(cmd)) return 3000
+    return undefined
+  }
+
+  // ── Detect extra ports (backend) from package.json proxy field ──────────────
+  const detectExtraPorts = async (projectPath: string): Promise<number[]> => {
+    const extras: number[] = []
+    try {
+      const r = await fetch(`/api/file-read?path=${encodeURIComponent(projectPath + '/package.json')}`)
+      const d = await r.json() as { ok: boolean; content?: string }
+      if (d.ok && d.content) {
+        const pkg = JSON.parse(d.content) as Record<string, unknown>
+        // CRA proxy: "proxy": "http://localhost:3001"
+        if (typeof pkg.proxy === 'string') {
+          const m = pkg.proxy.match(/:(\d{4,5})/)
+          if (m) extras.push(parseInt(m[1]))
+        }
+      }
+    } catch { /* ignore */ }
+    // Also check vite.config for proxy targets
+    try {
+      for (const cfgFile of ['vite.config.ts', 'vite.config.js', 'vite.config.mjs']) {
+        const r = await fetch(`/api/file-read?path=${encodeURIComponent(projectPath + '/' + cfgFile)}`)
+        const d = await r.json() as { ok: boolean; content?: string }
+        if (d.ok && d.content) {
+          // Extract ports from proxy targets: 'http://localhost:3001' or 'http://127.0.0.1:8000'
+          const matches = d.content.matchAll(/['"]https?:\/\/(?:localhost|127\.0\.0\.1):(\d{4,5})['"]/g)
+          for (const m of matches) extras.push(parseInt(m[1]))
+          break
+        }
+      }
+    } catch { /* ignore */ }
+    return [...new Set(extras)]
+  }
+
+  const runLaunch = async (cmd: string, port: number | undefined) => {
+    if (!project?.path) return
     setLaunching(true)
     try {
+      const extraPorts = await detectExtraPorts(project.path)
       const r = await fetch('/api/start-app', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath: project?.path, port: devPort, startCmd: devCmd }),
+        body: JSON.stringify({ projectPath: project.path, port, startCmd: cmd, extraPorts }),
       })
-      const d = await r.json() as { ok: boolean; pid?: number; logFile?: string }
-      if (d.ok) {
-        setStarted(true)
-        if (devPort) setTimeout(() => window.open(`http://localhost:${devPort}`, '_blank'), 2200)
+      const d = await r.json() as { ok: boolean; pid?: number }
+      if (d.ok) setStarted(true)
+      // server already does exec('open http://...') via macOS 'open' — window.open fallback for non-macOS
+      if (d.ok && port && !navigator.userAgent.includes('Electron')) {
+        setTimeout(() => window.open(`http://localhost:${port}`, '_blank'), 3000)
       }
     } finally {
       setLaunching(false)
+    }
+  }
+
+  const launchDevServer = async () => {
+    if (!devCmd || launching) return
+    await runLaunch(devCmd, devPort)
+  }
+
+  // ── Smart launch: auto-detect if no cmd configured ──────────────────────────
+  const smartLaunch = async () => {
+    if (launching || detecting) return
+    if (!project?.path) return
+
+    // Already configured — launch directly
+    if (devCmd) { await runLaunch(devCmd, devPort); return }
+
+    // Auto-detect via AI
+    const provId = aiFunctionMap['devDetect']
+    const provider = aiProviders.find(p => p.id === provId) ?? aiProviders[0]
+    if (!provider) { openConfig(); return }
+
+    setDetecting(true)
+    try {
+      const cmd = await aiDetectStartCmd(project.path, project.appPort, provider)
+      if (!cmd) { openConfig(); return }
+
+      const port = guessPort(cmd, project.appPort)
+      // Persist so next click is instant
+      updateProject(project.id, { appStartCmd: cmd, ...(port ? { appPort: port } : {}) })
+      await runLaunch(cmd, port)
+    } finally {
+      setDetecting(false)
     }
   }
 
@@ -297,9 +380,9 @@ function ProjectHeader() {
 
   // Listen to events from Workspace titlebar buttons
   useEffect(() => {
-    const onPlay    = () => { if (hasDevServer) launchDevServer(); else openConfig() }
-    const onConfig  = () => openConfig()
-    const onDocs    = () => doRefreshDocs()
+    const onPlay   = () => { smartLaunch() }
+    const onConfig = () => openConfig()
+    const onDocs   = () => doRefreshDocs()
     window.addEventListener('cc:hdr-play',   onPlay)
     window.addEventListener('cc:hdr-config', onConfig)
     window.addEventListener('cc:hdr-docs',   onDocs)
@@ -308,7 +391,7 @@ function ProjectHeader() {
       window.removeEventListener('cc:hdr-config', onConfig)
       window.removeEventListener('cc:hdr-docs',   onDocs)
     }
-  }, [hasDevServer, launching, refreshingDocs, devCmd, devPort, project]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [launching, detecting, devCmd, devPort, project, aiProviders, aiFunctionMap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   void activeSessionId
 
@@ -505,42 +588,99 @@ function DangerBanner() {
 }
 
 function EmptyState({ onNew }: { onNew: () => void }) {
-  const { aliases, setNewSessionPreKind, setNewSessionOpen } = useAppStore()
-  const top4 = aliases.slice(0, 4)
+  const { setNewSessionPreKind, setNewSessionOpen, activeProjectId, projects, addSession, setActiveSession, createOrbitChat } = useAppStore()
+
+  const openKind = (kind: 'single' | 'openrouter-claude') => {
+    setNewSessionPreKind(kind)
+    setNewSessionOpen(true)
+  }
+
+  const startOrbit = () => {
+    if (!activeProjectId) return
+    const project = projects.find(p => p.id === activeProjectId)
+    const existing = project?.sessions.find(s => s.kind === 'orbit')
+    if (existing) {
+      setActiveSession(existing.id)
+      createOrbitChat(activeProjectId, existing.id)
+      return
+    }
+    const id = crypto.randomUUID()
+    addSession(activeProjectId, {
+      id, kind: 'orbit', name: 'Orbit',
+      alias: '', cmd: '', args: '',
+      status: 'active', permMode: 'normal', startedAt: Date.now(),
+    })
+    setActiveSession(id)
+  }
+
+  const card: React.CSSProperties = {
+    padding: '20px 18px', borderRadius: 8,
+    border: '1px solid var(--line-strong)', background: 'var(--bg-2)',
+    cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8,
+    transition: 'border-color 0.15s',
+  }
 
   return (
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', gap: 20, padding: '32px 24px', minHeight: 0,
+      justifyContent: 'center', gap: 22, padding: '32px 28px', minHeight: 0,
     }}>
-      {/* Icon + heading */}
+      {/* Logo + heading */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-        <img src={simpleLogo} alt="Codera AI" style={{ width: 52, height: 52, opacity: 0.85 }} />
+        <img src={simpleLogo} alt="Codera AI" style={{ width: 52, height: 52 }} />
         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-0)' }}>Keine aktive Session</div>
       </div>
 
-      {/* Quick-start alias cards */}
-      {top4.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 148px)', gap: 7 }}>
-          {top4.map(alias => (
-            <AliasCard key={alias.id} alias={alias} onStart={onNew} />
-          ))}
-        </div>
-      )}
+      {/* Session-Typ Karten */}
+      <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-      {/* Primary CTA */}
-      <button
-        onClick={onNew}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          background: 'var(--accent)', color: 'var(--accent-fg, #1a1410)',
-          border: 'none', borderRadius: 6, padding: '5px 14px',
-          width: 304, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-        }}
-      >
-        <IPlus style={{ width: 13, height: 13 }} />
-        Neue Session starten
-      </button>
+        {/* Coding row: Terminal + Coding Agent */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div
+            style={card}
+            onClick={() => openKind('single')}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ITerminal style={{ color: 'var(--accent)', width: 15, height: 15 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-0)' }}>Terminal</span>
+            </div>
+            <span style={{ fontSize: 10.5, color: 'var(--fg-2)', lineHeight: 1.5 }}>PTY-Session mit Alias — zsh, aider, deepseek u. a.</span>
+            <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>PTY · Alias · Shell</span>
+          </div>
+
+          <div
+            style={card}
+            onClick={() => openKind('openrouter-claude')}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ISpark style={{ color: 'var(--accent)', width: 15, height: 15 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-0)' }}>Coding Agent</span>
+            </div>
+            <span style={{ fontSize: 10.5, color: 'var(--fg-2)', lineHeight: 1.5 }}>Strukturierte UI mit Tool-Calls, Diffs und Genehmigungen.</span>
+            <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>OpenRouter · AgentView</span>
+          </div>
+        </div>
+
+        {/* Research row: Orbit full-width */}
+        <div
+          style={{ ...card, flexDirection: 'row', alignItems: 'center', gap: 14 }}
+          onClick={startOrbit}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+        >
+          <IOrbit style={{ color: 'var(--accent)', width: 16, height: 16, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-0)' }}>Research Chat</span>
+            <p style={{ fontSize: 10.5, color: 'var(--fg-2)', margin: '3px 0 0', lineHeight: 1.5 }}>Direkt-Chat mit 200+ Modellen — GPT, Gemini, Kimi, DeepSeek und mehr.</p>
+          </div>
+          <span style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0 }}>OpenRouter</span>
+        </div>
+
+      </div>
     </div>
   )
 }
@@ -1444,23 +1584,23 @@ function InputArea() {
           {isTerminal && !isOrbit ? (
             <>
               <button
-                style={{ ...chip, background: pathInput ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${pathInput ? 'var(--accent)' : 'var(--line)'}`, color: pathInput ? 'var(--accent)' : 'var(--fg-2)', padding: '3px 7px' }}
+                style={{ ...chip, background: pathInput ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${pathInput ? 'var(--accent)' : 'var(--line)'}`, color: pathInput ? 'var(--accent)' : 'var(--fg-2)', padding: '5px 8px' }}
                 onClick={() => { setPathInput(p => p ? null : 'file'); setPathInputVal('') }}
                 title="Datei oder Pfad einfügen"
               >
                 <IPaperclip style={{ width: 13, height: 13, flexShrink: 0 }} />
               </button>
               <button
-                style={{ ...chip, background: showShortcuts ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${showShortcuts ? 'var(--accent)' : 'var(--line)'}`, color: showShortcuts ? 'var(--accent)' : 'var(--fg-2)', padding: '3px 7px' }}
+                style={{ ...chip, background: showShortcuts ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${showShortcuts ? 'var(--accent)' : 'var(--line)'}`, color: showShortcuts ? 'var(--accent)' : 'var(--fg-2)', padding: '5px 8px' }}
                 onClick={() => setShowShortcuts(v => !v)}
                 title="Terminal-Tastenkürzel anzeigen"
               >
-                <IKeyboard style={{ width: 11, height: 11, flexShrink: 0 }} />
+                <IKeyboard style={{ width: 13, height: 13, flexShrink: 0 }} />
               </button>
             </>
           ) : (
             <button
-              style={{ ...chip, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--fg-2)', padding: '3px 7px' }}
+              style={{ ...chip, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--fg-2)', padding: '5px 8px' }}
               onClick={() => fileInputRef.current?.click()}
               title="Datei oder Bild anhängen"
             >
@@ -1472,15 +1612,15 @@ function InputArea() {
             onClick={transcribing ? undefined : toggleVoice}
             disabled={transcribing}
             title={transcribing ? 'Transkribiere…' : recording ? 'Aufnahme stoppen' : 'Spracheingabe starten'}
-            style={{ ...chip, padding: '4px 7px',
+            style={{ ...chip, padding: '5px 8px',
               color:      transcribing ? 'var(--accent)' : recording ? 'var(--err)' : 'var(--fg-2)',
               border:     `1px solid ${transcribing ? 'var(--accent)' : recording ? 'var(--err)' : 'var(--line)'}`,
               background: transcribing ? 'var(--accent-soft)' : recording ? 'rgba(239,122,122,0.1)' : 'var(--bg-2)',
             }}
           >
             {transcribing
-              ? <ISpinner size={14} />
-              : <IMic style={{ color: recording ? 'var(--err)' : 'var(--fg-3)', flexShrink: 0, ...(recording ? { animation: 'cc-pulse 1s ease-in-out infinite' } : {}) }} />}
+              ? <ISpinner size={13} />
+              : <IMic style={{ width: 13, height: 13, color: recording ? 'var(--err)' : 'var(--fg-3)', flexShrink: 0, ...(recording ? { animation: 'cc-pulse 1s ease-in-out infinite' } : {}) }} />}
           </button>
           <button
             onClick={refineWithAI}
@@ -1491,7 +1631,7 @@ function InputArea() {
               const p = aiProviders.find(p => p.id === tid) ?? aiProviders[0]
               return `Text mit ${p.name} überarbeiten`
             })()}
-            style={{ ...chip, padding: '4px 7px', color: 'var(--accent)', border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', opacity: (aiRefining || aiAnalysing || !inputValue.trim()) ? 0.5 : 1 }}
+            style={{ ...chip, padding: '5px 8px', color: 'var(--accent)', border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', opacity: (aiRefining || aiAnalysing || !inputValue.trim()) ? 0.5 : 1 }}
           >
             <ISpark style={{ flexShrink: 0, width: 13, height: 13, ...(aiRefining ? { animation: 'cc-pulse 0.5s ease-in-out infinite' } : {}) }} />
           </button>
@@ -1504,7 +1644,7 @@ function InputArea() {
               const p = aiProviders.find(p => p.id === tid) ?? aiProviders[0]
               return `Implementierungsauftrag mit ${p.name} generieren`
             })()}
-            style={{ ...chip, padding: '4px 7px', color: 'var(--ok)', border: '1px solid color-mix(in srgb, var(--ok) 35%, transparent)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)', opacity: (aiAnalysing || aiRefining || !inputValue.trim()) ? 0.5 : 1 }}
+            style={{ ...chip, padding: '5px 8px', color: 'var(--ok)', border: '1px solid color-mix(in srgb, var(--ok) 35%, transparent)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)', opacity: (aiAnalysing || aiRefining || !inputValue.trim()) ? 0.5 : 1 }}
           >
             <IBolt style={{ flexShrink: 0, width: 13, height: 13, ...(aiAnalysing ? { animation: 'cc-pulse 0.5s ease-in-out infinite' } : {}) }} />
           </button>
