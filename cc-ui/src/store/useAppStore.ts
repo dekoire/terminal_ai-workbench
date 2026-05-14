@@ -49,6 +49,12 @@ export interface OrbitChatMeta {
   lastTs?: number   // last message timestamp from JSONL (for sorting before messages load)
 }
 
+export interface QuickLink {
+  id:    string
+  title: string
+  url:   string
+}
+
 export type OrbitFavoriteKind = 'chat' | 'message'
 
 export interface OrbitFavorite {
@@ -599,6 +605,7 @@ export interface AppState {
   agentContextMsgCount: number                     // how many messages to compress (default 20)
   agentCompressPrompt: string                      // compression prompt for agent sessions
   orbitFavorites: Record<string, OrbitFavorite[]>  // projectId → favorites
+  quickLinks:     QuickLink[]
   projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
   orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
   claudeProviders: ClaudeProvider[]
@@ -720,7 +727,8 @@ export interface AppState {
   setOrbitCompressModel: (s: string) => void
   setAgentContextMsgCount: (agentContextMsgCount: number) => void
   setAgentCompressPrompt: (agentCompressPrompt: string) => void
-  addOrbitFavorite: (fav: OrbitFavorite) => void
+  addOrbitFavorite:  (fav: OrbitFavorite) => void
+  setQuickLinks:     (links: QuickLink[]) => void
   removeOrbitFavorite: (projectId: string, favId: string) => void
   addOrbitMessage: (chatId: string, msg: OrbitMessage) => void
   setOrbitMessages: (chatId: string, msgs: OrbitMessage[]) => void
@@ -890,6 +898,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   agentContextMsgCount: 20,
   agentCompressPrompt: 'Du bist ein Kontext-Kompressor für Coding-Sessions. Fasse die folgende Session kurz und präzise zusammen — nur was technisch relevant ist: was gebaut/gefixt wurde, aktuelle Stand, offene Probleme, wichtige Dateien und Entscheidungen. Kein Smalltalk. Bullet-Points. Max 15 Punkte.',
   orbitFavorites: {},
+  quickLinks: [],
   projectBrains: {},
   orbitChatsLoaded: {},
   claudeProviders: [],
@@ -1168,6 +1177,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setOrbitCompressModel: (orbitCompressModel) => set({ orbitCompressModel }),
   setAgentContextMsgCount: (agentContextMsgCount) => set({ agentContextMsgCount }),
   setAgentCompressPrompt: (agentCompressPrompt) => set({ agentCompressPrompt }),
+  setQuickLinks: (links) => set({ quickLinks: links }),
   addOrbitFavorite: (fav) => set(s => ({
     orbitFavorites: { ...s.orbitFavorites, [fav.projectId]: [...(s.orbitFavorites[fav.projectId] ?? []), fav] },
   })),
@@ -1317,6 +1327,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     claudeProviders:     s.claudeProviders,
     setupWizardDone:     s.setupWizardDone,
     preferredOrModels:   s.preferredOrModels,
+    quickLinks:          s.quickLinks,
     deletedProjectIds:   s.deletedProjectIds,
     currentUser:         s.currentUser,
     adminEmails:         s.adminEmails,

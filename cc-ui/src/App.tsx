@@ -26,8 +26,10 @@ export default function App() {
     return () => window.removeEventListener('cc:open-kanban', handler)
   }, [])
 
+  // Show wizard when not done; hide it as soon as setupWizardDone flips to true
+  // (e.g. after Zustand persist rehydrates from localStorage on initial load)
   useEffect(() => {
-    if (!setupWizardDone) setShowGettingStarted(true)
+    setShowGettingStarted(!setupWizardDone)
   }, [setupWizardDone])
 
   useEffect(() => {

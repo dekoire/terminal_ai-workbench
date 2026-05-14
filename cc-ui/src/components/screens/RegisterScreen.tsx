@@ -58,6 +58,7 @@ export function RegisterScreen() {
           lastName:      (meta['last_name']  as string) ?? lastName,
           avatarDataUrl: undefined,
         })
+        sessionStorage.setItem('cc-active-session', '1')
         setScreen('workspace')
       } else {
         // Email confirmation required

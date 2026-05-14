@@ -235,7 +235,7 @@ export function NewSessionModal() {
               <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
                 {/* LLMs / Provider picker — first, with orange border */}
-                <div style={{ border: '1px solid var(--accent)', borderRadius: 8, padding: '14px 14px 10px' }}>
+                <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                     <label style={{ ...fieldLabel, marginBottom: 0, color: 'var(--accent)' }}>LLMs</label>
                     {claudeProviders.length > 0 && <span style={{ fontSize: 9, color: 'var(--fg-3)' }}>{claudeProviders.length} verfügbar</span>}

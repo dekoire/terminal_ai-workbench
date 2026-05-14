@@ -36,6 +36,8 @@ export function LoginScreen() {
         lastName:  (meta['last_name']  as string) ?? '',
         avatarDataUrl: (meta['avatar_data_url'] as string) ?? undefined,
       })
+      // Mark this browser-tab session as active — cleared on tab close / server restart
+      sessionStorage.setItem('cc-active-session', '1')
       setScreen('workspace')
     } finally {
       setLoading(false)

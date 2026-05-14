@@ -28,6 +28,31 @@ export function useSupabaseSync() {
   const supabaseUrl   = useAppStore(s => s.supabaseUrl)
   const supabaseKey   = useAppStore(s => s.supabaseAnonKey)
 
+  // ── Force re-login on every new app/server start ───────────────────────────
+  // sessionStorage is cleared when the tab/window closes or the server restarts
+  // (page reloads). If the flag is absent but a Supabase session exists in
+  // localStorage, the user must log in again rather than being silently resumed.
+  useEffect(() => {
+    const SESSION_FLAG = 'cc-active-session'
+    if (sessionStorage.getItem(SESSION_FLAG)) return   // already running this session
+
+    const sb = getSupabase(supabaseUrl, supabaseKey)
+    if (!sb) return
+
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        // There's a persisted Supabase token but no sessionStorage flag →
+        // this is a fresh start (server restart / page reload). Force sign-out.
+        sb.auth.signOut().then(() => {
+          useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+        }).catch(() => {
+          useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+        })
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])   // run once on mount only
+
   // track whether initial load is done so we don't re-save what we just loaded
   const loadedRef  = useRef(false)
   const userIdRef  = useRef<string | null>(null)
@@ -58,6 +83,26 @@ export function useSupabaseSync() {
       window.removeEventListener('touchstart', touch)
       window.removeEventListener('scroll',     touch)
     }
+  }, [])
+
+  // ── proactive inactivity check every 15 min ───────────────────────────────
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!userIdRef.current) return
+      const inactive = Date.now() - lastActivityRef.current
+      if (inactive < INACTIVITY_MS) return
+      // Idle ≥ 2 h → sign out proactively (don't wait for Supabase event)
+      const sb = getSb()
+      if (sb) sb.auth.signOut().catch(() => {})
+      loadedRef.current  = false
+      loadingRef.current = false
+      userIdRef.current  = null
+      sessionStorage.removeItem('cc-active-session')
+      useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+    }, 15 * 60 * 1000)   // check every 15 minutes
+    return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── auth-state watcher: lock screen after 2 h inactivity ──────────────────
