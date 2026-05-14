@@ -948,7 +948,9 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
   const [diffOpen,  setDiffOpen]  = useState(false)
   const [diffFile,  setDiffFile]  = useState('')
   const [setupOpen, setSetupOpen] = useState(false)
-  const { githubToken, projects } = useAppStore()
+  const { githubToken: _legacyGhToken, tokens: repoTokens, projects, theme: compactTheme } = useAppStore()
+  // Use the first github.com entry from repoTokens; fall back to legacy store field for compat
+  const githubToken = repoTokens.find(t => t.host === 'github.com')?.token || _legacyGhToken
   const projectName = projects.find(p => p.path === projectPath)?.name ?? ''
 
   const load = useCallback(() => {
@@ -1040,12 +1042,13 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
         onClick={() => setOpen(o => !o)}
         style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', paddingBottom: open ? 6 : 0 }}
       >
-        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1 }}>GitHub</span>
-
-        {/* status dot */}
-        {status !== 'loading' && (
-          <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
-        )}
+        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+          GitHub
+          {/* status dot — right next to label */}
+          {status !== 'loading' && (
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+          )}
+        </span>
 
         {/* diff stats — always shown, grayed when 0 */}
         <span
@@ -1145,9 +1148,9 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
             <div style={{ padding: '10px 12px' }}>
               {/* File list */}
               {data.files.length > 0 && (
-                <div style={{ background: 'var(--card-bg)', borderRadius: 6, marginBottom: 8 }}>
+                <div style={{ borderRadius: 6, marginBottom: 8 }}>
                   {data.files.slice(0, 4).map((f, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', borderBottom: i < Math.min(data.files.length, 4) - 1 ? 'var(--line)' : 'none', fontSize: 11.5, fontFamily: 'var(--font-mono)', minWidth: 0 }}>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '4px 2px', borderBottom: i < Math.min(data.files.length, 4) - 1 ? '1px solid var(--line)' : 'none', fontSize: 11.5, fontFamily: 'var(--font-mono)', minWidth: 0 }}>
                       <span style={{ color: _flagColor(f.flag), marginRight: 6, fontWeight: 700, flexShrink: 0 }}>{_flagLabel(f.flag)}</span>
                       <span style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.file}</span>
                       <IEye onClick={e => { e.stopPropagation(); setDiffFile(f.file); setDiffOpen(true) }} style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0, marginLeft: 6, cursor: 'pointer' }} />
@@ -1165,7 +1168,7 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                 value={note}
                 onChange={e => setNote(e.target.value)}
                 placeholder="Was hast du geändert? (optional)"
-                style={{ width: '100%', padding: '6px 9px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 11.5, fontFamily: 'var(--font-ui)', outline: 'none', marginBottom: 8, boxSizing: 'border-box' as const }}
+                style={{ width: '100%', padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 11.5, fontFamily: 'var(--font-ui)', outline: 'none', marginBottom: 8, boxSizing: 'border-box' as const }}
               />
               {/* Buttons */}
               <div style={{ display: 'flex', gap: 5 }}>
@@ -1173,7 +1176,7 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                   {busy === 'save' ? <ISpinner style={{ width: 12, height: 12 }} /> : <IArrowUpLine style={{ width: 13, height: 13, strokeWidth: 2.5 }} />}
                   {busy === 'save' ? 'Wird hochgeladen…' : 'Speichern & Hochladen'}
                 </button>
-                <button onClick={handlePull} disabled={!!busy} title="Updates holen" style={{ background: 'rgba(255,255,255,0.92)', color: '#222', border: '1px solid rgba(255,255,255,0.5)', padding: '7px 9px', borderRadius: 6, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+                <button onClick={handlePull} disabled={!!busy} title="Updates holen" style={{ background: compactTheme === 'light' ? '#333333' : 'var(--fg-0)', color: 'var(--bg-0)', border: `1px solid ${compactTheme === 'light' ? '#333333' : 'var(--fg-0)'}`, padding: '7px 9px', borderRadius: 6, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
                   {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <IArrowDownLine style={{ width: 13, height: 13, strokeWidth: 2.5 }} />}
                 </button>
               </div>
@@ -1344,7 +1347,8 @@ function GitSetupModal({
 }
 
 function GitHubTab({ projectPath, projectName }: { projectPath: string; projectName: string }) {
-  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken, setGithubToken } = useAppStore()
+  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken: _legacyGhToken2, setGithubToken, tokens: repoTokens2, addToken: addRepoToken, updateToken: updateRepoToken, theme } = useAppStore()
+  const githubToken = repoTokens2.find(t => t.host === 'github.com')?.token || _legacyGhToken2
   const [data,            setData]          = useState<GhData | null>(null)
   const [showSetupModal,  setShowSetupModal] = useState(false)
   const [status,   setStatus]   = useState<GhStatus>('loading')
@@ -1489,9 +1493,10 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
   const flagColor = _flagColor
   const flagLabel = _flagLabel
 
-  const card: React.CSSProperties = { background: 'var(--bg-0)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }
-  const secBtn: React.CSSProperties = { width: '100%', background: 'rgba(255,255,255,0.92)', color: '#222', border: '1px solid rgba(255,255,255,0.5)', padding: '10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8 }
-  const priBtn: React.CSSProperties = { width: '100%', background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: '10px', borderRadius: 7, fontWeight: 600, fontSize: 12.5, cursor: (status === 'dirty' && !busy) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, opacity: (status !== 'dirty' || busy === 'save') ? 0.5 : 1 }
+  const card: React.CSSProperties = { background: 'var(--bg-0)', border: '1px solid var(--line-strong)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+  const secBtnBg = theme === 'light' ? '#333333' : 'var(--fg-0)'
+  const secBtn: React.CSSProperties = { width: '100%', background: secBtnBg, color: 'var(--bg-0)', border: `1px solid ${secBtnBg}`, padding: '10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+  const priBtn: React.CSSProperties = { width: '100%', background: 'var(--accent)', color: '#fff', border: '1px solid rgba(249,115,22,0.6)', padding: '10px', borderRadius: 7, fontWeight: 600, fontSize: 12.5, cursor: (status === 'dirty' && !busy) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, opacity: (status !== 'dirty' || busy === 'save') ? 0.5 : 1, boxShadow: '0 1px 4px rgba(249,115,22,0.18)' }
 
   const ghUrl = (() => {
     if (!data?.remote) return null
@@ -1631,7 +1636,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
               <IGitFork style={{ width: 10, height: 10 }} /> Diff
             </span>
           </div>
-          <div style={{ background: 'var(--bg-2)', borderRadius: 6, marginBottom: 12 }}>
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, marginBottom: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }}>
             {(showAllFiles ? data!.files : data!.files.slice(0, 5)).map((f, i, arr) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderBottom: i < arr.length - 1 || (!showAllFiles && data!.files.length > 5) ? 'var(--line)' : 'none', fontSize: 11 }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
@@ -1799,7 +1804,13 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
                     autoFocus
                     style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', outline: 'none' }}
                   />
-                  <button onClick={() => { setGithubToken(tokenDraft); setEditingToken(false) }} style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '5px 9px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>✓</button>
+                  <button onClick={() => {
+                    const existing = repoTokens2.find(t => t.host === 'github.com')
+                    if (existing) { updateRepoToken(existing.id, { token: tokenDraft }) }
+                    else { addRepoToken({ id: `tok${Date.now()}`, label: 'GitHub', host: 'github.com', token: tokenDraft }) }
+                    setGithubToken(tokenDraft) // keep legacy field in sync
+                    setEditingToken(false)
+                  }} style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '5px 9px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>✓</button>
                   <button onClick={() => setEditingToken(false)} style={{ background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--line-strong)', padding: '5px 9px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>✕</button>
                 </div>
               ) : (
@@ -2654,7 +2665,7 @@ function AiSearchTab({ projectId }: { projectId: string }) {
           onClick={loading ? stopSearch : () => void search()}
           disabled={!loading && !query.trim()}
           title={loading ? 'Abbrechen (Esc)' : 'Suchen (Enter)'}
-          style={{ width: '100%', background: loading ? 'rgba(239,122,122,0.12)' : !query.trim() ? 'var(--bg-3)' : 'var(--accent)', border: loading ? '1px solid rgba(239,122,122,0.3)' : '1px solid var(--line-strong)', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '8px 10px', cursor: loading || query.trim() ? 'pointer' : 'default', color: loading ? 'var(--err)' : !query.trim() ? 'var(--fg-3)' : 'var(--accent-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-ui)', transition: 'background 0.15s', boxSizing: 'border-box' }}
+          style={{ width: '100%', background: loading ? 'rgba(239,122,122,0.12)' : !query.trim() ? 'var(--bg-2)' : 'var(--accent)', border: loading ? '1px solid rgba(239,122,122,0.3)' : '1px solid var(--line-strong)', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '8px 10px', cursor: loading || query.trim() ? 'pointer' : 'default', color: loading ? 'var(--err)' : !query.trim() ? 'var(--fg-3)' : 'var(--accent-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-ui)', transition: 'background 0.15s', boxSizing: 'border-box' }}
         >
           {loading
             ? <><IX style={{ width: 12, height: 12 }} /> Stopp</>
@@ -3062,9 +3073,9 @@ export function UtilityPanel() {
                     <span style={{ color: 'var(--fg-1)' }}>{startedLabel}</span>
                     <button
                       onClick={() => window.dispatchEvent(new CustomEvent('cc:clear-agent-session', { detail: session.id }))}
-                      style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: '2px 6px', borderRadius: 4, fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', opacity: 0.7 }}
+                      style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--line-strong)', padding: '2px 8px', borderRadius: 4, fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
                       title="Chat leeren & Kontext zurücksetzen"
-                    >clear session</button>
+                    >clear</button>
                   </div>
                 )}
               </div>

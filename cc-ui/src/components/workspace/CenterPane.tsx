@@ -90,7 +90,8 @@ export function CenterPane({ fileTabs, activeFilePath, setActiveFilePath, closeF
       />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         {showFileViewer && <FileTabViewer path={activeFilePath} />}
-        {sessions.length === 0 && !showFileViewer && <EmptyState onNew={() => setNewSessionOpen(true)} />}
+        {(projects.length === 0 || !project) && !showFileViewer && <NoProjectState />}
+        {project && sessions.length === 0 && !showFileViewer && <EmptyState onNew={() => setNewSessionOpen(true)} />}
 
         {sessions.map(s => {
           const isActive    = s.id === activeSessionId && !showFileViewer
@@ -98,22 +99,13 @@ export function CenterPane({ fileTabs, activeFilePath, setActiveFilePath, closeF
           const isOrbit     = s.kind === 'orbit'
           const hasMounted  = mountedSessions.has(s.id)
           return (
-            <div key={s.id} style={{ display: isActive ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column', position: 'relative' }}>
-              {hasMounted && (isOrbit
-                ? <OrbitView sessionId={s.id} />
-                : isAgent
-                  ? <AgentView sessionId={s.id} kind={s.kind!} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} orModel={s.orModel} providerSettingsJson={s.providerSettingsJson} providerAlias={sessionCmd(s)} />
-                  : <XTermPane  sessionId={s.id} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} />
-              )}
-            </div>
+            <SessionWrapper key={s.id} isActive={isActive} isOrbit={isOrbit} isAgent={isAgent} hasMounted={hasMounted} s={s} project={project} sessionCmd={sessionCmd} sessionArgs={sessionArgs} />
           )
         })}
       </div>
 
       {sessions.length > 0 && (
-        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
-          <InputArea />
-        </div>
+        <InputAreaWrapper />
       )}
 
       {popup && <PopupDialog popup={popup} onClose={() => setPopup(null)} />}
@@ -587,6 +579,81 @@ function DangerBanner() {
   )
 }
 
+function NoProjectState() {
+  const { setNewProjectOpen, openrouterKey, preferredOrModels } = useAppStore()
+  const isConfigured = !!openrouterKey && preferredOrModels.length > 0
+
+  const card: React.CSSProperties = {
+    padding: '20px 18px', borderRadius: 8,
+    border: '1px solid var(--line-strong)', background: 'var(--bg-2)',
+    cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8,
+    transition: 'border-color 0.15s', textAlign: 'left',
+  }
+
+  const sectionLabel: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: 0.7, color: 'var(--fg-3)', marginBottom: 6,
+  }
+
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      gap: 22, padding: '32px 28px', minHeight: 0,
+    }}>
+      {/* Logo + heading */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+        <img src={simpleLogo} alt="Codera AI" style={{ width: 52, height: 52, opacity: 0.55 }} />
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-0)' }}>Kein Projekt angelegt</div>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* Workspace section */}
+        <div>
+          <div
+            style={card}
+            onClick={() => setNewProjectOpen(true)}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <IFolder style={{ color: 'var(--accent)', width: 15, height: 15 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-0)' }}>Workspace anlegen</span>
+            </div>
+            <span style={{ fontSize: 10.5, color: 'var(--fg-2)', lineHeight: 1.5 }}>
+              Neues Projekt mit Ordnerpfad, Sessions und Git-Integration anlegen.
+            </span>
+            <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>Projekt · Sessions · Git</span>
+          </div>
+        </div>
+
+        {/* Setup section — only when not yet configured */}
+        {!isConfigured && (
+          <div>
+            <div style={sectionLabel}>Einrichtung</div>
+            <div
+              style={card}
+              onClick={() => window.dispatchEvent(new CustomEvent('cc:open-getting-started'))}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ISpark style={{ color: 'var(--accent)', width: 15, height: 15 }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-0)' }}>Getting Started</span>
+              </div>
+              <span style={{ fontSize: 10.5, color: 'var(--fg-2)', lineHeight: 1.5 }}>
+                API-Key, Modelle und GitHub in wenigen Schritten einrichten.
+              </span>
+              <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>OpenRouter · Modelle · GitHub</span>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+
 function EmptyState({ onNew }: { onNew: () => void }) {
   const { setNewSessionPreKind, setNewSessionOpen, activeProjectId, projects, addSession, setActiveSession, createOrbitChat } = useAppStore()
 
@@ -623,7 +690,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   return (
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', gap: 22, padding: '32px 28px', minHeight: 0,
+      gap: 22, padding: '32px 28px', minHeight: 0,
     }}>
       {/* Logo + heading */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
@@ -873,7 +940,58 @@ function EditTemplateModal({ template, onClose }: { template: Template; onClose:
   )
 }
 
-function InputArea() {
+// ── SessionWrapper — measures stable container width, passes to child ─────────
+function SessionWrapper({ isActive, isOrbit, isAgent, hasMounted, s, project, sessionCmd, sessionArgs }: {
+  isActive: boolean; isOrbit: boolean; isAgent: boolean; hasMounted: boolean
+  s: Session; project: { path: string } | undefined
+  sessionCmd: (s: Session) => string; sessionArgs: (s: Session) => string[]
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [paneWidth, setPaneWidth] = useState(9999)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const ro = new ResizeObserver(entries => {
+      const e = entries[0]
+      const w = e?.borderBoxSize?.[0]?.inlineSize ?? e?.contentRect.width ?? 9999
+      if (w > 0) setPaneWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <div ref={wrapRef} style={{ display: isActive ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column', position: 'relative' }}>
+      {hasMounted && (isOrbit
+        ? <OrbitView sessionId={s.id} containerWidth={paneWidth} />
+        : isAgent
+          ? <AgentView sessionId={s.id} kind={s.kind!} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} orModel={s.orModel} providerSettingsJson={s.providerSettingsJson} providerAlias={sessionCmd(s)} containerWidth={paneWidth} />
+          : <XTermPane  sessionId={s.id} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} />
+      )}
+    </div>
+  )
+}
+
+function InputAreaWrapper() {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(9999)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const ro = new ResizeObserver(entries => {
+      const e = entries[0]
+      setWidth(e?.borderBoxSize?.[0]?.inlineSize ?? e?.contentRect.width ?? 9999)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <div ref={wrapRef} style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+      <InputArea containerWidth={width} />
+    </div>
+  )
+}
+
+function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
   const {
     inputValue, setInputValue, sendMessage, templates, updateTemplate,
     projects, activeProjectId, activeSessionId,
@@ -1017,13 +1135,19 @@ function InputArea() {
     if (!pendingWorkshopTransfer) return
     const { text, elementRefs, imageDataUrls } = pendingWorkshopTransfer
     // Build element-ref appendix
-    const refLines = elementRefs.map(r =>
-      `• <${r.tag}${r.id ? '#'+r.id : r.classes[0] ? '.'+r.classes[0] : ''}>` +
-      (r.component ? `  Komp: ${r.component}` : '') +
-      (r.text ? `  "${r.text}"` : '')
-    )
+    const refLines = elementRefs.map(r => {
+      const lines: string[] = []
+      const selector = r.tag + (r.id ? '#'+r.id : r.classes[0] ? '.'+r.classes[0] : '')
+      lines.push(`Komponente: ${r.component ?? selector}`)
+      if (r.page)      lines.push(`  Seite: ${r.page}`)
+      if (r.position)  lines.push(`  Position: ${r.position}`)
+      if (r.hierarchy) lines.push(`  Pfad: ${r.hierarchy}`)
+      if (r.selector && r.selector !== selector) lines.push(`  Selektor: ${r.selector}`)
+      if (r.text)      lines.push(`  Text: "${r.text}"`)
+      return lines.join('\n')
+    })
     const appendix = refLines.length
-      ? `\n\n── Erfasste Elemente ──\n${refLines.join('\n')}`
+      ? `\n\n── Erfasste UI-Elemente ──\n${refLines.join('\n\n')}`
       : ''
     setInputValue(text + appendix)
 
@@ -1342,7 +1466,7 @@ function InputArea() {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0px 100px 36px', background: 'var(--bg-0)', position: 'relative' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: `0px ${containerWidth < 680 ? '16px' : '100px'} 36px`, background: 'var(--bg-0)', position: 'relative' }}>
       <style>{`
         @property --orbit-angle {
           syntax: '<angle>';

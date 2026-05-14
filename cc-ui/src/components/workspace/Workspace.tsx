@@ -5,7 +5,7 @@ import logoBlack from '../../assets/codera_logo_black.png'
 import { ProjectSidebar } from './ProjectSidebar'
 import { CenterPane } from './CenterPane'
 import { UtilityPanel } from './UtilityPanel'
-import { IMoon, ISun, ILogout, ITerminal, IPlay, IBot, ICompass, ISquareTerminal, IKanban } from '../primitives/Icons'
+import { IMoon, ISun, ILogout, ITerminal, IPlay, IBot, ICompass, ISquareTerminal, IKanban, IPanelLeftOpen, IPanelLeftClose, IPanelRightOpen, IPanelRightClose } from '../primitives/Icons'
 import { ModelBrowserModal } from '../modals/ModelBrowserModal'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
@@ -151,8 +151,30 @@ export function Workspace() {
 
   const [sidebarW, setSidebarW] = useState(248)
   const [utilityW, setUtilityW] = useState(280)
+  const savedSidebarW = useRef(248)
+  const savedUtilityW = useRef(280)
   const [playBlink, setPlayBlink] = useState(false)
   const [modelBrowserOpen, setModelBrowserOpen] = useState(false)
+
+  const [winW, setWinW] = useState(window.innerWidth)
+  const [leftOpen, setLeftOpen] = useState(true)
+  const [rightOpen, setRightOpen] = useState(true)
+
+  useEffect(() => {
+    const onResize = () => setWinW(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const compact = winW < 900
+
+  useEffect(() => {
+    if (compact) { setLeftOpen(false); setRightOpen(false) }
+    else         { setLeftOpen(true);  setRightOpen(true) }
+  }, [compact])
+
+  const showLeft  = !compact || leftOpen
+  const showRight = !compact || rightOpen
 
   const triggerPlay = useCallback(() => {
     window.dispatchEvent(new CustomEvent('cc:hdr-play'))
@@ -161,11 +183,19 @@ export function Workspace() {
   }, [])
 
   const dragLeft  = useResizeDrag(useCallback((dx: number) => {
-    setSidebarW(w => Math.min(480, Math.max(0, w + dx)))
+    setSidebarW(w => {
+      const next = Math.min(480, Math.max(0, w + dx))
+      if (next > 25) savedSidebarW.current = next
+      return next
+    })
   }, []))
 
   const dragRight = useResizeDrag(useCallback((dx: number) => {
-    setUtilityW(w => Math.min(600, Math.max(0, w - dx)))
+    setUtilityW(w => {
+      const next = Math.min(600, Math.max(0, w - dx))
+      if (next > 25) savedUtilityW.current = next
+      return next
+    })
   }, []))
 
   // suppress unused-import warnings for theme toggle icons
@@ -219,13 +249,14 @@ export function Workspace() {
       )}
 
       {/* 3-pane body */}
-      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
         {/* Sidebar */}
-        <div style={{ width: sidebarW, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
-          <ProjectSidebar />
-        </div>
-
-        <VDivider onMouseDown={dragLeft} />
+        {showLeft && (
+          <div style={{ width: sidebarW, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
+            <ProjectSidebar />
+          </div>
+        )}
+        {showLeft && <VDivider onMouseDown={dragLeft} />}
 
         {/* Center — takes all remaining space */}
         <CenterPane
@@ -235,12 +266,46 @@ export function Workspace() {
           closeFileTab={closeFileTab}
         />
 
-        <VDivider onMouseDown={dragRight} />
+        {showRight && projects.length > 0 && <VDivider onMouseDown={dragRight} />}
 
-        {/* Utility panel */}
-        <div style={{ width: utilityW, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
-          <UtilityPanel />
-        </div>
+        {/* Utility panel — only visible when at least one workspace exists */}
+        {showRight && projects.length > 0 && (
+          <div style={{ width: utilityW, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
+            <UtilityPanel />
+          </div>
+        )}
+
+        {/* Panel toggle buttons — compact mode OR manually dragged narrow (≤ 25px) */}
+        {(() => {
+          const sidebarNarrow = !compact && sidebarW <= 100
+          const utilityNarrow = !compact && utilityW <= 100
+          const showLeftBtn  = compact || sidebarNarrow
+          const showRightBtn = compact || utilityNarrow
+          if (!showLeftBtn && !showRightBtn) return null
+          const btnStyle = { position: 'absolute' as const, top: 'calc(50% - 20px)', transform: 'translateY(-50%)', zIndex: 30, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '5px 6px', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }
+          return (
+            <>
+              {showLeftBtn && (
+                <button
+                  onClick={() => compact ? setLeftOpen(o => !o) : setSidebarW(savedSidebarW.current)}
+                  title={compact && leftOpen ? 'Linkes Panel schließen' : 'Linkes Panel öffnen'}
+                  style={{ ...btnStyle, left: showLeft ? sidebarW + 8 : 8, transition: 'left 0.2s' }}
+                >
+                  {compact && leftOpen ? <IPanelLeftClose style={{ width: 15, height: 15 }} /> : <IPanelLeftOpen style={{ width: 15, height: 15 }} />}
+                </button>
+              )}
+              {showRightBtn && (
+                <button
+                  onClick={() => compact ? setRightOpen(o => !o) : setUtilityW(savedUtilityW.current)}
+                  title={compact && rightOpen ? 'Rechtes Panel schließen' : 'Rechtes Panel öffnen'}
+                  style={{ ...btnStyle, right: showRight ? utilityW + 8 : 8, transition: 'right 0.2s' }}
+                >
+                  {compact && rightOpen ? <IPanelRightClose style={{ width: 15, height: 15 }} /> : <IPanelRightOpen style={{ width: 15, height: 15 }} />}
+                </button>
+              )}
+            </>
+          )
+        })()}
       </div>
     </div>
   )

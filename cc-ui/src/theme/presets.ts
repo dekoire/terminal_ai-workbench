@@ -209,6 +209,7 @@ export function applyPreset(preset: AccentPreset, accentOverride?: string, accen
   root.style.setProperty('--orbit-line',  hexToRgba(preset.orbit, 0.45))
   root.style.setProperty('--danger-soft', hexToRgba(preset.err,   preset.dark ? 0.12 : 0.08))
   root.style.setProperty('--danger-line', hexToRgba(preset.err,   0.40))
+  root.style.setProperty('--card-bg',     preset.dark ? preset.bg1 : hexToRgba(accent, 0.08))
 
   // Syntax token defaults (dark / light) — only if NOT already overridden by customUiColors
   // (customUiColors are re-applied after this call in App.tsx, so these are safe to set here)

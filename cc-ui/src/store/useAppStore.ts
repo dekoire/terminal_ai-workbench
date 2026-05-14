@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { newAgentMsgId } from '../lib/ids'
 
-export type Screen = 'login' | 'register' | 'workspace' | 'settings' | 'templates' | 'history' | 'profile' | 'workshop'
+export type Screen = 'login' | 'register' | 'workspace' | 'settings' | 'templates' | 'history' | 'profile' | 'workshop' | 'getting-started'
 
 export type WorkshopElementRef = {
   tag: string
@@ -602,6 +602,9 @@ export interface AppState {
   projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
   orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
   claudeProviders: ClaudeProvider[]
+  setupWizardDone: boolean
+  preferredOrModels: string[]
+  deletedProjectIds: string[]   // IDs intentionally removed by user — never restore from Supabase
 
   // Auth
   currentUser: CurrentUser | null
@@ -729,6 +732,8 @@ export interface AppState {
   removeOrbitChat: (projectId: string, chatId: string) => void
   setProjectBrain: (projectId: string, brain: ProjectBrainEntry) => void
   setOrbitChatLoaded: (chatId: string) => void
+  setSetupWizardDone: (v: boolean) => void
+  setPreferredOrModels: (ids: string[]) => void
 }
 
 const DEMO_TURNS: TurnMessage[] = [
@@ -888,6 +893,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   projectBrains: {},
   orbitChatsLoaded: {},
   claudeProviders: [],
+  setupWizardDone: false,
+  preferredOrModels: [],
+  deletedProjectIds: [],
 
   currentUser: null,
   adminEmails: ['admin@codera.com'],
@@ -909,8 +917,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   resetUserData: () => set({
     // Clear all user-specific data so a new user starts with a blank slate
     projects:          [],
-    activeProjectId:   null,
-    activeSessionId:   null,
+    activeProjectId:   undefined,
+    activeSessionId:   undefined,
     orbitMessages:     {},
     orbitMeta:         {},
     orbitChats:        {},
@@ -967,6 +975,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setInputValue: (inputValue) => set({ inputValue }),
   setNewProjectOpen: (newProjectOpen) => set({ newProjectOpen }),
   setNewSessionOpen: (newSessionOpen) => set({ newSessionOpen }),
+  setSetupWizardDone: (setupWizardDone) => set({ setupWizardDone }),
+  setPreferredOrModels: (preferredOrModels) => set({ preferredOrModels }),
   setNewSessionPreKind: (newSessionPreKind) => set({ newSessionPreKind }),
   setNote: (sessionId, text) => set((s) => ({ notes: { ...s.notes, [sessionId]: text } })),
   setPlaywrightCheck: (v) => set({ playwrightCheck: v }),
@@ -987,10 +997,50 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   updateProject: (id, patch) => set((s) => ({ projects: s.projects.map(p => p.id === id ? { ...p, ...patch } : p) })),
   removeProject: (id) => set((s) => {
     const remaining = s.projects.filter((p) => p.id !== id)
+    const project   = s.projects.find(p => p.id === id)
+    const sessionIds = new Set(project?.sessions.map(sess => sess.id) ?? [])
+
+    // Chat IDs belonging to this project
+    const chatIds = new Set(s.orbitChats[id] ?? [])
+
+    // Clean up orbit messages + meta for all chats of this project
+    const orbitMessages    = { ...s.orbitMessages }
+    const orbitMeta        = { ...s.orbitMeta }
+    const orbitChatsLoaded = { ...s.orbitChatsLoaded }
+    for (const chatId of chatIds) {
+      delete orbitMessages[chatId]
+      delete orbitMeta[chatId]
+      delete orbitChatsLoaded[chatId]
+    }
+
+    // Clean up per-session state
+    const notes            = { ...s.notes }
+    const activeOrbitChatId = { ...s.activeOrbitChatId }
+    for (const sessId of sessionIds) {
+      delete notes[sessId]
+      delete activeOrbitChatId[sessId]
+    }
+
+    // Clean up project-keyed maps
+    const orbitChats    = { ...s.orbitChats };    delete orbitChats[id]
+    const orbitFavorites = { ...s.orbitFavorites }; delete orbitFavorites[id]
+    const projectBrains  = { ...s.projectBrains };  delete projectBrains[id]
+    const kanban         = { ...s.kanban };          delete kanban[id]
+
     return {
       projects: remaining,
-      activeProjectId: s.activeProjectId === id ? (remaining[0]?.id ?? '') : s.activeProjectId,
-      activeSessionId: s.activeProjectId === id ? (remaining[0]?.sessions[0]?.id ?? '') : s.activeSessionId,
+      activeProjectId:  s.activeProjectId === id ? (remaining[0]?.id ?? '') : s.activeProjectId,
+      activeSessionId:  s.activeProjectId === id ? (remaining[0]?.sessions[0]?.id ?? '') : s.activeSessionId,
+      deletedProjectIds: s.deletedProjectIds.includes(id) ? s.deletedProjectIds : [...s.deletedProjectIds, id],
+      orbitMessages,
+      orbitMeta,
+      orbitChatsLoaded,
+      orbitChats,
+      orbitFavorites,
+      projectBrains,
+      kanban,
+      notes,
+      activeOrbitChatId,
     }
   }),
 
@@ -1176,7 +1226,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }))
     // Migrate old devPort/devCmd field names → appPort/appStartCmd
     state.projects = state.projects.map(p => {
-      const raw = p as Record<string, unknown>
+      const raw = p as unknown as Record<string, unknown>
       const migrated = { ...p }
       if (!migrated.appPort && raw['devPort']) migrated.appPort = raw['devPort'] as number
       if (!migrated.appStartCmd && raw['devCmd']) migrated.appStartCmd = raw['devCmd'] as string
@@ -1200,6 +1250,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.orbitCtxBefore === undefined) state.orbitCtxBefore = 2
     if (state.orbitCtxAfter === undefined) state.orbitCtxAfter = 2
     if (state.orbitFavorites === undefined) state.orbitFavorites = {}
+    if (state.setupWizardDone === undefined) state.setupWizardDone = false
+    if (state.preferredOrModels === undefined) state.preferredOrModels = []
+    if (state.deletedProjectIds === undefined) state.deletedProjectIds = []
     if (!state.orbitCompressPrompt) state.orbitCompressPrompt = `Du bist ein Kontext-Kompressor für Entwickler-Chats. Fasse den folgenden Chat-Verlauf in präzisen Stichpunkten zusammen.\n\nRegeln:\n- Nur entwicklungsrelevante Infos (Code, Dateipfade, Bugs, Entscheidungen, Architektur, Tools)\n- Kein Smalltalk, keine Begrüßungen, keine Wiederholungen, kein Lob\n- Bullet-Points (•), maximal 2–3 Zeilen pro Punkt\n- Technische Details (Dateinamen, Funktionsnamen, Fehlermeldungen) immer behalten\n- So kurz wie möglich — eine KI muss danach genau verstehen was besprochen und umgesetzt wurde\n- Max 25 Punkte`
     if (!state.orbitCompressModel) state.orbitCompressModel = 'deepseek/deepseek-chat-v3-0324'
     if (!state.agentContextMsgCount) state.agentContextMsgCount = 20
@@ -1262,6 +1315,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     orbitFavorites:      s.orbitFavorites,
     projectBrains:       s.projectBrains,
     claudeProviders:     s.claudeProviders,
+    setupWizardDone:     s.setupWizardDone,
+    preferredOrModels:   s.preferredOrModels,
+    deletedProjectIds:   s.deletedProjectIds,
     currentUser:         s.currentUser,
     adminEmails:         s.adminEmails,
     supabaseUrl:              s.supabaseUrl,

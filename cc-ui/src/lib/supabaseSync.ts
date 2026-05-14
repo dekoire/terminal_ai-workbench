@@ -484,10 +484,12 @@ export async function upsertSingleOrbitMessage(
 export function debounce<T extends (...args: Parameters<T>) => void>(
   fn: T,
   ms: number,
-): (...args: Parameters<T>) => void {
+): ((...args: Parameters<T>) => void) & { cancel: () => void } {
   let timer: ReturnType<typeof setTimeout>
-  return (...args) => {
+  const debounced = (...args: Parameters<T>) => {
     clearTimeout(timer)
     timer = setTimeout(() => fn(...args), ms)
   }
+  debounced.cancel = () => clearTimeout(timer)
+  return debounced
 }

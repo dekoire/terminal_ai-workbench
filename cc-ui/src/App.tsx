@@ -11,17 +11,29 @@ import { UIWorkshop } from './components/workshop/UIWorkshop'
 import { KanbanBoard } from './components/workspace/KanbanBoard'
 import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSessionModal } from './components/modals/NewSessionModal'
+import { GettingStartedModal } from './components/modals/GettingStartedModal'
 import { DESIGN_PRESETS, applyPreset } from './theme/presets'
 import { useSupabaseSync } from './lib/useSupabaseSync'
 
 export default function App() {
-  const { screen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId } = useAppStore()
+  const { screen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone } = useAppStore()
   const [kanbanOpen, setKanbanOpen] = useState(false)
+  const [showGettingStarted, setShowGettingStarted] = useState(false)
 
   useEffect(() => {
     const handler = () => setKanbanOpen(true)
     window.addEventListener('cc:open-kanban', handler)
     return () => window.removeEventListener('cc:open-kanban', handler)
+  }, [])
+
+  useEffect(() => {
+    if (!setupWizardDone) setShowGettingStarted(true)
+  }, [setupWizardDone])
+
+  useEffect(() => {
+    const handler = () => setShowGettingStarted(true)
+    window.addEventListener('cc:open-getting-started', handler)
+    return () => window.removeEventListener('cc:open-getting-started', handler)
   }, [])
 
   // Cloud sync — loads on login, saves debounced on every store change
@@ -55,7 +67,7 @@ export default function App() {
   // Workspace stays mounted permanently so PTY WebSocket connections survive
   // screen switches. Workshop is an overlay modal — workspace stays visible underneath.
   const workspaceActive = screen === 'workspace' || screen === 'workshop'
-  const overlayScreen   = screen !== 'workspace' && screen !== 'login' && screen !== 'register' && screen !== 'workshop'
+  const overlayScreen   = screen !== 'workspace' && screen !== 'login' && screen !== 'register' && screen !== 'workshop' && screen !== 'getting-started'
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-0)', position: 'relative' }}>
@@ -76,6 +88,7 @@ export default function App() {
           {screen === 'templates' && <PromptTemplates />}
           {screen === 'history'   && <HistoryBrowser />}
           {screen === 'profile'   && <ProfileSettings />}
+          {screen === 'getting-started' && <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg-2)', fontSize: 14 }}>Getting Started — coming soon</div>}
         </div>
       )}
 
@@ -93,6 +106,7 @@ export default function App() {
 
       {newProjectOpen && <NewProjectModal />}
       {newSessionOpen && <NewSessionModal />}
+      {showGettingStarted && <GettingStartedModal onClose={() => setShowGettingStarted(false)} />}
 
       {/* Kanban Board — full-screen modal overlay */}
       {kanbanOpen && (() => {

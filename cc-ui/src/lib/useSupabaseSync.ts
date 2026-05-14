@@ -144,11 +144,18 @@ export function useSupabaseSync() {
         const localActiveProjectId   = local.activeProjectId
         const localActiveOrbitChatId = local.activeOrbitChatId
         const localProjects          = local.projects
+        const deletedProjectIds      = new Set(local.deletedProjectIds ?? [])
 
         // Apply everything in ONE setState to avoid intermediate states where
         // chatId is briefly wrong (causing in-flight messages to go to wrong chat).
         useAppStore.setState((s) => {
           const next = { ...s, ...settings }
+
+          // Always keep local deletedProjectIds — never let Supabase overwrite it.
+          next.deletedProjectIds = s.deletedProjectIds ?? []
+
+          // setupWizardDone: once true locally it stays true — never reset by Supabase.
+          if (s.setupWizardDone) next.setupWizardDone = true
 
           // Supabase is authoritative for preferences (theme, API keys, etc.).
           // Local wins for live session state so active work is never disrupted.
@@ -163,25 +170,27 @@ export function useSupabaseSync() {
           }
 
           // Merge projects: local sessions take priority; Supabase adds unknown projects.
-          // Only merge if localProjects actually belong to this user (non-empty after resetUserData).
-          if (settings.projects && localProjects.length > 0) {
-            const sbMap = new Map(settings.projects.map(p => [p.id, p]))
+          // Projects the user intentionally deleted are NEVER restored from Supabase.
+          const sbProjects = (settings.projects ?? []).filter(p => !deletedProjectIds.has(p.id))
+
+          if (sbProjects.length > 0 || localProjects.length > 0) {
+            const sbMap = new Map(sbProjects.map(p => [p.id, p]))
             const lMap  = new Map(localProjects.map(p => [p.id, p]))
-            const merged = [...settings.projects].map(sp => {
+            const merged = [...sbProjects].map(sp => {
               const lp = lMap.get(sp.id)
               if (!lp) return sp
               const localSessIds = new Set(lp.sessions.map(s => s.id))
               const extra = sp.sessions.filter(s => !localSessIds.has(s.id))
               return { ...sp, sessions: [...lp.sessions, ...extra] }
             })
-            // Only add local-only projects if their IDs appear in Supabase session list
-            // (prevents previous-user projects from bleeding in after resetUserData)
+            // Add local-only projects that aren't in Supabase
             for (const lp of localProjects) {
               if (!sbMap.has(lp.id)) merged.push(lp)
             }
             next.projects = merged
-          } else if (settings.projects) {
-            next.projects = settings.projects
+          } else {
+            // Both empty — respect it (user deleted everything)
+            next.projects = []
           }
 
           return next
@@ -260,10 +269,10 @@ export function useSupabaseSync() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useAppStore(s => s.activeOrbitChatId), supabaseUrl, supabaseKey])
 
-  // ── on store change: save settings (debounced 4 s) ────────────────────────
+  // ── on store change: save settings (debounced 4 s, immediate on deletion) ──
 
   useEffect(() => {
-    const saveDebounced = debounce(async () => {
+    const doSave = async () => {
       if (!loadedRef.current) return
       const userId = userIdRef.current
       if (!userId) return
@@ -271,11 +280,22 @@ export function useSupabaseSync() {
       if (!sb) return
       const state = useAppStore.getState()
       await saveSettingsToSupabase(sb, userId, state)
-      // Admin: keep global_config in sync with infra settings
       await syncGlobalConfig(sb, userId, state).catch(() => {})
-    }, 4000)
+    }
 
-    const unsub = useAppStore.subscribe(saveDebounced)
+    const saveDebounced = debounce(doSave, 4000)
+
+    // Zustand subscribe passes (newState, prevState) — use it to detect deletions
+    const unsub = useAppStore.subscribe((state, prev) => {
+      const projectsShrank = state.projects.length < prev.projects.length
+      if (projectsShrank) {
+        // Project was removed — save immediately so reload sees the correct state
+        saveDebounced.cancel?.()
+        void doSave()
+      } else {
+        saveDebounced()
+      }
+    })
     return unsub
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabaseUrl, supabaseKey])

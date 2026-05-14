@@ -101,25 +101,25 @@ export function RegisterScreen() {
         flex: 1, padding: '48px 56px', display: 'flex', flexDirection: 'column',
         position: 'relative', zIndex: 1, borderRight: '1px solid var(--line)',
       }}>
-        <div style={{ marginBottom: 4 }}>
+        <div style={{ marginBottom: 0 }}>
           <img src={theme === 'light' ? logoBlack : logoWhite} alt="Codera AI" style={{ height: 60, width: 'auto', display: 'block' }} />
         </div>
-        <span style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 48 }}>v0.1.0 · macOS · arm64</span>
+        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, letterSpacing: 0.3, margin: '-16px 0 0', paddingLeft: 47 }}>AI Development IDE</span>
 
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 380 }}>
           <h1 style={{ margin: '0 0 16px', fontSize: 32, fontWeight: 700, letterSpacing: -0.8, color: 'var(--fg-0)', lineHeight: 1.15 }}>
-            Dein Cockpit für<br/>
-            <span style={{ color: 'var(--accent)' }}>KI-gestütztes Coding.</span>
+            KI-Coding.<br/>
+            <span style={{ color: 'var(--accent)' }}>Zentral gesteuert.</span>
           </h1>
           <p style={{ margin: '0 0 28px', color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.65 }}>
-            Erstelle deinen kostenlosen Account und synchronisiere Sessions, Modelle, Prompt-Vorlagen und Git-Integration geräteübergreifend.
+            Arbeite mit Claude Code, DeepSeek und weiteren Agenten in einer Oberfläche — inklusive Terminal, Projektkontext, Session-Verlauf, Prompt-Vorlagen und Git-Integration.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <FeatureRow icon={<ISpark />}   label="Orbit Chat — KI direkt im Kontext deines Projekts" />
-            <FeatureRow icon={<ITerminal />} label="Natives Terminal mit Gesprächsrunden-Ansicht" />
-            <FeatureRow icon={<IShield />}  label="Berechtigungsmodi und Prompt-Vorlagen pro Session" />
-            <FeatureRow icon={<IGit />}     label="Git-Integration und Worktree-Struktur" />
+            <FeatureRow icon={<ISpark />}    label="KI-Chat im Projektkontext" />
+            <FeatureRow icon={<ITerminal />} label="Terminal mit Session-Verlauf" />
+            <FeatureRow icon={<IShield />}   label="Modelle, Aliases & Templates verwalten" />
+            <FeatureRow icon={<IGit />}      label="Git-Workflow direkt im Workspace" />
           </div>
         </div>
         <div style={{ flex: 1 }} />
