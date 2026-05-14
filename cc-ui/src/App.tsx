@@ -16,7 +16,14 @@ import { DESIGN_PRESETS, applyPreset } from './theme/presets'
 import { useSupabaseSync } from './lib/useSupabaseSync'
 
 export default function App() {
-  const { screen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone } = useAppStore()
+  const { screen: rawScreen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone, currentUser, setScreen } = useAppStore()
+  // Guarantee screen is always a valid value — null/undefined causes a total black screen
+  const screen = rawScreen || (currentUser ? 'workspace' : 'login')
+
+  useEffect(() => {
+    if (!rawScreen) setScreen(currentUser ? 'workspace' : 'login')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [kanbanOpen, setKanbanOpen] = useState(false)
   const [showGettingStarted, setShowGettingStarted] = useState(false)
 

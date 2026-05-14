@@ -5,6 +5,7 @@
 import { createRequire } from 'module'
 import fs   from 'fs'
 import path from 'path'
+import { spawn } from 'child_process'
 import { WebSocketServer } from 'ws'
 
 const _require = createRequire(import.meta.url)
@@ -199,8 +200,18 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
       if (msg.type !== 'message') return
 
       // ── spawn Claude for this message ─────────────────────────────────────
-      const text                 = String(msg.text ?? '')
+      const rawText              = String(msg.text ?? '')
       const cwd                  = String(msg.cwd ?? process.env.HOME ?? '~').replace(/^~/, process.env.HOME ?? '/')
+
+      // Extract --image flags from the prompt text so they become proper CLI args.
+      // Claude Code CLI requires --image as a top-level argument, NOT embedded in --print.
+      const imagePaths: string[] = []
+      const IMAGE_FLAG_RE_SRV = /--image\s+"([^"]+)"|--image\s+'([^']+)'|--image\s+(\S+)/g
+      const text = rawText.replace(IMAGE_FLAG_RE_SRV, (_match, q1, q2, bare) => {
+        const p = (q1 ?? q2 ?? bare ?? '').trim()
+        if (p) imagePaths.push(p)
+        return ''
+      }).trim()
       const orModel              = msg.orModel              ? String(msg.orModel)              : null
       const orKey                = msg.orKey                ? String(msg.orKey)                : null
       const providerSettingsJson = msg.providerSettingsJson ? String(msg.providerSettingsJson) : null
@@ -276,7 +287,9 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
       const pty = _require('node-pty') as typeof import('node-pty')
 
       const isCustomProvider = !!settingsFile || !!baseEnv['ANTHROPIC_BASE_URL']
-      const claudeArgs = [
+
+      // Base Claude args (without --print / --input-format — added below per path)
+      const baseClaudeArgs = [
         '--output-format', 'stream-json',
         '--verbose',
         // --bare disables MCP tool use, so permission bridge only works for Anthropic sessions
@@ -285,15 +298,10 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
           : ['--mcp-config', mcpConfigFile, '--permission-prompt-tool', 'mcp__perm__permission_prompt']),
         ...(settingsFile ? ['--settings', settingsFile] : []),
         ...(!settingsFile && orModel ? ['--model', orModel] : []),
-        '--print', text,
         ...(resume ? ['--resume', resume] : []),
       ]
 
-      const ptyProc = pty.spawn('claude', claudeArgs, {
-        name: 'xterm-color', cols: 220, rows: 50, cwd, env: baseEnv,
-      })
-
-      let lineBuf = ''
+      // ── Shared output processing ──────────────────────────────────────────────
       const stripAnsi = (s: string) => s
         .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')          // CSI: ESC [ ... letter  (incl. ?-private)
         .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '') // OSC: ESC ] ... BEL/ST
@@ -340,44 +348,113 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         } catch {}
       }
 
-      // Debounce timer: if lineBuf has non-JSON content and Claude goes silent for
-      // 600 ms, treat it as a terminal permission prompt (language-agnostic).
-      let permDebounce: ReturnType<typeof setTimeout> | null = null
-
-      const flushPermBuf = () => {
-        // Skip: MCP bridge is already handling this permission
-        if (pendingPerms.size > 0) { lineBuf = ''; return }
-        const cleanBuf = stripAnsi(lineBuf).trim()
-        // Skip: garbage/empty after stripping — need at least 8 printable chars
-        if (!cleanBuf || cleanBuf[0] === '{' || cleanBuf.length < 8) { lineBuf = ''; return }
-        ws.send(JSON.stringify({ type: 'permission_request', text: cleanBuf, tool: lastToolUse }))
-        lineBuf = ''
-      }
-
-      ptyProc.onData((data: string) => {
-        lineBuf += data
-        const lines = lineBuf.split('\n')
-        lineBuf = lines.pop() ?? ''
-        lines.forEach(sendLine)
-
-        // Clear any pending debounce — Claude is still outputting
-        if (permDebounce) { clearTimeout(permDebounce); permDebounce = null }
-
-        const cleanBuf = stripAnsi(lineBuf).trim()
-        if (cleanBuf && cleanBuf[0] !== '{' && cleanBuf.length >= 8 && pendingPerms.size === 0) {
-          permDebounce = setTimeout(flushPermBuf, 600)
+      // ── Image path: child_process + stream-json stdin ──────────────────────────
+      // claude --image flag doesn't exist; images must be embedded via --input-format stream-json.
+      if (imagePaths.length > 0) {
+        // Resolve MIME type from extension
+        const mimeForExt = (p: string) => {
+          const ext = path.extname(p).toLowerCase()
+          if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
+          if (ext === '.png')  return 'image/png'
+          if (ext === '.gif')  return 'image/gif'
+          if (ext === '.webp') return 'image/webp'
+          return 'image/png'
         }
-      })
 
-      activePtys.set(sessionId, { write: (d) => ptyProc.write(d), kill: () => ptyProc.kill() })
+        // Build multipart content: images first, then text
+        type ContentBlock =
+          | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+          | { type: 'text'; text: string }
 
-      ptyProc.onExit(({ exitCode }) => {
-        if (lineBuf.trim()) sendLine(lineBuf)
-        activePtys.delete(sessionId)
-        ws.send(JSON.stringify({ type: 'exit', exitCode: exitCode ?? 0 }))
-        if (settingsFile) { try { fs.unlinkSync(settingsFile) } catch {} }
-        try { fs.unlinkSync(mcpConfigFile) } catch {}
-      })
+        const content: ContentBlock[] = []
+        for (const p of imagePaths) {
+          try {
+            const data = fs.readFileSync(p)
+            content.push({ type: 'image', source: { type: 'base64', media_type: mimeForExt(p), data: data.toString('base64') } })
+          } catch { /* skip unreadable image */ }
+        }
+        if (text.trim()) content.push({ type: 'text', text })
+
+        const jsonInput = JSON.stringify({
+          type: 'user',
+          message: { role: 'user', content },
+        })
+
+        const imageArgs = [...baseClaudeArgs, '--print', '--input-format', 'stream-json']
+        const proc = spawn('claude', imageArgs, { cwd, env: baseEnv, stdio: ['pipe', 'pipe', 'pipe'] })
+
+        proc.stdin.write(jsonInput + '\n')
+        proc.stdin.end()
+
+        activePtys.set(sessionId, { write: () => { /* no interactive input for image runs */ }, kill: () => { proc.kill() } })
+
+        let imgBuf = ''
+        const handleChunk = (chunk: Buffer) => {
+          imgBuf += chunk.toString()
+          const lines = imgBuf.split('\n')
+          imgBuf = lines.pop() ?? ''
+          lines.forEach(sendLine)
+        }
+        proc.stdout.on('data', handleChunk)
+        proc.stderr.on('data', handleChunk)
+
+        proc.on('close', (exitCode) => {
+          if (imgBuf.trim()) sendLine(imgBuf)
+          activePtys.delete(sessionId)
+          ws.send(JSON.stringify({ type: 'exit', exitCode: exitCode ?? 0 }))
+          if (settingsFile) { try { fs.unlinkSync(settingsFile) } catch {} }
+          try { fs.unlinkSync(mcpConfigFile) } catch {}
+        })
+
+      } else {
+        // ── Text-only path: PTY spawn (original behavior) ─────────────────────
+        const claudeArgs = [...baseClaudeArgs, '--print', text]
+
+        const ptyProc = pty.spawn('claude', claudeArgs, {
+          name: 'xterm-color', cols: 220, rows: 50, cwd, env: baseEnv,
+        })
+
+        let lineBuf = ''
+
+        // Debounce timer: if lineBuf has non-JSON content and Claude goes silent for
+        // 600 ms, treat it as a terminal permission prompt (language-agnostic).
+        let permDebounce: ReturnType<typeof setTimeout> | null = null
+
+        const flushPermBuf = () => {
+          // Skip: MCP bridge is already handling this permission
+          if (pendingPerms.size > 0) { lineBuf = ''; return }
+          const cleanBuf = stripAnsi(lineBuf).trim()
+          // Skip: garbage/empty after stripping — need at least 8 printable chars
+          if (!cleanBuf || cleanBuf[0] === '{' || cleanBuf.length < 8) { lineBuf = ''; return }
+          ws.send(JSON.stringify({ type: 'permission_request', text: cleanBuf, tool: lastToolUse }))
+          lineBuf = ''
+        }
+
+        ptyProc.onData((data: string) => {
+          lineBuf += data
+          const lines = lineBuf.split('\n')
+          lineBuf = lines.pop() ?? ''
+          lines.forEach(sendLine)
+
+          // Clear any pending debounce — Claude is still outputting
+          if (permDebounce) { clearTimeout(permDebounce); permDebounce = null }
+
+          const cleanBuf = stripAnsi(lineBuf).trim()
+          if (cleanBuf && cleanBuf[0] !== '{' && cleanBuf.length >= 8 && pendingPerms.size === 0) {
+            permDebounce = setTimeout(flushPermBuf, 600)
+          }
+        })
+
+        activePtys.set(sessionId, { write: (d) => ptyProc.write(d), kill: () => ptyProc.kill() })
+
+        ptyProc.onExit(({ exitCode }) => {
+          if (lineBuf.trim()) sendLine(lineBuf)
+          activePtys.delete(sessionId)
+          ws.send(JSON.stringify({ type: 'exit', exitCode: exitCode ?? 0 }))
+          if (settingsFile) { try { fs.unlinkSync(settingsFile) } catch {} }
+          try { fs.unlinkSync(mcpConfigFile) } catch {}
+        })
+      }
 
     } catch (e) {
       console.error('[ws/agent] error:', e)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAppStore } from '../../store/useAppStore'
+import { useAppStore, setActiveStorageUser } from '../../store/useAppStore'
 import { IShield, IGit, ITerminal, ISpark, IChev } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
 import logoWhite from '../../assets/codera_logo_white.png'
@@ -29,6 +29,11 @@ export function LoginScreen() {
       if (sbErr) { setError(sbErr.message); return }
       const user = data.user
       const meta = user?.user_metadata ?? {}
+      // Switch file storage to this user's personal file — all writes from here go there
+      setActiveStorageUser(user!.id)
+      // Mark session active BEFORE setCurrentUser so the Supabase watcher
+      // doesn't immediately sign us back out when it sees the new session
+      sessionStorage.setItem('cc-active-session', '1')
       setCurrentUser({
         id: user!.id,
         email: user!.email ?? email,
@@ -36,8 +41,6 @@ export function LoginScreen() {
         lastName:  (meta['last_name']  as string) ?? '',
         avatarDataUrl: (meta['avatar_data_url'] as string) ?? undefined,
       })
-      // Mark this browser-tab session as active — cleared on tab close / server restart
-      sessionStorage.setItem('cc-active-session', '1')
       setScreen('workspace')
     } finally {
       setLoading(false)

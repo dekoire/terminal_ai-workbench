@@ -182,6 +182,7 @@ export interface RepoToken {
   token: string      // the actual token value
 }
 
+/** @deprecated — kept only for migration from old JSON files, do not use */
 export interface AIProvider {
   id: string
   name: string
@@ -581,11 +582,13 @@ export interface AppState {
   newSessionPreKind: SessionKind | null
   notes: Record<string, string>        // sessionId → note text
   kanban: Record<string, KanbanTicket[]>  // projectId → tickets
-  aiFunctionMap: Record<string, string>   // functionKey → providerId
+  aiFunctionMap: Record<string, string>   // functionKey → OR model ID
   playwrightCheck: boolean
   localhostCheck: boolean
-  aiProviders: AIProvider[]
-  activeAiProvider: string
+  groqApiKey: string
+  voiceProvider: 'groq' | 'openai'
+  /** @deprecated */ aiProviders: AIProvider[]
+  /** @deprecated */ activeAiProvider: string
   terminalShortcuts: TerminalShortcut[]
   docTemplates: DocTemplate[]
   docApplying: Record<string, boolean>
@@ -680,10 +683,12 @@ export interface AppState {
   setNote: (sessionId: string, text: string) => void
   setPlaywrightCheck: (v: boolean) => void
   setLocalhostCheck: (v: boolean) => void
-  addAiProvider: (p: AIProvider) => void
-  updateAiProvider: (id: string, patch: Partial<Omit<AIProvider, 'id'>>) => void
-  removeAiProvider: (id: string) => void
-  setActiveAiProvider: (id: string) => void
+  setGroqApiKey: (k: string) => void
+  setVoiceProvider: (p: 'groq' | 'openai') => void
+  /** @deprecated */ addAiProvider: (p: AIProvider) => void
+  /** @deprecated */ updateAiProvider: (id: string, patch: Partial<Omit<AIProvider, 'id'>>) => void
+  /** @deprecated */ removeAiProvider: (id: string) => void
+  /** @deprecated */ setActiveAiProvider: (id: string) => void
   addProject: (p: Project) => void
   updateProject: (id: string, patch: Partial<Omit<Project, 'id'>>) => void
   removeProject: (id: string) => void
@@ -715,6 +720,7 @@ export interface AppState {
   addDocTemplate: (t: DocTemplate) => void
   updateDocTemplate: (id: string, patch: Partial<Omit<DocTemplate, 'id'>>) => void
   removeDocTemplate: (id: string) => void
+  setDocTemplates: (templates: DocTemplate[]) => void
   setDocApplying: (projectId: string, applying: boolean) => void
   setLastProjectPath: (p: string) => void
   setOpenrouterKey: (key: string) => void
@@ -810,21 +816,57 @@ const DEMO_TEMPLATES: Template[] = [
 
 // ── File-based storage adapter ────────────────────────────────────────────────
 // Reads/writes ~/.cc-ui-data.json via the Vite dev-server API.
-// Falls back to localStorage when the server is unreachable.
+// Active user ID for per-user file routing.
+// Set on login, cleared on logout.
+let _activeStorageUserId = ''
+export const setActiveStorageUser = (id: string) => { _activeStorageUserId = id }
+
+const storeUrl = (base: string) =>
+  _activeStorageUserId ? `${base}?userId=${encodeURIComponent(_activeStorageUserId)}` : base
+
+// Per-user file storage: reads ~/.cc-ui-data-<userId>.json when logged in,
+// falls back to ~/.cc-ui-data.json for anonymous use.
+// On first read (no active user), bootstraps the userId from the shared file's currentUser.
 const fileStorage = {
   getItem: async (_name: string): Promise<string | null> => {
     try {
+      // If userId already known, read user file directly
+      if (_activeStorageUserId) {
+        const r = await fetch(storeUrl('/api/store-read'))
+        if (!r.ok) throw new Error()
+        const text = await r.text()
+        return text === 'null' || text.trim() === '' ? null : text
+      }
+      // Bootstrap: read shared file, detect currentUser, switch to user file
       const r = await fetch('/api/store-read')
-      if (!r.ok) throw new Error('store-read failed')
-      const text = await r.text()
-      return text === 'null' || text.trim() === '' ? null : text
+      if (!r.ok) throw new Error()
+      const sharedText = await r.text()
+      if (!sharedText || sharedText === 'null') return null
+      try {
+        const parsed = JSON.parse(sharedText) as { state?: { currentUser?: { id?: string } } }
+        const uid = parsed?.state?.currentUser?.id
+        if (uid) {
+          _activeStorageUserId = uid
+          const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(uid)}`)
+          if (r2.ok) {
+            const userText = await r2.text()
+            // User file exists → use it; otherwise migrate shared file to user file
+            if (userText && userText !== 'null') return userText
+            // First login ever: seed user file from shared file so nothing is lost
+            await fetch(`/api/store-write?userId=${encodeURIComponent(uid)}`, {
+              method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: sharedText,
+            })
+          }
+        }
+      } catch { /* shared file not parseable — use as-is */ }
+      return sharedText
     } catch {
       return localStorage.getItem(_name)
     }
   },
   setItem: async (_name: string, value: string): Promise<void> => {
     try {
-      await fetch('/api/store-write', {
+      await fetch(storeUrl('/api/store-write'), {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: value,
@@ -835,7 +877,7 @@ const fileStorage = {
   },
   removeItem: async (_name: string): Promise<void> => {
     try {
-      await fetch('/api/store-write', { method: 'POST', body: 'null' })
+      await fetch(storeUrl('/api/store-write'), { method: 'POST', body: 'null' })
     } catch {
       localStorage.removeItem(_name)
     }
@@ -874,9 +916,17 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   newSessionPreKind: null,
   notes: {},
   kanban: {},
-  aiFunctionMap: {},
+  aiFunctionMap: {
+    terminal:      'deepseek/deepseek-chat-v3-0324',
+    kanban:        'deepseek/deepseek-chat-v3-0324',
+    devDetect:     'deepseek/deepseek-chat-v3-0324',
+    docUpdate:     'deepseek/deepseek-r1-0528',
+    contextSearch: 'deepseek/deepseek-chat-v3-0324',
+  },
   playwrightCheck: false,
   localhostCheck: false,
+  groqApiKey: '',
+  voiceProvider: 'groq' as const,
   aiProviders: [],
   activeAiProvider: '',
   terminalShortcuts: DEFAULT_TERMINAL_SHORTCUTS,
@@ -885,7 +935,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   lastProjectPath: '',
   openrouterKey: '',
   githubToken: '',
-  codeReviewModel: 'anthropic/claude-sonnet-4-6',
+  codeReviewModel: 'deepseek/deepseek-chat-v3-0324',
   defaultManagerModel: 'anthropic/claude-sonnet-4-6',
   orbitMessages: {},
   orbitMeta: {},
@@ -910,7 +960,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   adminEmails: ['admin@codera.com'],
 
   supabaseUrl: 'https://fpphqkuizptypeawclsx.supabase.co',
-  supabaseAnonKey: '',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwcGhxa3VpenB0eXBlYXdjbHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwMjY2ODksImV4cCI6MjA5MzYwMjY4OX0.A7n06LfElOmYPlzHpIGALAzEc1YK946pve-YsfJuSYk',
   supabaseServiceRoleKey: '',
   cloudflareAccountId: '',
   cloudflareR2AccessKeyId: '',
@@ -990,6 +1040,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setNote: (sessionId, text) => set((s) => ({ notes: { ...s.notes, [sessionId]: text } })),
   setPlaywrightCheck: (v) => set({ playwrightCheck: v }),
   setLocalhostCheck: (v) => set({ localhostCheck: v }),
+  setGroqApiKey: (groqApiKey) => set({ groqApiKey }),
+  setVoiceProvider: (voiceProvider) => set({ voiceProvider }),
   addAiProvider: (p) => set((s) => ({ aiProviders: [...s.aiProviders, p], activeAiProvider: s.activeAiProvider || p.id })),
   updateAiProvider: (id, patch) => set((s) => ({ aiProviders: s.aiProviders.map(p => p.id === id ? { ...p, ...patch } : p) })),
   removeAiProvider: (id) => set((s) => {
@@ -1165,6 +1217,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   addDocTemplate: (t) => set((s) => ({ docTemplates: [...s.docTemplates, t] })),
   updateDocTemplate: (id, patch) => set((s) => ({ docTemplates: s.docTemplates.map(t => t.id === id ? { ...t, ...patch } : t) })),
   removeDocTemplate: (id) => set((s) => ({ docTemplates: s.docTemplates.filter(t => t.id !== id) })),
+  setDocTemplates: (templates) => set({ docTemplates: templates }),
   setDocApplying: (projectId, applying) => set((s) => ({ docApplying: { ...s.docApplying, [projectId]: applying } })),
   setLastProjectPath: (lastProjectPath) => set({ lastProjectPath }),
   setOpenrouterKey: (openrouterKey) => set({ openrouterKey }),
@@ -1219,6 +1272,12 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   // Migrate old sessions that were saved without cmd/args
   onRehydrateStorage: () => (state) => {
     if (!state) return
+    // Ensure screen is always valid — null/undefined causes a black screen
+    if (!state.screen) {
+      state.screen = state.currentUser ? 'workspace' : 'login'
+      // Force-persist the corrected screen back to storage so it doesn't revert on next reload
+      setTimeout(() => useAppStore.setState({ screen: state!.screen }), 0)
+    }
     // Migrate sessions missing cmd/args
     state.projects = state.projects.map(p => ({
       ...p,
@@ -1255,7 +1314,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     // Ensure openrouterKey exists
     if (state.openrouterKey === undefined) state.openrouterKey = ''
     if (state.githubToken === undefined) state.githubToken = ''
-    if (state.codeReviewModel === undefined) state.codeReviewModel = 'anthropic/claude-sonnet-4-6'
+    if (!state.codeReviewModel || state.codeReviewModel === 'anthropic/claude-sonnet-4-6') state.codeReviewModel = 'deepseek/deepseek-chat-v3-0324'
     if (state.defaultManagerModel === undefined) state.defaultManagerModel = 'anthropic/claude-sonnet-4-6'
     if (state.orbitCtxBefore === undefined) state.orbitCtxBefore = 2
     if (state.orbitCtxAfter === undefined) state.orbitCtxAfter = 2
@@ -1270,7 +1329,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.projectBrains === undefined) state.projectBrains = {}
     if (state.orbitChatsLoaded === undefined) state.orbitChatsLoaded = {}
     if (!state.supabaseUrl) state.supabaseUrl = 'https://fpphqkuizptypeawclsx.supabase.co'
-    if (state.supabaseAnonKey === undefined) state.supabaseAnonKey = ''
+    if (!state.supabaseAnonKey) state.supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwcGhxa3VpenB0eXBlYXdjbHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwMjY2ODksImV4cCI6MjA5MzYwMjY4OX0.A7n06LfElOmYPlzHpIGALAzEc1YK946pve-YsfJuSYk'
     if (state.supabaseServiceRoleKey === undefined) state.supabaseServiceRoleKey = ''
     if (state.cloudflareAccountId === undefined) state.cloudflareAccountId = ''
     if (state.cloudflareR2AccessKeyId === undefined) state.cloudflareR2AccessKeyId = ''
@@ -1279,8 +1338,18 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.cloudflareR2Endpoint === undefined) state.cloudflareR2Endpoint = ''
     if (state.cloudflareR2PublicUrl === undefined) state.cloudflareR2PublicUrl = ''
     if (state.currentUser === undefined) state.currentUser = null
+    // Flush migrated values back to file storage so they persist across restarts
+    // Use setTimeout(0) to let Zustand finish rehydration before triggering a set
+    setTimeout(() => {
+      useAppStore.setState({
+        supabaseUrl:    state.supabaseUrl,
+        supabaseAnonKey: state.supabaseAnonKey,
+      })
+    }, 0)
   },
   partialize: (s) => ({
+    // Normalize overlay screens → workspace so we never restore a modal/settings on reload
+    screen: (s.screen === 'login' || s.screen === 'workspace') ? s.screen : 'workspace',
     projects:        s.projects,
     aliases:         s.aliases,
     templates:       s.templates,
@@ -1304,6 +1373,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     aiFunctionMap:   s.aiFunctionMap,
     playwrightCheck: s.playwrightCheck,
     localhostCheck:  s.localhostCheck,
+    groqApiKey:      s.groqApiKey,
+    voiceProvider:   s.voiceProvider,
     aiProviders:     s.aiProviders,
     activeAiProvider: s.activeAiProvider,
     docTemplates:    s.docTemplates,

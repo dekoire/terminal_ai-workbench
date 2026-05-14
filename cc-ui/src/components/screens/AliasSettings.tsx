@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { useAppStore } from '../../store/useAppStore'
-import type { Alias, RepoToken, DocTemplate } from '../../store/useAppStore'
-import { IPlus, IDrag, IEdit, ITrash, ISpark, ICheck, IBookmark, IGit, IStar, IMoon, ISun, IChevDown, IChevUp, IKeyboard, ICpu, IFileText, IDatabase, ILink, ICloud, ICloudUpload, IShield, IUsers, ILock, ISquareTerminal } from '../primitives/Icons'
+import { useAppStore, DEFAULT_DOC_TEMPLATES } from '../../store/useAppStore'
+import type { Alias, RepoToken, DocTemplate, Template } from '../../store/useAppStore'
+import { IPlus, IDrag, IEdit, ITrash, ISpark, ICheck, IBookmark, IGit, IStar, IMoon, ISun, IChevDown, IChevUp, IKeyboard, ICpu, IFileText, IDatabase, ILink, ICloud, ICloudUpload, IShield, IUsers, ILock, ISquareTerminal, IMic } from '../primitives/Icons'
 import { Pill } from '../primitives/Pill'
 import { ACCENT_PRESETS, TERMINAL_THEMES, applyPreset } from '../../theme/presets'
 import type { AIProvider, TerminalShortcut, ClaudeProvider } from '../../store/useAppStore'
 import { useOpenRouterModels } from '../../utils/useOpenRouterModels'
+import { saveGlobalTemplates, saveGlobalCliConfig, saveGlobalPrompts } from '../../lib/useSupabaseSync'
+import { getSupabase } from '../../lib/supabase'
 import { MultiCombobox } from '../primitives/MultiCombobox'
 import { SingleCombobox } from '../primitives/SingleCombobox'
 
@@ -71,10 +73,11 @@ const btnGhost: React.CSSProperties = {
 }
 
 const NAV = ['Agents', 'API Credentials', 'KI-Funktionen', 'GitHub Integration', 'Aussehen', 'Vorlagen', 'Kontext Management']
+// Note: 'Integrationen' and 'Admin: Voice/Groq' are intentionally admin-only — app-level credentials are baked in
 
 const NAV_DESC: Record<string, string> = {
   'Agents':                'Terminal-Aliases & KI-Modelle',
-  'API Credentials':       'API-Keys & Provider-Zugänge',
+  'API Credentials':       'OpenRouter.AI',
   'KI-Funktionen':         'Modellzuweisung für Funktionen',
   'GitHub Integration':    'Repos, Tokens, Git-Anbindung',
   'Prompt templates':      'AI-Prompts & User Stories',
@@ -89,6 +92,8 @@ const NAV_DESC: Record<string, string> = {
   'Admin: Benutzer':            'Rollen & Zugangsverwaltung',
   'Admin: Integrationen':       'Supabase, Cloudflare R2',
   'Admin: Claude CLI Konfig':   'tweakcc, Themes, Optionen',
+  'Admin: Vorlagen':            'System-Prompts & Standard-Vorlagen',
+  'Admin: Voice/Groq':          'Groq / OpenAI API-Key für Sprachaufnahme',
   'Admin: System':              'Version, Daten, Feature-Flags',
 }
 
@@ -109,6 +114,8 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   'Admin: Benutzer':            <IUsers       style={{ width: 13, height: 13, flexShrink: 0 }} />,
   'Admin: Integrationen':       <ILink        style={{ width: 13, height: 13, flexShrink: 0 }} />,
   'Admin: Claude CLI Konfig':   <ISquareTerminal style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'Admin: Vorlagen':            <IFileText    style={{ width: 13, height: 13, flexShrink: 0 }} />,
+  'Admin: Voice/Groq':          <IMic         style={{ width: 13, height: 13, flexShrink: 0 }} />,
   'Admin: System':              <IDatabase    style={{ width: 13, height: 13, flexShrink: 0 }} />,
 }
 
@@ -176,7 +183,7 @@ function TitlebarLogo() {
 }
 
 // ── Root component ────────────────────────────────────────────────────────────
-const ADMIN_NAV = ['Admin: Übersicht', 'Admin: Benutzer', 'Admin: Integrationen', 'Admin: Claude CLI Konfig', 'Admin: System']
+const ADMIN_NAV = ['Admin: Benutzer', 'Admin: Vorlagen', 'Admin: Voice/Groq', 'Admin: Integrationen', 'Admin: Claude CLI Konfig']
 
 export function AliasSettings() {
   const { aliases, addAlias, updateAlias, removeAlias, reorderAliases, setScreen, currentUser, adminEmails } = useAppStore()
@@ -248,11 +255,12 @@ export function AliasSettings() {
           {activeNav === 'Darstellung'        && <AppearancePanel />}
           {activeNav === 'Aussehen'           && <AussehenpPanel />}
           {activeNav === 'Terminal-Befehle'   && <TerminalCommandsPanel />}
-          {activeNav === 'Vorlagen'           && <DocTemplatesPanel />}
+          {activeNav === 'Vorlagen'           && <DocTemplatesPanel isAdmin={false} />}
+          {activeNav === 'Admin: Vorlagen'    && <DocTemplatesPanel isAdmin={true} />}
           {activeNav === 'Kontext Management' && <KontextMgmtPanel />}
-          {activeNav === 'Integrationen'      && <IntegrationenPanel />}
           {activeNav === 'Admin: Übersicht'      && <AdminOverviewPanel />}
           {activeNav === 'Admin: Benutzer'          && <AdminUsersPanel />}
+          {activeNav === 'Admin: Voice/Groq'        && <VoiceGroqPanel />}
           {activeNav === 'Admin: Integrationen'     && <IntegrationenPanel />}
           {activeNav === 'Admin: Claude CLI Konfig' && <ClaudeCLIAdminPanel />}
           {activeNav === 'Admin: System'            && <AdminSystemPanel />}
@@ -404,6 +412,95 @@ function AdminUsersPanel() {
   )
 }
 
+// ── Admin: Voice/Groq ────────────────────────────────────────────────────────
+function VoiceGroqPanel() {
+  const { groqApiKey, setGroqApiKey, voiceProvider, setVoiceProvider } = useAppStore()
+  const [showKey, setShowKey] = useState(false)
+  const [draft, setDraft]     = useState(groqApiKey)
+  const [saved, setSaved]     = useState(false)
+
+  const save = () => {
+    setGroqApiKey(draft.trim())
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1800)
+  }
+
+  const mask = (k: string) => k.length < 8 ? '••••••••' : k.slice(0, 6) + '••••••••' + k.slice(-4)
+
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 560, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Voice / Groq</div>
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>API-Key für Sprachaufnahme & Transkription im Terminal (Whisper-Modell)</div>
+      </div>
+
+      {/* Provider selector */}
+      <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 8 }}>Anbieter</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(['groq', 'openai'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setVoiceProvider(p)}
+                style={{
+                  padding: '5px 16px', border: '1px solid', borderRadius: 6, fontSize: 11.5,
+                  cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: voiceProvider === p ? 600 : 400,
+                  background: voiceProvider === p ? 'var(--accent-soft)' : 'var(--bg-2)',
+                  borderColor: voiceProvider === p ? 'var(--accent)' : 'var(--line)',
+                  color: voiceProvider === p ? 'var(--accent)' : 'var(--fg-2)',
+                }}
+              >
+                {p === 'groq' ? 'Groq (kostenlos)' : 'OpenAI'}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--fg-3)' }}>
+            {voiceProvider === 'groq'
+              ? 'Groq nutzt Whisper Large v3 Turbo — schnell & kostenlos im Free-Tier.'
+              : 'OpenAI nutzt Whisper-1 — kostenpflichtig pro Minute.'}
+          </div>
+        </div>
+
+        {/* API Key */}
+        <div style={{ padding: '10px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 6 }}>
+            {voiceProvider === 'groq' ? 'Groq' : 'OpenAI'} API-Key
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              placeholder={voiceProvider === 'groq' ? 'gsk_…' : 'sk-…'}
+              style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none' }}
+            />
+            <button onClick={() => setShowKey(v => !v)} style={{ padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-2)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap' }}>
+              {showKey ? 'Verbergen' : 'Anzeigen'}
+            </button>
+            <button onClick={save} style={{ padding: '6px 14px', border: 'none', borderRadius: 6, background: saved ? 'var(--ok, #22c55e)' : 'var(--accent)', color: 'var(--accent-fg)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap' }}>
+              {saved ? '✓ Gespeichert' : 'Speichern'}
+            </button>
+          </div>
+          {groqApiKey && (
+            <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--fg-3)' }}>
+              Aktuell: <span className="mono">{mask(groqApiKey)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Info */}
+      <div style={{ padding: '10px 12px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)', fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.6 }}>
+        <strong style={{ color: 'var(--fg-1)' }}>Hinweis:</strong> Der Mikrofon-Button im Terminal-Eingabefeld nutzt diesen Key. Ohne Key ist der Button deaktiviert.
+        {voiceProvider === 'groq' && (
+          <> Groq-Keys sind kostenlos unter <span style={{ color: 'var(--accent)' }}>console.groq.com</span> erhältlich.</>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Admin: System ─────────────────────────────────────────────────────────────
 function AdminSystemPanel() {
   const { projects, aliases, customUiColors, customTerminalColors } = useAppStore()
@@ -477,6 +574,7 @@ type AgentsPanelProps = {
 
 function AgentsPanel(props: AgentsPanelProps) {
   const [agentTab, setAgentTab] = useState<'terminal' | 'agent-chat'>('agent-chat')
+  const openAddRef = useRef<(() => void) | null>(null)
 
   const tabBtn = (t: 'terminal' | 'agent-chat'): React.CSSProperties => ({
     padding: '5px 22px', border: 'none', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
@@ -494,7 +592,8 @@ function AgentsPanel(props: AgentsPanelProps) {
           <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Terminal-Aliases & KI-Modelle</div>
         </div>
         <span style={{ flex: 1 }} />
-        {agentTab === 'terminal' && <button style={btnPrimary} onClick={props.openNew}><IPlus />Neu</button>}
+        {agentTab === 'terminal'    && <button style={btnPrimary} onClick={props.openNew}><IPlus />Neu</button>}
+        {agentTab === 'agent-chat'  && <button style={btnPrimary} onClick={() => openAddRef.current?.()}><IPlus style={{ width: 13, height: 13 }} /> Agent hinzufügen</button>}
       </div>
 
       {/* Centered tab bar */}
@@ -506,7 +605,7 @@ function AgentsPanel(props: AgentsPanelProps) {
       </div>
 
       {agentTab === 'terminal'   && <AliasesPanel {...props} />}
-      {agentTab === 'agent-chat' && <ClaudeProviderTab />}
+      {agentTab === 'agent-chat' && <ClaudeProviderTab openAddRef={openAddRef} />}
     </div>
   )
 }
@@ -1289,6 +1388,7 @@ function ClaudeCLIAdminPanel() {
 }
 
 function ClaudeCLITab() {
+  const { currentUser, supabaseUrl, supabaseAnonKey } = useAppStore()
   const [config, setConfig]       = useState<TweakccConfig | null>(null)
   const [loading, setLoading]     = useState(true)
   const [applying, setApplying]   = useState(false)
@@ -1324,6 +1424,11 @@ function ClaudeCLITab() {
       await fetch('/api/tweakcc/system-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: systemPrompt }) })
       const r = await fetch('/api/tweakcc/apply', { method: 'POST' }).then(x => x.json() as Promise<{ ok: boolean; error?: string }>)
       setStatus(r.ok ? { ok: true, msg: 'Angewendet ✓' } : { ok: false, msg: r.error ?? 'Fehler beim Anwenden' })
+      // Push to global_config so all users receive this config on next login
+      if (currentUser?.id) {
+        const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+        if (sb) void saveGlobalCliConfig(sb, currentUser.id, { tweakccConfig: config, systemPrompt })
+      }
     } catch (e) {
       setStatus({ ok: false, msg: String(e) })
     } finally {
@@ -1713,35 +1818,14 @@ const OR_REVIEW_MODELS = [
 ]
 
 function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
-  const { aiProviders, activeAiProvider, addAiProvider, updateAiProvider, removeAiProvider, setActiveAiProvider, aiFunctionMap, setAiFunctionMap, openrouterKey, setOpenrouterKey, codeReviewModel, setCodeReviewModel } = useAppStore()
+  const { aiFunctionMap, setAiFunctionMap, openrouterKey, setOpenrouterKey, codeReviewModel, setCodeReviewModel, orbitCompressModel, setOrbitCompressModel } = useAppStore()
+  const { models, loading: orLoading } = useOpenRouterModels()
   const ALL_TABS: AITab[] = ['keys', 'functions', 'provider']
   const visibleTabs = ALL_TABS.filter(t => !hideTabs.includes(t))
   const firstVisible = visibleTabs[0] ?? 'keys'
   const [activeTab, setActiveTab] = useState<AITab>(firstVisible)
-  const [editId, setEditId]   = useState<string | null>(null)
-  const [adding, setAdding]   = useState(false)
-  const [showKeys, setShowKeys] = useState<Set<string>>(new Set())
   const [editingOrKey, setEditingOrKey]   = useState(false)
   const [orKeyDraft, setOrKeyDraft]       = useState(openrouterKey)
-  const emptyForm = () => ({ name: '', provider: 'openai' as AIProvider['provider'], apiKey: '', model: 'gpt-4o' })
-  const [form, setForm] = useState(emptyForm)
-
-  const openAdd  = () => { setAdding(true); setEditId(null); setForm(emptyForm()) }
-  const openEdit = (p: AIProvider) => { setEditId(p.id); setAdding(false); setForm({ name: p.name, provider: p.provider, apiKey: p.apiKey, model: p.model }) }
-  const cancel   = () => { setAdding(false); setEditId(null) }
-  const save = () => {
-    if (!form.name.trim() || !form.apiKey.trim()) return
-    if (adding) {
-      const id = `ai${Date.now()}`
-      addAiProvider({ id, name: form.name.trim(), provider: form.provider, apiKey: form.apiKey.trim(), model: form.model.trim() || PROVIDER_DEFAULTS[form.provider].model })
-    } else if (editId) {
-      updateAiProvider(editId, { name: form.name.trim(), provider: form.provider, apiKey: form.apiKey.trim(), model: form.model.trim() || PROVIDER_DEFAULTS[form.provider].model })
-    }
-    cancel()
-  }
-
-  const toggleShow = (id: string) => setShowKeys(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const mask = (k: string) => k.length < 12 ? '••••••••' : k.slice(0, 6) + '••••••••' + k.slice(-4)
 
   const tabStyle = (t: AITab): React.CSSProperties => ({
     padding: '5px 20px', border: 'none', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
@@ -1757,7 +1841,7 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
   }
 
   const pageTitle    = firstVisible === 'functions' ? 'KI-Funktionen' : 'API Credentials'
-  const pageSubtitle = firstVisible === 'functions' ? 'Modellzuweisung für interne Funktionen' : 'API-Keys & Provider-Zugänge'
+  const pageSubtitle = firstVisible === 'functions' ? 'Modellzuweisung für interne Funktionen' : 'OpenRouter.AI'
 
   return (
     <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1781,133 +1865,44 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
 
       {/* ── Tab 1: API-Keys ─────────────────────────────────────────────── */}
       {activeTab === 'keys' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* OpenRouter */}
-          <section style={{ border: '1px solid var(--line-strong)', borderRadius: 6, overflow: 'hidden' }}>
-            <div style={{ padding: '10px 14px', background: 'var(--bg-2)', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                <ISpark style={{ color: 'var(--accent)', width: 13, height: 13 }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>OpenRouter</span>
-                <span style={{ flex: 1 }} />
-                {!editingOrKey && (
-                  <button onClick={() => { setEditingOrKey(true); setOrKeyDraft(openrouterKey) }}
-                    style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>
-                    {openrouterKey ? 'Ändern' : 'Hinterlegen'}
+          <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, padding: '10px 14px', alignItems: 'center' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                  <ISpark style={{ color: 'var(--accent)', width: 13, height: 13, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>OpenRouter API-Key</span>
+                  {openrouterKey && !editingOrKey && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ICheck style={{ color: 'var(--ok)', width: 12, height: 12 }} />
+                      <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{openrouterKey.slice(0, 10)}···</span>
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.45 }}>
+                  KI-Plattform mit 300+ Modellen — wird für alle KI-Funktionen genutzt.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                {editingOrKey ? (
+                  <>
+                    <input
+                      style={{ width: 220, padding: '6px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none' }}
+                      type="password" value={orKeyDraft} onChange={e => setOrKeyDraft(e.target.value)}
+                      placeholder="sk-or-v1-..." autoFocus
+                    />
+                    <button onClick={() => { setOpenrouterKey(orKeyDraft.trim().replace(/[^\x20-\x7E]/g, '')); setEditingOrKey(false) }} style={btnPrimary}>Speichern</button>
+                    <button onClick={() => setEditingOrKey(false)} style={btnGhost}>Abbrechen</button>
+                  </>
+                ) : (
+                  <button onClick={() => { setEditingOrKey(true); setOrKeyDraft(openrouterKey) }} style={{ ...btnGhost, fontSize: 11.5 }}>
+                    {openrouterKey ? 'Key ändern' : '+ Key hinterlegen'}
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.45 }}>
-                KI-Plattform mit 300+ Modellen über eine einzige API — empfohlen für Agenten &amp; Modell-Browser.
-              </div>
             </div>
-            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* API Key */}
-              {editingOrKey ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>API Key</div>
-                  <input style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' }} type="password" value={orKeyDraft} onChange={e => setOrKeyDraft(e.target.value)} placeholder="sk-or-v1-..." autoFocus />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setOpenrouterKey(orKeyDraft); setEditingOrKey(false) }} style={btnPrimary}>Speichern</button>
-                    <button onClick={() => setEditingOrKey(false)} style={btnGhost}>Abbrechen</button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
-                  {openrouterKey
-                    ? <><ICheck style={{ color: 'var(--ok)', flexShrink: 0, width: 13, height: 13 }} /><span className="mono" style={{ fontSize: 11, color: 'var(--fg-2)' }}>{openrouterKey.slice(0, 12)}···</span></>
-                    : <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>Kein Key — für Modell-Browser benötigt</span>
-                  }
-                </div>
-              )}
-              {/* Read-only metadata */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 2 }}>
-                {[
-                  { label: 'Endpunkt', value: 'https://openrouter.ai/api/v1' },
-                  { label: 'Protokoll', value: 'OpenAI-kompatibel (REST)' },
-                  { label: 'Modell-Katalog', value: 'openrouter.ai/models' },
-                  { label: 'Abrechnung', value: 'Pay-per-Token, pro Modell' },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--fg-3)', marginBottom: 2 }}>{label}</div>
-                    <div style={readonlyField}>{value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Direct API Keys */}
-          <section style={{ border: '1px solid var(--line-strong)', borderRadius: 6, overflow: 'hidden' }}>
-            <div style={{ padding: '10px 14px', background: 'var(--bg-2)', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Direkte Hersteller-Keys</div>
-                <div style={{ fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.45 }}>
-                  API-Keys direkt vom LLM-Anbieter (OpenAI, Anthropic, DeepSeek) — Alternative zu OpenRouter für einzelne Anbieter. Wird für KI-Textüberarbeitung im Editor genutzt.
-                </div>
-              </div>
-              <button style={{ ...btnPrimary, flexShrink: 0 }} onClick={openAdd}><IPlus />Hinzufügen</button>
-            </div>
-            <div style={{ padding: '10px 14px' }}>
-              {aiProviders.length === 0 && !adding && (
-                <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 11, border: '1px dashed var(--line)', borderRadius: 6 }}>
-                  Noch kein Anbieter konfiguriert.
-                </div>
-              )}
-              {aiProviders.length > 0 && (
-                <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: adding || editId ? 12 : 0 }}>
-                  {aiProviders.map((p, i) => (
-                    <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 1fr 52px', padding: '8px 12px', alignItems: 'center', gap: 10, fontSize: 11.5, borderBottom: i < aiProviders.length - 1 ? '1px solid var(--line)' : 'none', background: p.id === editId ? 'var(--accent-soft)' : 'transparent' }}>
-                      <span style={{ fontWeight: 600, color: 'var(--fg-0)' }}>{p.name}</span>
-                      <span style={{ fontSize: 10, color: 'var(--fg-3)', background: 'var(--bg-3)', borderRadius: 6, padding: '2px 6px', textAlign: 'center' }}>{PROVIDER_DEFAULTS[p.provider]?.label ?? p.provider}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{showKeys.has(p.id) ? p.apiKey : mask(p.apiKey)}</span>
-                        <button onClick={() => toggleShow(p.id)} style={{ background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', fontSize: 9.5, padding: '1px 3px', fontFamily: 'inherit' }}>{showKeys.has(p.id) ? 'hide' : 'show'}</button>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => openEdit(p)} />
-                        <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`"${p.name}" löschen?`)) removeAiProvider(p.id) }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {(adding || editId) && (
-                <div style={{ border: '1px solid var(--line)', borderRadius: 6, padding: 14, background: 'var(--bg-1)' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 12 }}>{adding ? 'Anbieter hinzufügen' : 'Anbieter bearbeiten'}</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div>
-                      <label style={fieldLabel}>Name</label>
-                      <input style={fieldInput} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Mein ChatGPT" autoFocus />
-                    </div>
-                    <div>
-                      <label style={fieldLabel}>Anbieter</label>
-                      <select value={form.provider} onChange={e => { const pr = e.target.value as AIProvider['provider']; setForm(f => ({ ...f, provider: pr, model: PROVIDER_DEFAULTS[pr]?.model ?? '' })) }} style={{ ...fieldInput, cursor: 'pointer' }}>
-                        <option value="openai">OpenAI (ChatGPT)</option>
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="deepseek">DeepSeek</option>
-                        <option value="groq">Groq (kostenlos)</option>
-                      </select>
-                    </div>
-                    <div style={{ gridColumn: '1 / span 2' }}>
-                      <label style={fieldLabel}>API Key — <a href={PROVIDER_DEFAULTS[form.provider]?.docUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Key holen ↗</a></label>
-                      <input style={fieldInput} type="password" value={form.apiKey} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))} placeholder={PROVIDER_DEFAULTS[form.provider]?.placeholder ?? 'sk-…'} autoComplete="new-password" />
-                    </div>
-                    <div style={{ gridColumn: '1 / span 2' }}>
-                      <label style={fieldLabel}>Modell</label>
-                      <input style={fieldInput} value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder={PROVIDER_DEFAULTS[form.provider]?.model} />
-                    </div>
-                    <div style={{ gridColumn: '1 / span 2', display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 2 }}>
-                      <button style={btnGhost} onClick={cancel}>Abbrechen</button>
-                      <button style={{ ...btnPrimary, opacity: (!form.name.trim() || !form.apiKey.trim()) ? 0.5 : 1 }} disabled={!form.name.trim() || !form.apiKey.trim()} onClick={save}>
-                        {adding ? 'Speichern' : 'Aktualisieren'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
+          </div>
 
         </div>
       )}
@@ -1916,58 +1911,67 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
       {activeTab === 'functions' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* Function assignment */}
+          {/* Function assignment — all OR-based */}
           <section>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 3 }}>Funktionszuweisung</div>
-            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 10, lineHeight: 1.45 }}>Welcher Anbieter oder welches Modell soll für welche interne Funktion verwendet werden?</div>
+            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 10, lineHeight: 1.45 }}>Welches OpenRouter-Modell soll für welche interne Funktion verwendet werden? (Erfordert OpenRouter API-Key)</div>
+            {!openrouterKey && (
+              <div style={{ padding: '10px 14px', background: 'color-mix(in srgb, var(--warn, #f59e0b) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--warn, #f59e0b) 30%, transparent)', borderRadius: 6, fontSize: 11, color: 'var(--fg-1)', marginBottom: 12 }}>
+                OpenRouter API-Key erforderlich. Bitte unter „API Credentials" → OpenRouter Key eintragen.
+              </div>
+            )}
             <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
-              {/* Direct provider functions */}
-              {aiProviders.length === 0 ? (
-                <div style={{ padding: '12px 14px', color: 'var(--fg-3)', fontSize: 10.5, fontStyle: 'italic' }}>
-                  Hersteller-Keys → „API-Keys" hinzufügen um weitere Funktionen zuzuweisen.
-                </div>
-              ) : (
-                AI_FUNCTIONS.map((fn, i) => {
-                  const selected = aiFunctionMap[fn.key] || activeAiProvider || aiProviders[0]?.id || ''
-                  return (
-                    <div key={fn.key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '10px 14px', alignItems: 'center', borderBottom: i < AI_FUNCTIONS.length - 1 ? '1px solid var(--line)' : 'none' }}>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{fn.label}</div>
-                        <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>{fn.description}</div>
-                      </div>
-                      <SingleCombobox value={selected} onChange={v => setAiFunctionMap(fn.key, v)} options={aiProviders.map(p => ({ value: p.id, label: p.name, desc: p.model }))} placeholder="Anbieter wählen…" />
+              {AI_FUNCTIONS.map((fn, i) => {
+                const selected = aiFunctionMap[fn.key] || ''
+                return (
+                  <div key={fn.key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '10px 14px', alignItems: 'center', borderBottom: i < AI_FUNCTIONS.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{fn.label}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>{fn.description}</div>
                     </div>
-                  )
-                })
-              )}
-            </div>
-          </section>
-
-          {/* OpenRouter functions */}
-          <section>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 3 }}>OpenRouter-Funktionen</div>
-            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 10, lineHeight: 1.45 }}>Welches Modell soll für OpenRouter-basierte Funktionen genutzt werden? (Erfordert OpenRouter API-Key)</div>
-            <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '10px 14px', alignItems: 'center' }}>
+                    <SingleCombobox
+                      value={selected}
+                      onChange={v => setAiFunctionMap(fn.key, v)}
+                      options={orLoading ? [{ value: '', label: 'Modelle laden…' }] : models.map(m => ({ value: m.value, label: m.label, desc: m.value }))}
+                      placeholder="OR-Modell wählen…"
+                      searchable
+                    />
+                  </div>
+                )
+              })}
+              {/* KI-Code-Review row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '10px 14px', alignItems: 'center', borderTop: '1px solid var(--line)' }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>KI-Code-Review</div>
                   <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>Modell für Code-Reviews im GitHub-Tab (Analyse, Sicherheit, Performance, Stil)</div>
                 </div>
-                <select
+                <SingleCombobox
                   value={codeReviewModel}
-                  onChange={e => setCodeReviewModel(e.target.value)}
-                  style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 5, color: 'var(--fg-0)', fontSize: 11.5, padding: '5px 8px', fontFamily: 'var(--font-ui)', cursor: 'pointer', width: '100%' }}
-                >
-                  {OR_REVIEW_MODELS.map(m => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
+                  onChange={v => setCodeReviewModel(v)}
+                  options={orLoading ? [{ value: '', label: 'Modelle laden…' }] : models.map(m => ({ value: m.value, label: m.label, desc: m.value }))}
+                  placeholder="OR-Modell wählen…"
+                  searchable
+                />
+              </div>
+              {/* Kontext-Komprimierung row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '10px 14px', alignItems: 'center', borderTop: '1px solid var(--line)' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Kontext-Komprimierung</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>Verdichtet den Chat-Verlauf beim Neuen Chat automatisch auf das Wesentliche</div>
+                </div>
+                <SingleCombobox
+                  value={orbitCompressModel}
+                  onChange={v => setOrbitCompressModel(v)}
+                  options={orLoading ? [{ value: '', label: 'Modelle laden…' }] : models.map(m => ({ value: m.value, label: m.label, desc: m.value }))}
+                  placeholder="OR-Modell wählen…"
+                  searchable
+                />
               </div>
             </div>
           </section>
 
           <div style={{ padding: '10px 12px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)', fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.55 }}>
-            <strong style={{ color: 'var(--fg-1)' }}>Hinweis:</strong> Klicke im Terminal-Eingabefeld auf <span style={{ fontWeight: 600, color: 'var(--accent)' }}>✦ KI</span> um Text automatisch zu überarbeiten. Keys werden lokal in <span className="mono">~/.cc-ui-data.json</span> gespeichert.
+            <strong style={{ color: 'var(--fg-1)' }}>Hinweis:</strong> Alle KI-Funktionen laufen über OpenRouter. Klicke im Terminal-Eingabefeld auf <span style={{ fontWeight: 600, color: 'var(--accent)' }}>✦ KI</span> um Text automatisch zu überarbeiten. Keys werden lokal in <span className="mono">~/.cc-ui-data.json</span> gespeichert.
           </div>
         </div>
       )}
@@ -1981,7 +1985,7 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
 
 // ── Claude Provider Tab ───────────────────────────────────────────────────────
 
-function ClaudeProviderTab() {
+function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject<(() => void) | null> }) {
   const { claudeProviders, addClaudeProvider, updateClaudeProvider, removeClaudeProvider, aliases, addAlias, updateAlias } = useAppStore()
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
@@ -2046,6 +2050,7 @@ function ClaudeProviderTab() {
     setAdding(true); setEditId(null)
     const f = emptyForm(); setForm(f); syncJson(f); setEndpointStatus(null)
   }
+  if (openAddRef) openAddRef.current = openAdd
   const openEdit = (p: ClaudeProvider) => {
     setEditId(p.id); setAdding(false)
     const f = { name: p.name, baseUrl: p.baseUrl, authToken: p.authToken, modelName: p.modelName, orModelId: p.orModelId ?? '' }
@@ -2179,29 +2184,30 @@ function ClaudeProviderTab() {
       {/* Provider list */}
       {!showForm && (
         <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
             {claudeProviders.length === 0 && (
-              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--fg-3)', fontSize: 11.5, border: '1px dashed var(--line-strong)', borderRadius: 6 }}>
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--fg-3)', fontSize: 11.5 }}>
                 Noch kein Provider angelegt.
               </div>
             )}
-            {claudeProviders.map(p => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
+            {claudeProviders.map((p, i) => (
+              <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, padding: '10px 14px', alignItems: 'center', borderBottom: i < claudeProviders.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{p.name}</span>
                     {p.endpointOk === true  && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: 'rgba(100,200,100,0.12)', border: '1px solid rgba(100,200,100,0.4)', color: '#6dc87a', fontWeight: 600 }}>✓ online</span>}
                     {p.endpointOk === false && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: 'rgba(239,120,120,0.12)', border: '1px solid rgba(239,120,120,0.4)', color: '#ef7a7a', fontWeight: 600 }}>✕ offline</span>}
                   </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{p.baseUrl}/anthropic · {p.modelName}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{p.baseUrl} · {p.modelName}</div>
                   <div style={{ fontSize: 10, color: 'var(--accent)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>{'cc-' + p.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '')}</div>
                 </div>
-                <button onClick={() => openEdit(p)} style={{ background: 'none', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11, color: 'var(--fg-2)', fontFamily: 'var(--font-ui)' }}>Bearbeiten</button>
-                <button onClick={() => removeClaudeProvider(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 4 }}><ITrash style={{ width: 13, height: 13 }} /></button>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  <button onClick={() => openEdit(p)} style={{ ...btnGhost, fontSize: 11, padding: '4px 10px' }}>Bearbeiten</button>
+                  <button onClick={() => removeClaudeProvider(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 4 }}><ITrash style={{ width: 13, height: 13 }} /></button>
+                </div>
               </div>
             ))}
           </div>
-          <button style={btnPrimary} onClick={openAdd}><IPlus style={{ width: 13, height: 13 }} /> Provider hinzufügen</button>
         </>
       )}
 
@@ -2316,7 +2322,7 @@ function ClaudeProviderTab() {
 
 // ── Vorlagen Panel (Doc Templates + AI Prompts + User Stories) ───────────────
 
-type VorlagenTab = 'docs' | 'prompts'
+type VorlagenTab = 'docs' | 'prompts' | 'template-prompts'
 
 // Where each built-in template is actively used — shown in the list as a usage badge
 const TEMPLATE_USAGE: Record<string, { screen: string; element: string }> = {
@@ -2328,16 +2334,27 @@ const TEMPLATE_USAGE: Record<string, { screen: string; element: string }> = {
   'ai-prompt-context-search':    { screen: 'Utility-Panel', element: 'Tab „Research" → Suchen' },
 }
 
-const VORLAGEN_TABS: { key: VorlagenTab; label: string; hint: string; pathLabel: string; contentLabel: string; pathPlaceholder: string; contentPlaceholder: string; needsPath: boolean; defaultCategory: string }[] = [
-  { key: 'docs',    label: 'Dokumentationen', hint: 'Dateien die beim Erstellen eines Projekts angelegt werden.',         pathLabel: 'Pfad im Projekt', contentLabel: 'Inhalt (Markdown)', pathPlaceholder: 'z.B. Docs/RULES.md', contentPlaceholder: '# Regeln\n…',                     needsPath: true,  defaultCategory: 'doc' },
-  { key: 'prompts', label: 'System Prompts',  hint: 'System-Prompts für AI-Funktionen sowie User-Story-Vorlagen im Kanban.', pathLabel: 'Kürzel / Label',  contentLabel: 'System-Prompt',    pathPlaceholder: 'z.B. formal-de',    contentPlaceholder: 'Du bist ein professioneller Texter…', needsPath: false, defaultCategory: 'ai-prompt' },
+const VORLAGEN_TABS: { key: VorlagenTab; label: string; hint: string; pathLabel: string; contentLabel: string; pathPlaceholder: string; contentPlaceholder: string; needsPath: boolean; defaultCategory: string; adminOnly?: boolean }[] = [
+  { key: 'docs',             label: 'Dokumentationen', hint: 'Dateien die beim Erstellen eines Projekts angelegt werden.',                              pathLabel: 'Pfad im Projekt', contentLabel: 'Inhalt (Markdown)', pathPlaceholder: 'z.B. Docs/RULES.md', contentPlaceholder: '# Regeln\n…',                     needsPath: true,  defaultCategory: 'doc' },
+  { key: 'prompts',          label: 'System Prompts',  hint: 'System-Prompts für AI-Funktionen sowie User-Story-Vorlagen im Kanban.',                   pathLabel: 'Kürzel / Label',  contentLabel: 'System-Prompt',    pathPlaceholder: 'z.B. formal-de',    contentPlaceholder: 'Du bist ein professioneller Texter…', needsPath: false, defaultCategory: 'ai-prompt' },
+  { key: 'template-prompts', label: 'Prompt-Vorlagen', hint: 'Global-Prompts die Nutzer beim ersten Login als persönliche Kopien erhalten (⌘1–⌘6).', pathLabel: '',                contentLabel: 'Prompt-Text',      pathPlaceholder: '',                  contentPlaceholder: 'Analysiere zuerst alle relevanten Dateien…', needsPath: false, defaultCategory: '', adminOnly: true },
 ]
 
-function DocTemplatesPanel() {
-  const { docTemplates, addDocTemplate, updateDocTemplate, removeDocTemplate } = useAppStore()
+function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
+  const { docTemplates, addDocTemplate, updateDocTemplate, removeDocTemplate, setDocTemplates, currentUser, supabaseUrl, supabaseAnonKey, templates, addTemplate, updateTemplate, removeTemplate } = useAppStore()
   const [activeTab, setActiveTab] = useState<VorlagenTab>('docs')
   const [editId, setEditId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  // Template-prompts form state
+  const [tplEditId, setTplEditId] = useState<string | null>(null)
+  const [tplAdding, setTplAdding] = useState(false)
+  type TplForm = { name: string; hint: string; body: string; tag: string; favorite: boolean }
+  const emptyTplForm = (): TplForm => ({ name: '', hint: '', body: '', tag: '', favorite: false })
+  const [tplForm, setTplForm] = useState<TplForm>(emptyTplForm())
+
+  // Non-admins only see the 'docs' tab; admins see all tabs
+  const visibleTabs = isAdmin ? VORLAGEN_TABS : VORLAGEN_TABS.filter(t => t.key === 'docs')
 
   const tabCfg = VORLAGEN_TABS.find(t => t.key === activeTab)!
   const emptyForm = (): Omit<DocTemplate, 'id'> => ({ name: '', relativePath: '', content: '', enabled: true, category: tabCfg.defaultCategory as DocTemplate['category'] })
@@ -2347,22 +2364,58 @@ function DocTemplatesPanel() {
     ? docTemplates.filter(t => (t.category ?? 'doc') === 'doc')
     : docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story')
 
-  const tabCount = (tab: VorlagenTab) => tab === 'docs'
-    ? docTemplates.filter(t => (t.category ?? 'doc') === 'doc').length
-    : docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story').length
+  const tabCount = (tab: VorlagenTab) => {
+    if (tab === 'docs') return docTemplates.filter(t => (t.category ?? 'doc') === 'doc').length
+    if (tab === 'prompts') return docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story').length
+    return templates.length
+  }
+
+  // After any admin mutation, push to global_config
+  const pushGlobal = (tmpl: DocTemplate[]) => {
+    if (!isAdmin || !currentUser?.id) return
+    const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+    if (sb) void saveGlobalTemplates(sb, currentUser.id, tmpl)
+  }
+
+  const pushGlobalPrompts = (tmpl: Template[]) => {
+    if (!isAdmin || !currentUser?.id) return
+    const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+    if (sb) void saveGlobalPrompts(sb, currentUser.id, tmpl)
+  }
 
   const switchTab = (tab: VorlagenTab) => { setActiveTab(tab); cancel() }
-  const openAdd  = () => { setAdding(true); setEditId(null); setForm(emptyForm()) }
+  const openAdd  = () => {
+    if (activeTab === 'template-prompts') { setTplAdding(true); setTplEditId(null); setTplForm(emptyTplForm()); return }
+    setAdding(true); setEditId(null); setForm(emptyForm())
+  }
   const openEdit = (t: DocTemplate) => { setEditId(t.id); setAdding(false); setForm({ name: t.name, relativePath: t.relativePath, content: t.content, enabled: t.enabled, category: t.category ?? 'doc' }) }
-  const cancel   = () => { setAdding(false); setEditId(null) }
+  const cancel   = () => { setAdding(false); setEditId(null); setTplAdding(false); setTplEditId(null) }
+
+  const handleReset = () => {
+    const nonDocTemplates = docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story')
+    const defaultDocTemplates = DEFAULT_DOC_TEMPLATES.filter(t => (t.category ?? 'doc') === 'doc')
+    const next = [...defaultDocTemplates, ...nonDocTemplates]
+    setDocTemplates(next)
+    if (isAdmin) pushGlobal(next)
+    setShowResetConfirm(false)
+    cancel()
+  }
 
   const canSave = form.name.trim() && (tabCfg.needsPath ? form.relativePath.trim() : true) && form.content.trim()
 
   const save = () => {
     if (!canSave) return
     const entry = { ...form, name: form.name.trim(), relativePath: form.relativePath.trim(), category: form.category }
-    if (adding) addDocTemplate({ id: `dt${Date.now()}`, ...entry })
-    else if (editId) updateDocTemplate(editId, entry)
+    let next: DocTemplate[]
+    if (adding) {
+      const newDoc = { id: `dt${Date.now()}`, ...entry }
+      addDocTemplate(newDoc)
+      next = [...docTemplates, newDoc]
+    } else if (editId) {
+      updateDocTemplate(editId, entry)
+      next = docTemplates.map(t => t.id === editId ? { ...t, ...entry } : t)
+    } else { cancel(); return }
+    if (isAdmin) pushGlobal(next)
     cancel()
   }
 
@@ -2375,108 +2428,219 @@ function DocTemplatesPanel() {
 
   return (
     <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
+      {/* Reset confirmation dialog */}
+      {showResetConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, padding: '24px 28px', maxWidth: 380, width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.28)' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg-0)', marginBottom: 10 }}>Vorlagen zurücksetzen?</div>
+            <p style={{ fontSize: 12.5, color: 'var(--fg-2)', lineHeight: 1.6, margin: '0 0 20px' }}>
+              Alle deine Dokumentations-Vorlagen werden durch die Standard-Vorlagen überschrieben. Deine Änderungen gehen dabei verloren.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button style={btnGhost} onClick={() => setShowResetConfirm(false)}>Abbrechen</button>
+              <button style={{ ...btnPrimary, background: 'var(--err, #ef4444)', width: 'auto', padding: '8px 16px' }} onClick={handleReset}>Zurücksetzen</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Vorlagen</div>
           <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{tabCfg.hint}</div>
         </div>
         <span style={{ flex: 1 }} />
+        {activeTab === 'docs' && (
+          <button style={{ ...btnGhost, marginRight: 8, fontSize: 11.5 }} onClick={() => setShowResetConfirm(true)}>↺ Zurücksetzen</button>
+        )}
         <button style={btnPrimary} onClick={openAdd}><IPlus />Neu</button>
       </div>
 
-      {/* Centered tab bar */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
-          {VORLAGEN_TABS.map(tab => (
-            <button key={tab.key} onClick={() => switchTab(tab.key)} style={tabStyle(tab.key)}>
-              {tab.label}
-              {tabCount(tab.key) > 0 && (
-                <span style={{ marginLeft: 5, fontSize: 10, background: activeTab === tab.key ? 'var(--accent-soft)' : 'var(--bg-3)', color: activeTab === tab.key ? 'var(--accent)' : 'var(--fg-3)', borderRadius: 6, padding: '1px 5px' }}>
-                  {tabCount(tab.key)}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* List */}
-      {filtered.length === 0 && !adding && (
-        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6 }}>
-          Keine {tabCfg.label} vorhanden.
-        </div>
-      )}
-
-      {filtered.length > 0 && (
-        <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: 16 }}>
-          {filtered.map((t, i) => {
-            const usage = TEMPLATE_USAGE[t.id]
-            const isBuiltin = !!usage
-            return (
-              <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '36px 1fr auto 44px', padding: '9px 14px', alignItems: 'center', gap: 12, fontSize: 12, borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none', background: t.id === editId ? 'var(--accent-soft)' : 'transparent' }}>
-                <button onClick={() => updateDocTemplate(t.id, { enabled: !t.enabled })} style={{ width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', background: t.enabled ? 'var(--accent)' : 'var(--bg-3)', position: 'relative', flexShrink: 0, transition: 'background 0.2s', boxShadow: t.enabled ? '0 0 0 1px var(--accent)' : '0 0 0 1px var(--line)' }}>
-                  <span style={{ position: 'absolute', top: 3, left: t.enabled ? 18 : 3, width: 14, height: 14, borderRadius: '50%', background: t.enabled ? 'var(--accent-fg, #fff)' : 'var(--fg-3)', transition: 'left 0.2s' }} />
-                </button>
-                <div style={{ minWidth: 0 }}>
-                  <span style={{ fontWeight: 600, color: t.enabled ? 'var(--fg-0)' : 'var(--fg-3)' }}>{t.name}</span>
-                  {activeTab !== 'docs' && usage && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
-                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, whiteSpace: 'nowrap' }}>{usage.screen}</span>
-                      <span style={{ fontSize: 10, color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{usage.element}</span>
-                    </div>
-                  )}
-                  {activeTab !== 'docs' && !usage && t.relativePath && (
-                    <div style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>{t.relativePath}</div>
-                  )}
-                  {activeTab === 'docs' && (
-                    <div className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{t.relativePath}</div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {isBuiltin && (
-                    <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 6, border: '1px solid var(--line)', color: 'var(--fg-3)', whiteSpace: 'nowrap' }}>built-in</span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                  <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => openEdit(t)} />
-                  <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`"${t.name}" löschen?`)) removeDocTemplate(t.id) }} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Add / Edit form */}
-      {(adding || editId) && (
-        <div style={{ border: '1px solid var(--line)', borderRadius: 6, padding: 16, background: 'var(--bg-1)', marginTop: 4 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 14 }}>
-            {adding ? `Neue ${tabCfg.label.replace(/en$/, '')}` : 'Bearbeiten'}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: tabCfg.needsPath ? '1fr 1fr' : '1fr', gap: 12 }}>
-            <div>
-              <label style={fieldLabel}>Name</label>
-              <input style={fieldInput} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="z.B. API-Dokumentation" autoFocus />
-            </div>
-            {tabCfg.needsPath && (
-              <div>
-                <label style={fieldLabel}>{tabCfg.pathLabel}</label>
-                <input style={fieldInput} value={form.relativePath} onChange={e => setForm(f => ({ ...f, relativePath: e.target.value }))} placeholder={tabCfg.pathPlaceholder} />
-              </div>
-            )}
-            <div style={{ gridColumn: tabCfg.needsPath ? '1 / span 2' : '1' }}>
-              <label style={fieldLabel}>{tabCfg.contentLabel}</label>
-              <textarea style={{ ...fieldInput, minHeight: 260, resize: 'vertical', lineHeight: 1.5 }} value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} placeholder={tabCfg.contentPlaceholder} spellCheck={false} />
-            </div>
-            <div style={{ gridColumn: tabCfg.needsPath ? '1 / span 2' : '1', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button style={btnGhost} onClick={cancel}>Abbrechen</button>
-              <button style={{ ...btnPrimary, opacity: canSave ? 1 : 0.5 }} disabled={!canSave} onClick={save}>
-                {adding ? 'Speichern' : 'Aktualisieren'}
+      {/* Centered tab bar — only shown for admins (non-admins only have 'docs') */}
+      {visibleTabs.length > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
+            {visibleTabs.map(tab => (
+              <button key={tab.key} onClick={() => switchTab(tab.key)} style={tabStyle(tab.key)}>
+                {tab.label}
+                {tabCount(tab.key) > 0 && (
+                  <span style={{ marginLeft: 5, fontSize: 10, background: activeTab === tab.key ? 'var(--accent-soft)' : 'var(--bg-3)', color: activeTab === tab.key ? 'var(--accent)' : 'var(--fg-3)', borderRadius: 6, padding: '1px 5px' }}>
+                    {tabCount(tab.key)}
+                  </span>
+                )}
               </button>
-            </div>
+            ))}
           </div>
         </div>
       )}
+
+      {/* ── DocTemplate list + form (docs / prompts tabs) ── */}
+      {activeTab !== 'template-prompts' && (<>
+        {filtered.length === 0 && !adding && (
+          <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6 }}>
+            Keine {tabCfg.label} vorhanden.
+          </div>
+        )}
+
+        {filtered.length > 0 && (
+          <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: 16 }}>
+            {filtered.map((t, i) => {
+              const usage = TEMPLATE_USAGE[t.id]
+              const isBuiltin = !!usage
+              return (
+                <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '36px 1fr auto 44px', padding: '9px 14px', alignItems: 'center', gap: 12, fontSize: 12, borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none', background: t.id === editId ? 'var(--accent-soft)' : 'transparent' }}>
+                  <button onClick={() => updateDocTemplate(t.id, { enabled: !t.enabled })} style={{ width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', background: t.enabled ? 'var(--accent)' : 'var(--bg-3)', position: 'relative', flexShrink: 0, transition: 'background 0.2s', boxShadow: t.enabled ? '0 0 0 1px var(--accent)' : '0 0 0 1px var(--line)' }}>
+                    <span style={{ position: 'absolute', top: 3, left: t.enabled ? 18 : 3, width: 14, height: 14, borderRadius: '50%', background: t.enabled ? 'var(--accent-fg, #fff)' : 'var(--fg-3)', transition: 'left 0.2s' }} />
+                  </button>
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontWeight: 600, color: t.enabled ? 'var(--fg-0)' : 'var(--fg-3)' }}>{t.name}</span>
+                    {activeTab !== 'docs' && usage && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, whiteSpace: 'nowrap' }}>{usage.screen}</span>
+                        <span style={{ fontSize: 10, color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{usage.element}</span>
+                      </div>
+                    )}
+                    {activeTab !== 'docs' && !usage && t.relativePath && (
+                      <div style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>{t.relativePath}</div>
+                    )}
+                    {activeTab === 'docs' && (
+                      <div className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{t.relativePath}</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {isBuiltin && (
+                      <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 6, border: '1px solid var(--line)', color: 'var(--fg-3)', whiteSpace: 'nowrap' }}>built-in</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => openEdit(t)} />
+                    <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`"${t.name}" löschen?`)) { removeDocTemplate(t.id); if (isAdmin) pushGlobal(docTemplates.filter(d => d.id !== t.id)) } }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {(adding || editId) && (
+          <div style={{ border: '1px solid var(--line)', borderRadius: 6, padding: 16, background: 'var(--bg-1)', marginTop: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 14 }}>
+              {adding ? `Neue ${tabCfg.label.replace(/en$/, '')}` : 'Bearbeiten'}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: tabCfg.needsPath ? '1fr 1fr' : '1fr', gap: 12 }}>
+              <div>
+                <label style={fieldLabel}>Name</label>
+                <input style={fieldInput} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="z.B. API-Dokumentation" autoFocus />
+              </div>
+              {tabCfg.needsPath && (
+                <div>
+                  <label style={fieldLabel}>{tabCfg.pathLabel}</label>
+                  <input style={fieldInput} value={form.relativePath} onChange={e => setForm(f => ({ ...f, relativePath: e.target.value }))} placeholder={tabCfg.pathPlaceholder} />
+                </div>
+              )}
+              <div style={{ gridColumn: tabCfg.needsPath ? '1 / span 2' : '1' }}>
+                <label style={fieldLabel}>{tabCfg.contentLabel}</label>
+                <textarea style={{ ...fieldInput, minHeight: 260, resize: 'vertical', lineHeight: 1.5 }} value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} placeholder={tabCfg.contentPlaceholder} spellCheck={false} />
+              </div>
+              <div style={{ gridColumn: tabCfg.needsPath ? '1 / span 2' : '1', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button style={btnGhost} onClick={cancel}>Abbrechen</button>
+                <button style={{ ...btnPrimary, opacity: canSave ? 1 : 0.5 }} disabled={!canSave} onClick={save}>
+                  {adding ? 'Speichern' : 'Aktualisieren'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>)}
+
+      {/* ── Prompt-Vorlagen list + form (template-prompts tab, admin-only) ── */}
+      {activeTab === 'template-prompts' && (<>
+        {templates.length === 0 && !tplAdding && (
+          <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6 }}>
+            Keine Prompt-Vorlagen vorhanden.
+          </div>
+        )}
+
+        {templates.length > 0 && (
+          <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: 16 }}>
+            {templates.map((t, i) => (
+              <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto 44px', padding: '9px 14px', alignItems: 'center', gap: 12, fontSize: 12, borderBottom: i < templates.length - 1 ? '1px solid var(--line)' : 'none', background: t.id === tplEditId ? 'var(--accent-soft)' : 'transparent' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: 600, color: 'var(--fg-0)' }}>{t.name}</span>
+                    {t.hint && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'var(--bg-3)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{t.hint}</span>}
+                    {t.tag && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600 }}>{t.tag}</span>}
+                    {t.favorite && <IStar style={{ width: 11, height: 11, color: 'var(--accent)' }} />}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.body}</div>
+                </div>
+                <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{t.uses}×</span>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => { setTplEditId(t.id); setTplAdding(false); setTplForm({ name: t.name, hint: t.hint, body: t.body, tag: t.tag, favorite: !!t.favorite }) }} />
+                  <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`"${t.name}" löschen?`)) { const next = templates.filter(p => p.id !== t.id); removeTemplate(t.id); pushGlobalPrompts(next) } }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(tplAdding || tplEditId) && (
+          <div style={{ border: '1px solid var(--line)', borderRadius: 6, padding: 16, background: 'var(--bg-1)', marginTop: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 14 }}>{tplAdding ? 'Neue Prompt-Vorlage' : 'Bearbeiten'}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={fieldLabel}>Name</label>
+                <input style={fieldInput} value={tplForm.name} onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))} placeholder="z.B. Analyze first" autoFocus />
+              </div>
+              <div>
+                <label style={fieldLabel}>Shortcut-Hint</label>
+                <input style={fieldInput} value={tplForm.hint} onChange={e => setTplForm(f => ({ ...f, hint: e.target.value }))} placeholder="z.B. ⌘1" />
+              </div>
+              <div>
+                <label style={fieldLabel}>Tag</label>
+                <input style={fieldInput} value={tplForm.tag} onChange={e => setTplForm(f => ({ ...f, tag: e.target.value }))} placeholder="z.B. planning, safety, debug" />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                <label style={{ fontSize: 12, color: 'var(--fg-1)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 2 }}>
+                  <input type="checkbox" checked={tplForm.favorite} onChange={e => setTplForm(f => ({ ...f, favorite: e.target.checked }))} />
+                  Favorit
+                </label>
+              </div>
+              <div style={{ gridColumn: '1 / span 2' }}>
+                <label style={fieldLabel}>Prompt-Text</label>
+                <textarea style={{ ...fieldInput, minHeight: 200, resize: 'vertical', lineHeight: 1.5 }} value={tplForm.body} onChange={e => setTplForm(f => ({ ...f, body: e.target.value }))} placeholder="Analysiere zuerst alle relevanten Dateien…" spellCheck={false} />
+              </div>
+              <div style={{ gridColumn: '1 / span 2', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button style={btnGhost} onClick={cancel}>Abbrechen</button>
+                <button
+                  style={{ ...btnPrimary, opacity: tplForm.name.trim() && tplForm.body.trim() ? 1 : 0.5 }}
+                  disabled={!tplForm.name.trim() || !tplForm.body.trim()}
+                  onClick={() => {
+                    if (!tplForm.name.trim() || !tplForm.body.trim()) return
+                    let next: Template[]
+                    if (tplAdding) {
+                      const newT: Template = { id: `tp${Date.now()}`, name: tplForm.name.trim(), hint: tplForm.hint.trim(), body: tplForm.body.trim(), tag: tplForm.tag.trim(), uses: 0, favorite: tplForm.favorite }
+                      addTemplate(newT)
+                      next = [...templates, newT]
+                    } else {
+                      updateTemplate(tplEditId!, { name: tplForm.name.trim(), hint: tplForm.hint.trim(), body: tplForm.body.trim(), tag: tplForm.tag.trim(), favorite: tplForm.favorite })
+                      next = templates.map(p => p.id === tplEditId ? { ...p, name: tplForm.name.trim(), hint: tplForm.hint.trim(), body: tplForm.body.trim(), tag: tplForm.tag.trim(), favorite: tplForm.favorite } : p)
+                    }
+                    pushGlobalPrompts(next)
+                    cancel()
+                  }}
+                >
+                  {tplAdding ? 'Speichern' : 'Aktualisieren'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)', fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
+          <strong style={{ color: 'var(--fg-1)' }}>Hinweis:</strong> Neue Nutzer erhalten diese Prompt-Vorlagen beim ersten Login als persönliche Kopien. Änderungen durch den Admin betreffen nur neue Nutzer — bestehende Nutzer behalten ihre eigenen Versionen.
+        </div>
+      </>)}
 
       {activeTab === 'docs' && (
         <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)', fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
@@ -2606,23 +2770,6 @@ function KontextMgmtPanel() {
                 <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>Nachrichten nach der Referenz-Nachricht</span>
               </div>
             </div>
-          </div>
-
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 14 }}>LLM für Komprimierung</div>
-            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 12, lineHeight: 1.5 }}>
-              Wird automatisch beim Neuen Chat verwendet um den bisherigen Verlauf zu verdichten.
-            </div>
-            {orLoading ? (
-              <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>Lade Modelle…</span>
-            ) : (
-              <SingleCombobox
-                options={orModels}
-                value={orbitCompressModel}
-                onChange={setOrbitCompressModel}
-                placeholder="Modell suchen…"
-              />
-            )}
           </div>
 
           <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>

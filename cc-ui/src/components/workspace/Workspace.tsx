@@ -1,11 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import logoWhite from '../../assets/codera_logo_white.png'
-import logoBlack from '../../assets/codera_logo_black.png'
 import { ProjectSidebar } from './ProjectSidebar'
 import { CenterPane } from './CenterPane'
 import { UtilityPanel } from './UtilityPanel'
-import { IMoon, ISun, ILogout, ITerminal, IPlay, IBot, ICompass, ISquareTerminal, IKanban, IPanelLeftOpen, IPanelLeftClose, IPanelRightOpen, IPanelRightClose } from '../primitives/Icons'
+import { IMoon, ISun, ILogout, ITerminal, IPlay, IBot, ICompass, ISquareTerminal, IKanban, IPanelLeftOpen, IPanelLeftClose, IPanelRightOpen, IPanelRightClose, ISpinner } from '../primitives/Icons'
 import { ModelBrowserModal } from '../modals/ModelBrowserModal'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
@@ -207,10 +205,13 @@ export function Workspace() {
     >
       {/* Window chrome */}
       {(showTitleBar ?? true) && (
-        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: isElectron ? '10px 12px 10px 88px' : '10px 12px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: isElectron ? '30px 12px 30px 88px' : '30px 12px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
           {/* Logo — links, kein Drag */}
           <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: 10, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <img src={theme === 'light' ? logoBlack : logoWhite} alt="Codera AI" style={{ height: 42, width: 'auto', display: 'block' }} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <ISpinner spin={false} size={Math.round(logoSize * 0.635)} style={{ color: 'var(--accent)' }} />
+                <span style={{ fontSize: Math.round(logoSize * 0.5), fontWeight: 700, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1 }}>Codera</span>
+              </span>
           </div>
 
           <div style={{ flex: 1 }} />

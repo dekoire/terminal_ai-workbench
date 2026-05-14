@@ -1,13 +1,13 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { TurnMessage, Template, TerminalShortcut, Session } from '../../store/useAppStore'
-import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, IOrbit, IPaperclip, IEdit, IBell } from '../primitives/Icons'
+import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISend, IWarn, ITerminal, IFolder, ISearch, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, IOrbit, IPaperclip, IEdit, IBell, ISpinner } from '../primitives/Icons'
 import { useFileAttachments, useDragDrop, usePasteFiles, FileAttachmentBar, DragOverlay } from '../primitives/FileAttachmentArea'
 import { ImageAnnotator } from '../primitives/ImageAnnotator'
-import simpleLogo from '../../assets/simple_logo.svg'
 import { TERMINAL_THEMES } from '../../theme/presets'
 import { updateDocsWithAI, refreshProjectDocs } from '../../utils/updateDocs'
 import { aiDetectStartCmd } from '../../utils/aiDetect'
+import { getOrModel } from '../../utils/orProvider'
 import { Pill } from '../primitives/Pill'
 import { Kbd } from '../primitives/Kbd'
 import { Avatar } from '../primitives/Avatar'
@@ -194,7 +194,7 @@ function useProjectConfig(projectPath: string | undefined): DevConfig | null {
 }
 
 function ProjectHeader() {
-  const { projects, activeProjectId, activeSessionId, docApplying, updateProject, aiProviders, aiFunctionMap } = useAppStore()
+  const { projects, activeProjectId, activeSessionId, docApplying, updateProject, openrouterKey, aiFunctionMap } = useAppStore()
   const project = projects.find(p => p.id === activeProjectId)
   const git = useGitInfo(project?.path)
   const [launching, setLaunching] = useState(false)
@@ -230,13 +230,10 @@ function ProjectHeader() {
 
   const detectWithAI = async () => {
     if (!project?.path || detecting) return
-    const provId = aiFunctionMap['devDetect']
-    const provider = aiProviders.find(p => p.id === provId) ?? aiProviders[0]
-    if (!provider) return
     setDetecting(true)
     try {
       const port = parseInt(cfgPort, 10) || project.appPort
-      const cmd = await aiDetectStartCmd(project.path, port, provider)
+      const cmd = await aiDetectStartCmd(project.path, port)
       if (cmd) setCfgCmd(cmd)
     } finally { setDetecting(false) }
   }
@@ -323,13 +320,9 @@ function ProjectHeader() {
     if (devCmd) { await runLaunch(devCmd, devPort); return }
 
     // Auto-detect via AI
-    const provId = aiFunctionMap['devDetect']
-    const provider = aiProviders.find(p => p.id === provId) ?? aiProviders[0]
-    if (!provider) { openConfig(); return }
-
     setDetecting(true)
     try {
-      const cmd = await aiDetectStartCmd(project.path, project.appPort, provider)
+      const cmd = await aiDetectStartCmd(project.path, project.appPort)
       if (!cmd) { openConfig(); return }
 
       const port = guessPort(cmd, project.appPort)
@@ -383,7 +376,7 @@ function ProjectHeader() {
       window.removeEventListener('cc:hdr-config', onConfig)
       window.removeEventListener('cc:hdr-docs',   onDocs)
     }
-  }, [launching, detecting, devCmd, devPort, project, aiProviders, aiFunctionMap]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [launching, detecting, devCmd, devPort, project, openrouterKey, aiFunctionMap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   void activeSessionId
 
@@ -414,9 +407,9 @@ function ProjectHeader() {
                   />
                   <button
                     onClick={detectWithAI}
-                    disabled={detecting || aiProviders.length === 0}
-                    title={aiProviders.length === 0 ? 'Kein AI-Anbieter konfiguriert' : 'Start-Befehl per AI ermitteln'}
-                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-1)', color: detecting ? 'var(--accent)' : aiProviders.length === 0 ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || aiProviders.length === 0) ? 'not-allowed' : 'pointer', opacity: aiProviders.length === 0 ? 0.4 : 1 }}
+                    disabled={detecting || !openrouterKey}
+                    title={!openrouterKey ? 'OpenRouter API-Key fehlt' : 'Start-Befehl per AI ermitteln'}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-1)', color: detecting ? 'var(--accent)' : !openrouterKey ? 'var(--fg-3)' : 'var(--accent)', cursor: (detecting || !openrouterKey) ? 'not-allowed' : 'pointer', opacity: !openrouterKey ? 0.4 : 1 }}
                   >
                     <ISpark className={detecting ? 'anim-pulse' : ''} style={{ width: 12, height: 12 }} />
                   </button>
@@ -585,7 +578,7 @@ function NoProjectState() {
 
   const card: React.CSSProperties = {
     padding: '20px 18px', borderRadius: 8,
-    border: '1px solid var(--line-strong)', background: 'var(--bg-2)',
+    border: '1px solid transparent', background: 'var(--bg-1)',
     cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8,
     transition: 'border-color 0.15s', textAlign: 'left',
   }
@@ -598,23 +591,27 @@ function NoProjectState() {
   return (
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-      gap: 22, padding: '32px 28px', minHeight: 0,
+      justifyContent: 'center', padding: '28px', minHeight: 0,
     }}>
-      {/* Logo + heading */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-        <img src={simpleLogo} alt="Codera AI" style={{ width: 52, height: 52, opacity: 0.55 }} />
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-0)' }}>Kein Projekt angelegt</div>
-      </div>
+      <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
 
-      <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Logo + heading */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+          <ISpinner size={32} spin={false} style={{ opacity: 0.45 }} />
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-0)', marginBottom: 4 }}>Bereit zum Coden.</div>
+            <div style={{ fontSize: 12, color: 'var(--fg-3)', lineHeight: 1.55 }}>Lege ein Projekt an und starte deine erste Session.</div>
+          </div>
+        </div>
 
-        {/* Workspace section */}
-        <div>
+        {/* Cards */}
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
           <div
             style={card}
             onClick={() => setNewProjectOpen(true)}
             onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <IFolder style={{ color: 'var(--accent)', width: 15, height: 15 }} />
@@ -625,17 +622,13 @@ function NoProjectState() {
             </span>
             <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>Projekt · Sessions · Git</span>
           </div>
-        </div>
 
-        {/* Setup section — only when not yet configured */}
-        {!isConfigured && (
-          <div>
-            <div style={sectionLabel}>Einrichtung</div>
+          {!isConfigured && (
             <div
               style={card}
               onClick={() => window.dispatchEvent(new CustomEvent('cc:open-getting-started'))}
               onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <ISpark style={{ color: 'var(--accent)', width: 15, height: 15 }} />
@@ -646,9 +639,9 @@ function NoProjectState() {
               </span>
               <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>OpenRouter · Modelle · GitHub</span>
             </div>
-          </div>
-        )}
+          )}
 
+        </div>
       </div>
     </div>
   )
@@ -682,7 +675,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 
   const card: React.CSSProperties = {
     padding: '20px 18px', borderRadius: 8,
-    border: '1px solid var(--line-strong)', background: 'var(--bg-2)',
+    border: '1px solid transparent', background: 'var(--bg-1)',
     cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8,
     transition: 'border-color 0.15s',
   }
@@ -690,16 +683,21 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   return (
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-      gap: 22, padding: '32px 28px', minHeight: 0,
+      justifyContent: 'center', padding: '28px', minHeight: 0,
     }}>
+      <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
+
       {/* Logo + heading */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-        <img src={simpleLogo} alt="Codera AI" style={{ width: 52, height: 52 }} />
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-0)' }}>Keine aktive Session</div>
+        <ISpinner size={32} spin={false} style={{ opacity: 0.45 }} />
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-0)', marginBottom: 4 }}>Starte deine Session.</div>
+          <div style={{ fontSize: 12, color: 'var(--fg-3)', lineHeight: 1.55 }}>Wähle einen Session-Typ und leg direkt los.</div>
+        </div>
       </div>
 
       {/* Session-Typ Karten */}
-      <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
         {/* Coding row: Terminal + Coding Agent */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -707,7 +705,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
             style={card}
             onClick={() => openKind('single')}
             onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <ITerminal style={{ color: 'var(--accent)', width: 15, height: 15 }} />
@@ -721,7 +719,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
             style={card}
             onClick={() => openKind('openrouter-claude')}
             onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <ISpark style={{ color: 'var(--accent)', width: 15, height: 15 }} />
@@ -737,7 +735,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
           style={{ ...card, flexDirection: 'row', alignItems: 'center', gap: 14 }}
           onClick={startOrbit}
           onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line-strong)')}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
         >
           <IOrbit style={{ color: 'var(--accent)', width: 16, height: 16, flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -747,6 +745,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
           <span style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0 }}>OpenRouter</span>
         </div>
 
+      </div>
       </div>
     </div>
   )
@@ -773,7 +772,7 @@ function AliasCard({ alias, onStart }: { alias: { id: string; name: string; cmd:
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           transition: 'background 0.15s',
         }}>
-          <img src={simpleLogo} alt="" style={{ width: 11, height: 11, filter: hovered ? 'brightness(0) invert(1)' : 'none', transition: 'filter 0.15s' }} />
+          <ISpinner spin={false} size={11} style={{ color: hovered ? '#fff' : 'var(--accent)', transition: 'color 0.15s' }} />
         </div>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{alias.name}</span>
       </div>
@@ -997,7 +996,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     projects, activeProjectId, activeSessionId,
     playwrightCheck, setPlaywrightCheck,
     localhostCheck, setLocalhostCheck,
-    aiProviders, activeAiProvider, aiFunctionMap,
+    openrouterKey, aiFunctionMap, groqApiKey, voiceProvider,
     terminalShortcuts, docTemplates,
     terminalTheme, theme: appTheme,
     currentUser,
@@ -1207,7 +1206,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     clearFiles()
   }
 
-  const send = () => {
+  const send = async () => {
     const favBodies = templates.filter(t => t.favorite).map(t => t.body)
     if (!inputValue.trim() && attachments.length === 0 && favBodies.length === 0 && pendingFiles.length === 0) return
     if (hasUploading) return  // wait for uploads to finish
@@ -1225,26 +1224,56 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     if (favBodies.length > 0) fullMsg += (fullMsg ? '\n\n' : '') + favBodies.join('\n\n')
 
     if (activeSession?.kind === 'orbit') {
-      // Orbit: send images as base64 directly so the AI can see them
-      // Also append R2 URLs for non-image files
+      // Orbit: images → base64 inline; text/doc files → fetch content and inline as code block
+      // (R2 proxy URLs are localhost — unreachable by remote AI model servers)
       const imageFiles = pendingFiles.filter(f => f.isImage && f.file)
       const docFiles   = pendingFiles.filter(f => !f.isImage && f.status === 'done' && f.url)
-      if (docFiles.length > 0) {
-        fullMsg += '\n\n' + docFiles.map(f => `[Datei: ${f.name}](${f.url})`).join('\n')
+
+      const inlineDocContent = async (msg: string): Promise<string> => {
+        if (docFiles.length === 0) return msg
+        const inlined = await Promise.all(docFiles.map(async f => {
+          try {
+            // Fetch content from local proxy (accessible from browser/frontend)
+            const r = await fetch(f.url!)
+            const text = await r.text()
+            const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
+            return `\n\n--- ${f.name} ---\n\`\`\`${ext}\n${text}\n\`\`\``
+          } catch {
+            // Fallback: just mention the file name
+            return `\n\n[Anhang: ${f.name}]`
+          }
+        }))
+        return msg + inlined.join('')
       }
+
       if (imageFiles.length === 0) {
-        dispatchOrbit(fullMsg, [])
+        inlineDocContent(fullMsg).then(msg => dispatchOrbit(msg, []))
       } else {
-        Promise.all(imageFiles.map(img =>
-          toBase64(img.file).then(dataUrl => ({ dataUrl, mimeType: img.mimeType }))
-        )).then(images => dispatchOrbit(fullMsg, images))
+        Promise.all([
+          inlineDocContent(fullMsg),
+          ...imageFiles.map(img => toBase64(img.file).then(dataUrl => ({ dataUrl, mimeType: img.mimeType }))),
+        ]).then(([msg, ...images]) => dispatchOrbit(msg as string, images as { dataUrl: string; mimeType: string }[]))
       }
     } else if (isTerminal) {
-      // Terminal: write images to local temp files → --image "/tmp/..." (CLI needs a local path)
-      // Docs keep their proxy URL as reference text
+      // Terminal: images → local temp file → --image flag (Claude Code CLI reads it)
+      // Text docs → read content and inline (same reason: external models can't reach localhost)
       const imageFiles = pendingFiles.filter(f => f.isImage && f.file)
       const doneDocs   = pendingFiles.filter(f => !f.isImage && f.status === 'done' && f.url)
-      if (doneDocs.length > 0) fullMsg += '\n' + doneDocs.map(f => `[${f.name}]: ${f.url}`).join('\n')
+
+      if (doneDocs.length > 0) {
+        // Inline text file content instead of sending an unreachable proxy URL
+        const inlined = await Promise.all(doneDocs.map(async f => {
+          try {
+            const r = await fetch(f.url!)
+            const text = await r.text()
+            const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
+            return `\n\n--- ${f.name} ---\n\`\`\`${ext}\n${text}\n\`\`\``
+          } catch {
+            return `\n\n[Anhang: ${f.name}]`
+          }
+        }))
+        fullMsg += inlined.join('')
+      }
 
       const writeTempAndSend = async () => {
         let msg = await resolveRefs(fullMsg, orbitCtxBefore, orbitCtxAfter)
@@ -1269,18 +1298,55 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
         window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: { sessionId: activeSessionId, data: msg } }))
         setInputValue('')
         clearFiles()
+        setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
       }
 
       void writeTempAndSend()
       return // async path handles setInputValue/clearFiles
     } else {
-      // Agent session: resolve any embedded #msg:/#chat:/#amsg: refs before sending
+      // Agent session (Claude Code CLI): resolve refs, inline doc files, pass images as --image args
       const sendWithRefs = async () => {
-        const resolved = await resolveRefs(fullMsg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id)
+        let msg = fullMsg
+
+        // Inline text/doc files (same reason as orbit: proxy URLs are localhost-only)
+        const docFiles = pendingFiles.filter(f => !f.isImage && f.status === 'done' && f.url)
+        if (docFiles.length > 0) {
+          const inlined = await Promise.all(docFiles.map(async f => {
+            try {
+              const r = await fetch(f.url!)
+              const text = await r.text()
+              const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
+              return `\n\n--- ${f.name} ---\n\`\`\`${ext}\n${text}\n\`\`\``
+            } catch { return `\n\n[Anhang: ${f.name}]` }
+          }))
+          msg += inlined.join('')
+        }
+
+        // Images: write to temp file, then append --image "/path" flags
+        // ws.ts extracts these flags from the text and passes them as proper CLI args
+        const imageFiles = pendingFiles.filter(f => f.isImage && f.file)
+        if (imageFiles.length > 0) {
+          const paths = await Promise.all(imageFiles.map(async f => {
+            try {
+              const res = await fetch('/api/write-temp-image', {
+                method: 'POST',
+                headers: { 'Content-Type': f.mimeType || 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name) },
+                body: f.file,
+              })
+              const data = await res.json() as { ok: boolean; path?: string }
+              return data.ok && data.path ? data.path : null
+            } catch { return null }
+          }))
+          const valid = paths.filter(Boolean) as string[]
+          if (valid.length > 0) msg += ' ' + valid.map(p => `--image "${p}"`).join(' ')
+        }
+
+        const resolved = await resolveRefs(msg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id)
         sendMessage(attachments, resolved)
         setAttachments([])
         setInputValue('')
         clearFiles()
+        setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
       }
       void sendWithRefs()
       return // async path handles setInputValue/clearFiles
@@ -1289,9 +1355,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
 
   const refineWithAI = async () => {
     if (!inputValue.trim()) return
-    const terminalProviderId = aiFunctionMap['terminal'] || activeAiProvider
-    const provider = aiProviders.find(p => p.id === terminalProviderId) ?? aiProviders[0]
-    if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
+    const orP = getOrModel('terminal')
+    if (!orP) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
     setAiRefining(true)
     setAiError('')
     const textRefinePrompt = docTemplates.find(t => t.id === 'ai-prompt-text-refine')?.content
@@ -1299,7 +1364,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       const r = await fetch('/api/ai-refine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: provider.provider, apiKey: provider.apiKey, model: provider.model, text: inputValue, ...(textRefinePrompt ? { systemPrompt: textRefinePrompt } : {}) }),
+        body: JSON.stringify({ provider: orP.provider, apiKey: orP.apiKey, model: orP.model, text: inputValue, ...(textRefinePrompt ? { systemPrompt: textRefinePrompt } : {}) }),
       })
       const d = await r.json() as { ok: boolean; text?: string; error?: string }
       if (d.ok && d.text) setInputValue(d.text)
@@ -1310,9 +1375,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
 
   const analyseWithAI = async () => {
     if (!inputValue.trim()) return
-    const terminalProviderId = aiFunctionMap['terminal'] || activeAiProvider
-    const provider = aiProviders.find(p => p.id === terminalProviderId) ?? aiProviders[0]
-    if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
+    const orP = getOrModel('terminal')
+    if (!orP) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
     setAiAnalysing(true)
     setAiError('')
     const analysePrompt = docTemplates.find(t => t.id === 'user-story-analyse')?.content
@@ -1331,7 +1395,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       const r = await fetch('/api/ai-refine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: provider.provider, apiKey: provider.apiKey, model: provider.model, text: userMsg, ...(analysePrompt ? { systemPrompt: analysePrompt } : {}) }),
+        body: JSON.stringify({ provider: orP.provider, apiKey: orP.apiKey, model: orP.model, text: userMsg, ...(analysePrompt ? { systemPrompt: analysePrompt } : {}) }),
       })
       const d = await r.json() as { ok: boolean; text?: string; error?: string }
       if (d.ok && d.text) setInputValue(d.text)
@@ -1348,37 +1412,38 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       return
     }
 
-    // Prefer Whisper via Groq (free) or OpenAI
-    const openAiProv = aiProviders.find(p => (p.provider === 'groq' || p.provider === 'openai') && p.apiKey)
-
-    if (openAiProv) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus' : 'audio/webm'
-        const recorder = new MediaRecorder(stream, { mimeType })
-        chunksRef.current = []
-        recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-        recorder.onstop = async () => {
-          stream.getTracks().forEach(t => t.stop())
-          setTranscribing(true)
-          try {
-            const blob = new Blob(chunksRef.current, { type: mimeType })
-            const r = await fetch('/api/transcribe', {
-              method: 'POST', body: blob,
-              headers: { 'x-api-key': openAiProv.apiKey, 'x-provider': openAiProv.provider, 'x-language': 'de', 'Content-Type': mimeType },
-            })
-            const d = await r.json() as { ok: boolean; text?: string }
-            if (d.ok && d.text) setInputValue(prev => prev ? prev + ' ' + d.text : d.text!)
-          } catch {}
-          setTranscribing(false)
-        }
-        recorder.start()
-        mediaRef.current = recorder
-        setRecording(true)
-      } catch { setRecording(false) }
-      return
-    }
+    // Whisper via Groq (server-side key) or user-provided key
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm'
+      const recorder = new MediaRecorder(stream, { mimeType })
+      chunksRef.current = []
+      recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        setTranscribing(true)
+        try {
+          const blob = new Blob(chunksRef.current, { type: mimeType })
+          const headers: Record<string, string> = {
+            'x-provider': groqApiKey ? voiceProvider : 'groq',
+            'x-language': 'de',
+            'Content-Type': mimeType,
+          }
+          if (groqApiKey) headers['x-api-key'] = groqApiKey
+          const r = await fetch('/api/transcribe', { method: 'POST', body: blob, headers })
+          const d = await r.json() as { ok: boolean; text?: string }
+          if (d.ok && d.text) setInputValue(prev => prev ? prev + ' ' + d.text : d.text!)
+        } catch {}
+        setTranscribing(false)
+        setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
+      }
+      recorder.start()
+      mediaRef.current = recorder
+      setRecording(true)
+      setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 100)
+    } catch { setRecording(false) }
+    return
 
     // Fallback: Web Speech API
     const SR = (window as unknown as { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition
@@ -1750,10 +1815,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
             onClick={refineWithAI}
             disabled={aiRefining || aiAnalysing || !inputValue.trim()}
             title={(() => {
-              if (aiProviders.length === 0) return 'AI-Anbieter in Settings → AI einrichten'
-              const tid = aiFunctionMap['terminal'] || activeAiProvider
-              const p = aiProviders.find(p => p.id === tid) ?? aiProviders[0]
-              return `Text mit ${p.name} überarbeiten`
+              const model = aiFunctionMap['terminal'] || 'OpenRouter'
+              return `Text mit ${model} überarbeiten`
             })()}
             style={{ ...chip, padding: '5px 8px', color: 'var(--accent)', border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', opacity: (aiRefining || aiAnalysing || !inputValue.trim()) ? 0.5 : 1 }}
           >
@@ -1763,10 +1826,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
             onClick={analyseWithAI}
             disabled={aiAnalysing || aiRefining || !inputValue.trim()}
             title={(() => {
-              if (aiProviders.length === 0) return 'AI-Anbieter in Settings → AI einrichten'
-              const tid = aiFunctionMap['terminal'] || activeAiProvider
-              const p = aiProviders.find(p => p.id === tid) ?? aiProviders[0]
-              return `Implementierungsauftrag mit ${p.name} generieren`
+              const model = aiFunctionMap['terminal'] || 'OpenRouter'
+              return `Implementierungsauftrag mit ${model} generieren`
             })()}
             style={{ ...chip, padding: '5px 8px', color: 'var(--ok)', border: '1px solid color-mix(in srgb, var(--ok) 35%, transparent)', background: 'color-mix(in srgb, var(--ok) 12%, transparent)', opacity: (aiAnalysing || aiRefining || !inputValue.trim()) ? 0.5 : 1 }}
           >

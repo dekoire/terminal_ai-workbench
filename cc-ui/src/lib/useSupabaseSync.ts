@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { useAppStore }        from '../store/useAppStore'
+import { useAppStore, setActiveStorageUser } from '../store/useAppStore'
 import { getSupabase }        from './supabase'
 import {
   loadFromSupabase,
@@ -20,8 +20,15 @@ import {
   upsertSingleOrbitMessage,
   fetchOrbitMessagesForChat,
   syncGlobalConfig,
+  saveGlobalTemplates,
+  saveGlobalCliConfig,
+  saveGlobalPrompts,
+  saveProjectsToSupabase,
+  deleteProjectFromSupabase,
   debounce,
 } from './supabaseSync'
+
+export { saveGlobalTemplates, saveGlobalCliConfig, saveGlobalPrompts }
 
 export function useSupabaseSync() {
   const currentUser   = useAppStore(s => s.currentUser)
@@ -44,9 +51,9 @@ export function useSupabaseSync() {
         // There's a persisted Supabase token but no sessionStorage flag →
         // this is a fresh start (server restart / page reload). Force sign-out.
         sb.auth.signOut().then(() => {
-          useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+          setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
         }).catch(() => {
-          useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+          setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
         })
       }
     })
@@ -99,7 +106,7 @@ export function useSupabaseSync() {
       loadingRef.current = false
       userIdRef.current  = null
       sessionStorage.removeItem('cc-active-session')
-      useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+      setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
     }, 15 * 60 * 1000)   // check every 15 minutes
     return () => clearInterval(id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,7 +125,7 @@ export function useSupabaseSync() {
           loadedRef.current  = false
           loadingRef.current = false
           userIdRef.current  = null
-          useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+          setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
         } else {
           // Still active — silently refresh the session so the user stays in
           sb.auth.refreshSession().catch(() => {
@@ -126,7 +133,7 @@ export function useSupabaseSync() {
             loadedRef.current  = false
             loadingRef.current = false
             userIdRef.current  = null
-            useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+            setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
           })
         }
       }
@@ -214,33 +221,31 @@ export function useSupabaseSync() {
             ...localActiveOrbitChatId,
           }
 
-          // Merge projects: local sessions take priority; Supabase adds unknown projects.
-          // Projects the user intentionally deleted are NEVER restored from Supabase.
-          const sbProjects = (settings.projects ?? []).filter(p => !deletedProjectIds.has(p.id))
+          // Merge projects: DB is authoritative for metadata; local sessions (running
+          // processes) take priority. Projects the user deleted are never restored.
+          const sbProjects = (result.projects ?? []).filter(p => !deletedProjectIds.has(p.id))
 
           if (sbProjects.length > 0 || localProjects.length > 0) {
             const sbMap = new Map(sbProjects.map(p => [p.id, p]))
             const lMap  = new Map(localProjects.map(p => [p.id, p]))
-            const merged = [...sbProjects].map(sp => {
+            // DB project + keep any live local sessions on top
+            const merged = sbProjects.map(sp => {
               const lp = lMap.get(sp.id)
-              if (!lp) return sp
-              const localSessIds = new Set(lp.sessions.map(s => s.id))
-              const extra = sp.sessions.filter(s => !localSessIds.has(s.id))
-              return { ...sp, sessions: [...lp.sessions, ...extra] }
+              return lp ? { ...sp, sessions: lp.sessions } : sp
             })
-            // Add local-only projects that aren't in Supabase
+            // Local-only projects not yet in DB (new ones created before first sync)
             for (const lp of localProjects) {
               if (!sbMap.has(lp.id)) merged.push(lp)
             }
             next.projects = merged
           } else {
-            // Both empty — respect it (user deleted everything)
             next.projects = []
           }
 
           return next
         })
-        console.info('[supabaseSync] ✅ Settings loaded from Supabase')
+        const projCount = useAppStore.getState().projects.length
+        console.info(`[supabaseSync] ✅ Settings + ${projCount} project(s) loaded from Supabase`)
       }
 
       // Chat metadata: merge (local takes priority for active chats)
@@ -258,8 +263,94 @@ export function useSupabaseSync() {
         console.info('[supabaseSync] ✅ Project brains loaded from Supabase')
       }
 
+      // Apply global admin templates: replace built-ins, keep user's personal templates
+      if (result.globalTemplates && result.globalTemplates.length > 0) {
+        const globalIds = new Set(result.globalTemplates.map(t => t.id))
+        const userPersonal = useAppStore.getState().docTemplates.filter(t => !globalIds.has(t.id) && !(t as { builtin?: boolean }).builtin)
+        useAppStore.setState({ docTemplates: [...result.globalTemplates, ...userPersonal] })
+        console.info(`[supabaseSync] ✅ Global templates applied (${result.globalTemplates.length})`)
+      }
+
+      // Apply global prompt templates — seed new users, merge for existing users
+      if (result.globalPrompts && result.globalPrompts.length > 0) {
+        const userHasDBTemplates = !!(result.settings && 'templates' in result.settings && result.settings.templates)
+        const currentTemplates = useAppStore.getState().templates
+        if (!userHasDBTemplates) {
+          // New user — replace DEMO defaults with global prompts
+          useAppStore.setState({ templates: result.globalPrompts })
+        } else {
+          // Existing user — add any global prompts they don't have yet
+          const userIds = new Set(currentTemplates.map(t => t.id))
+          const newOnes = result.globalPrompts.filter(t => !userIds.has(t.id))
+          if (newOnes.length > 0) {
+            useAppStore.setState({ templates: [...currentTemplates, ...newOnes] })
+          }
+        }
+        console.info(`[supabaseSync] ✅ Global prompt templates applied (${result.globalPrompts.length})`)
+      }
+
+      // Apply global CLI config (tweakcc + system prompt) — fire-and-forget
+      if (result.globalCli) {
+        void (async () => {
+          try {
+            const { tweakccConfig, systemPrompt } = result.globalCli!
+            await fetch('/api/tweakcc/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: tweakccConfig }) })
+            await fetch('/api/tweakcc/system-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: systemPrompt }) })
+            await fetch('/api/tweakcc/apply', { method: 'POST' })
+            console.info('[supabaseSync] ✅ Global CLI config applied')
+          } catch { /* non-fatal */ }
+        })()
+      }
+
+      // Auto-provision shell aliases for any loaded Claude providers (fire-and-forget).
+      void (async () => {
+        const providers = useAppStore.getState().claudeProviders
+        if (providers.length === 0) return
+        const homeDir = await fetch('/api/home').then(r => r.json() as Promise<{ home: string }>).then(d => d.home).catch(() => '~')
+        for (const p of providers) {
+          try {
+            const shellName    = 'cc-' + p.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+            const fullJsonPath = `${homeDir}/cc-ui-providers/${p.id}.json`
+            const jsonContent  = p.settingsJson ?? JSON.stringify({
+              model: 'sonnet',
+              env: {
+                ANTHROPIC_BASE_URL:              p.baseUrl,
+                ANTHROPIC_API_KEY:               p.authToken || '<your-token>',
+                ANTHROPIC_MODEL:                 p.modelName,
+                ANTHROPIC_SMALL_FAST_MODEL:      p.modelName,
+                ANTHROPIC_DEFAULT_SONNET_MODEL:  p.modelName,
+                ANTHROPIC_DEFAULT_OPUS_MODEL:    p.modelName,
+                ANTHROPIC_DEFAULT_HAIKU_MODEL:   p.modelName,
+                API_TIMEOUT_MS: '3000000',
+                CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+              },
+            }, null, 2)
+            const aliasCmd = `ANTHROPIC_BASE_URL=${p.baseUrl} ANTHROPIC_API_KEY=${p.authToken} ANTHROPIC_MODEL=${p.modelName} CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 claude --bare --settings ${fullJsonPath}`
+            await fetch('/api/file-write', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: `~/cc-ui-providers/${p.id}.json`, content: jsonContent }),
+            })
+            await fetch('/api/zshrc-alias', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ aliasName: shellName, aliasCmd }),
+            })
+          } catch { /* non-fatal — user can re-save manually */ }
+        }
+        console.info(`[supabaseSync] ✅ Shell aliases provisioned for ${providers.length} provider(s)`)
+      })()
+
       loadedRef.current  = true
       loadingRef.current = false
+
+      // Push any local-only projects that aren't in the DB yet (initial migration)
+      const dbIds    = new Set((result.projects ?? []).map(p => p.id))
+      const allProjs = useAppStore.getState().projects
+      const newLocal = allProjs.filter(p => !dbIds.has(p.id))
+      if (allProjs.length > 0) {
+        void saveProjectsToSupabase(sb, userId, allProjs)
+        if (newLocal.length > 0)
+          console.info(`[supabaseSync] ✅ Synced ${newLocal.length} local project(s) to DB`)
+      }
     }).catch(err => {
       console.error('[supabaseSync] load error:', err)
       loadedRef.current  = true
@@ -313,6 +404,46 @@ export function useSupabaseSync() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useAppStore(s => s.activeOrbitChatId), supabaseUrl, supabaseKey])
+
+  // ── on project change: sync to projects table ────────────────────────────────
+
+  useEffect(() => {
+    const saveDebounced = debounce(async () => {
+      if (!loadedRef.current) return
+      const userId = userIdRef.current
+      if (!userId) return
+      const sb = getSb()
+      if (!sb) return
+      await saveProjectsToSupabase(sb, userId, useAppStore.getState().projects)
+    }, 3000)
+
+    const unsub = useAppStore.subscribe((state, prev) => {
+      if (!loadedRef.current) return
+      if (state.projects === prev.projects) return
+
+      const shrunk = state.projects.length < prev.projects.length
+      if (shrunk) {
+        saveDebounced.cancel?.()
+        // Delete removed project(s) from DB immediately
+        const prevIds = new Set(prev.projects.map(p => p.id))
+        const newIds  = new Set(state.projects.map(p => p.id))
+        void (async () => {
+          const userId = userIdRef.current
+          const sb = getSb()
+          if (!sb || !userId) return
+          for (const id of prevIds) {
+            if (!newIds.has(id)) await deleteProjectFromSupabase(sb, userId, id)
+          }
+          await saveProjectsToSupabase(sb, userId, state.projects)
+        })()
+      } else {
+        saveDebounced()
+      }
+    })
+
+    return () => { unsub(); saveDebounced.cancel?.() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabaseUrl, supabaseKey])
 
   // ── on store change: save settings (debounced 4 s, immediate on deletion) ──
 

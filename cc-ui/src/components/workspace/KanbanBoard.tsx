@@ -502,9 +502,10 @@ function TicketCard({ ticket, isDragging, onPointerDown, onEdit, onRemove, onDup
 // ── New ticket modal ───────────────────────────────────────────────────────────
 
 function useKanbanProvider() {
-  const { aiProviders, aiFunctionMap, activeAiProvider } = useAppStore()
-  const id = aiFunctionMap['kanban'] || activeAiProvider || aiProviders[0]?.id || ''
-  return aiProviders.find(p => p.id === id) ?? aiProviders[0] ?? null
+  const { openrouterKey, aiFunctionMap } = useAppStore()
+  const model = aiFunctionMap['kanban'] || 'deepseek/deepseek-chat-v3-0324'
+  if (!openrouterKey) return null
+  return { provider: 'openrouter' as const, apiKey: openrouterKey, model }
 }
 
 function useKanbanPrompts() {
@@ -536,7 +537,7 @@ function NewTicketModal({ projectId, projectPath, onSave, onClose }: {
   const refineAsUserStory = async () => {
     const body = text.trim()
     if (!body) return
-    if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
+    if (!provider) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
     setAiLoading(true); setAiError('')
     try {
       const r = await fetch('/api/ai-refine', {
@@ -555,7 +556,7 @@ function NewTicketModal({ projectId, projectPath, onSave, onClose }: {
   }
 
   const analyseWithDocs = async () => {
-    if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
+    if (!provider) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
     setAnalyse(true); setAiError('')
     try {
       const docsRes = await fetch(`/api/read-docs?path=${encodeURIComponent(projectPath)}`)
@@ -667,7 +668,7 @@ function TicketDetail({ ticket, projectId, projectPath, onSave, onClose }: {
   const refineAsUserStory = async () => {
     const body = draft.text.trim()
     if (!body) return
-    if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
+    if (!provider) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
     setAiLoading(true); setAiError('')
     try {
       const r = await fetch('/api/ai-refine', {
@@ -686,7 +687,7 @@ function TicketDetail({ ticket, projectId, projectPath, onSave, onClose }: {
   }
 
   const analyseWithDocs = async () => {
-    if (!provider) { setAiError('Kein AI-Anbieter konfiguriert. Bitte unter Settings → AI einrichten.'); return }
+    if (!provider) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
     setAnalyse(true); setAiError('')
     try {
       const docsRes = await fetch(`/api/read-docs?path=${encodeURIComponent(projectPath)}`)

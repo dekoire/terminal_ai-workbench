@@ -12,13 +12,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   AppState,
-  Project,
   Session,
   Alias,
   Template,
   DocTemplate,
   ClaudeProvider,
-  AIProvider,
   RepoToken,
   TerminalShortcut,
   OrbitMessage,
@@ -26,6 +24,8 @@ import type {
   OrbitFavorite,
   KanbanTicket,
   ProjectBrainEntry,
+  QuickLink,
+  Project,
 } from '../store/useAppStore'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ export interface SettingsPayload {
   terminal_font_size: number
   ui_font: string
   ui_font_size: number
+  ui_font_weight: number
   logo_size: number
   show_title_bar: boolean
   custom_terminal_colors: Record<string, string>
@@ -73,14 +74,14 @@ export interface SettingsPayload {
   danger_mode: boolean
   playwright_check: boolean
   localhost_check: boolean
-  active_ai_provider: string
-  // JSON blobs
-  projects_json: Project[]
+  groq_api_key: string
+  voice_provider: string
+  code_review_model: string
+  // JSON blobs — projects are stored locally only (per-user JSON file)
   aliases_json: Alias[]
   templates_json: Template[]
   doc_templates_json: DocTemplate[]
   claude_providers_json: ClaudeProvider[]
-  ai_providers_json: AIProvider[]
   repo_tokens_json: RepoToken[]
   terminal_shortcuts_json: TerminalShortcut[]
   kanban_json: Record<string, KanbanTicket[]>
@@ -89,6 +90,7 @@ export interface SettingsPayload {
   orbit_chats_json: Record<string, string[]>       // projectId → chatIds
   active_orbit_chat_json: Record<string, string>   // sessionId → chatId
   orbit_favorites_json: Record<string, OrbitFavorite[]>
+  quick_links_json: QuickLink[]
   // Timestamps
   updated_at: string
 }
@@ -104,6 +106,7 @@ export function buildSettingsPayload(s: AppState): SettingsPayload {
     terminal_font_size:             s.terminalFontSize,
     ui_font:                        s.uiFont,
     ui_font_size:                   s.uiFontSize,
+    ui_font_weight:                 s.uiFontWeight,
     logo_size:                      s.logoSize,
     show_title_bar:                 s.showTitleBar,
     custom_terminal_colors:         s.customTerminalColors,
@@ -128,13 +131,13 @@ export function buildSettingsPayload(s: AppState): SettingsPayload {
     danger_mode:                    s.dangerMode,
     playwright_check:               s.playwrightCheck,
     localhost_check:                s.localhostCheck,
-    active_ai_provider:             s.activeAiProvider,
-    projects_json:                  s.projects,
+    groq_api_key:                   s.groqApiKey,
+    voice_provider:                 s.voiceProvider,
+    code_review_model:              s.codeReviewModel,
     aliases_json:                   s.aliases,
     templates_json:                 s.templates,
     doc_templates_json:             s.docTemplates,
     claude_providers_json:          s.claudeProviders,
-    ai_providers_json:              s.aiProviders,
     repo_tokens_json:               s.tokens,
     terminal_shortcuts_json:        s.terminalShortcuts,
     kanban_json:                    s.kanban,
@@ -143,6 +146,7 @@ export function buildSettingsPayload(s: AppState): SettingsPayload {
     orbit_chats_json:               s.orbitChats,
     active_orbit_chat_json:         s.activeOrbitChatId,
     orbit_favorites_json:           s.orbitFavorites,
+    quick_links_json:               s.quickLinks,
     updated_at:                     new Date().toISOString(),
   }
 }
@@ -223,13 +227,17 @@ export interface LoadedState {
   settings: Partial<AppState> | null
   orbitMeta: Record<string, OrbitChatMeta>
   projectBrains: Record<string, ProjectBrainEntry>
+  globalTemplates: AppState['docTemplates'] | null
+  globalCli: { tweakccConfig: unknown; systemPrompt: string } | null
+  globalPrompts: AppState['templates'] | null
+  projects: Project[] | null
 }
 
 export async function loadFromSupabase(
   sb: SupabaseClient,
   userId: string,
 ): Promise<LoadedState> {
-  const result: LoadedState = { settings: null, orbitMeta: {}, projectBrains: {} }
+  const result: LoadedState = { settings: null, orbitMeta: {}, projectBrains: {}, globalTemplates: null, globalCli: null, globalPrompts: null, projects: null }
 
   // ── 1. Load user_settings ────────────────────────────────────────────────────
   const { data: row, error: settErr } = await sb
@@ -251,6 +259,7 @@ export async function loadFromSupabase(
       terminalFontSize:               row.terminal_font_size    ?? undefined,
       uiFont:                         row.ui_font        ?? undefined,
       uiFontSize:                     row.ui_font_size   ?? undefined,
+      uiFontWeight:                   row.ui_font_weight ?? undefined,
       logoSize:                       row.logo_size      ?? undefined,
       showTitleBar:                   row.show_title_bar ?? undefined,
       customTerminalColors:           row.custom_terminal_colors ?? undefined,
@@ -275,13 +284,13 @@ export async function loadFromSupabase(
       dangerMode:                     row.danger_mode        ?? undefined,
       playwrightCheck:                row.playwright_check   ?? undefined,
       localhostCheck:                 row.localhost_check    ?? undefined,
-      activeAiProvider:               row.active_ai_provider ?? undefined,
-      projects:                       (row.projects_json as Project[])                 || undefined,
+      groqApiKey:                     row.groq_api_key       ?? undefined,
+      voiceProvider:                  (row.voice_provider as 'groq' | 'openai')        ?? undefined,
+      codeReviewModel:                (row.code_review_model as string)                || undefined,
       aliases:                        (row.aliases_json as Alias[])                    || undefined,
       templates:                      (row.templates_json as Template[])               || undefined,
       docTemplates:                   (row.doc_templates_json as DocTemplate[])        || undefined,
       claudeProviders:                (row.claude_providers_json as ClaudeProvider[])  || undefined,
-      aiProviders:                    (row.ai_providers_json as AIProvider[])          || undefined,
       tokens:                         (row.repo_tokens_json as RepoToken[])            || undefined,
       terminalShortcuts:              (row.terminal_shortcuts_json as TerminalShortcut[]) || undefined,
       kanban:                         (row.kanban_json as Record<string, KanbanTicket[]>) || undefined,
@@ -290,6 +299,7 @@ export async function loadFromSupabase(
       orbitChats:                     (row.orbit_chats_json as Record<string, string[]>)  || undefined,
       activeOrbitChatId:              (row.active_orbit_chat_json as Record<string, string>) || undefined,
       orbitFavorites:                 (row.orbit_favorites_json as Record<string, OrbitFavorite[]>) || undefined,
+      quickLinks:                     (row.quick_links_json as QuickLink[]) || undefined,
     }
     // strip undefined keys so we don't accidentally overwrite with undefined
     for (const k of Object.keys(result.settings) as (keyof AppState)[]) {
@@ -339,8 +349,7 @@ export async function loadFromSupabase(
     }
   }
 
-  // ── 4. Load global_config — infra credentials shared across all users ─────────
-  // Only populate fields that are absent/empty in the user's own settings
+  // ── 4. Load global_config — infra credentials + admin templates + CLI config ──
   const { data: gc } = await sb.from('global_config').select('*').eq('id', 'singleton').maybeSingle()
   if (gc) {
     if (!result.settings) result.settings = {}
@@ -353,6 +362,33 @@ export async function loadFromSupabase(
     if (!s['cloudflareR2BucketName']    && gc.cloudflare_r2_bucket_name)       s['cloudflareR2BucketName']    = gc.cloudflare_r2_bucket_name
     if (!s['cloudflareR2Endpoint']      && gc.cloudflare_r2_endpoint)          s['cloudflareR2Endpoint']      = gc.cloudflare_r2_endpoint
     if (!s['cloudflareR2PublicUrl']     && gc.cloudflare_r2_public_url)        s['cloudflareR2PublicUrl']     = gc.cloudflare_r2_public_url
+    // Global admin templates
+    if (gc.global_templates_json) result.globalTemplates = gc.global_templates_json as AppState['docTemplates']
+    // Global CLI config
+    if (gc.global_cli_json) result.globalCli = gc.global_cli_json as { tweakccConfig: unknown; systemPrompt: string }
+    // Global prompt templates
+    if (gc.global_prompts_json) result.globalPrompts = gc.global_prompts_json as AppState['templates']
+  }
+
+  // ── 5. Load projects ─────────────────────────────────────────────────────────
+  const { data: projs, error: projsErr } = await sb
+    .from('projects')
+    .select('id, name, path, branch, app_port, app_start_cmd')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+
+  if (projsErr) {
+    console.error('[supabaseSync] loadProjects error:', projsErr.message)
+  } else if (projs?.length) {
+    result.projects = projs.map(p => ({
+      id:           p.id as string,
+      name:         (p.name as string) ?? '',
+      path:         (p.path as string) ?? '',
+      branch:       (p.branch as string) ?? '',
+      sessions:     [],
+      appPort:      (p.app_port as number | null) ?? undefined,
+      appStartCmd:  (p.app_start_cmd as string | null) ?? undefined,
+    }))
   }
 
   return result
@@ -360,7 +396,6 @@ export async function loadFromSupabase(
 
 // ─── Global config sync (admin only) — keeps global_config in sync with admin's infra settings ──
 export async function syncGlobalConfig(sb: SupabaseClient, userId: string, state: AppState): Promise<void> {
-  // Only admin@codera.com syncs global_config
   const ADMIN_ID = 'f2af2003-6789-4150-b6b6-cc420373b447'
   if (userId !== ADMIN_ID) return
   await sb.from('global_config').upsert({
@@ -375,6 +410,51 @@ export async function syncGlobalConfig(sb: SupabaseClient, userId: string, state
     cloudflare_r2_public_url:        state.cloudflareR2PublicUrl         ?? '',
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' })
+}
+
+// ─── Save admin templates to global_config ────────────────────────────────────
+export async function saveGlobalTemplates(
+  sb: SupabaseClient,
+  userId: string,
+  templates: AppState['docTemplates'],
+): Promise<void> {
+  const ADMIN_ID = 'f2af2003-6789-4150-b6b6-cc420373b447'
+  if (userId !== ADMIN_ID) return
+  const { error } = await sb.from('global_config').upsert(
+    { id: 'singleton', global_templates_json: templates, updated_at: new Date().toISOString() },
+    { onConflict: 'id' },
+  )
+  if (error) console.error('[supabaseSync] saveGlobalTemplates error:', error.message)
+}
+
+// ─── Save admin prompt templates to global_config ────────────────────────────
+export async function saveGlobalPrompts(
+  sb: SupabaseClient,
+  userId: string,
+  templates: AppState['templates'],
+): Promise<void> {
+  const ADMIN_ID = 'f2af2003-6789-4150-b6b6-cc420373b447'
+  if (userId !== ADMIN_ID) return
+  const { error } = await sb.from('global_config').upsert(
+    { id: 'singleton', global_prompts_json: templates, updated_at: new Date().toISOString() },
+    { onConflict: 'id' },
+  )
+  if (error) console.error('[supabaseSync] saveGlobalPrompts error:', error.message)
+}
+
+// ─── Save admin CLI config to global_config ───────────────────────────────────
+export async function saveGlobalCliConfig(
+  sb: SupabaseClient,
+  userId: string,
+  config: { tweakccConfig: unknown; systemPrompt: string },
+): Promise<void> {
+  const ADMIN_ID = 'f2af2003-6789-4150-b6b6-cc420373b447'
+  if (userId !== ADMIN_ID) return
+  const { error } = await sb.from('global_config').upsert(
+    { id: 'singleton', global_cli_json: config, updated_at: new Date().toISOString() },
+    { onConflict: 'id' },
+  )
+  if (error) console.error('[supabaseSync] saveGlobalCliConfig error:', error.message)
 }
 
 // ─── Project Brain ────────────────────────────────────────────────────────────
@@ -477,6 +557,41 @@ export async function upsertSingleOrbitMessage(
     ts:      msg.ts,
   }, { onConflict: 'id', ignoreDuplicates: true })
   if (error) console.error('[supabaseSync] upsertSingleOrbitMessage error:', error.message)
+}
+
+// ─── Save projects to DB ─────────────────────────────────────────────────────
+export async function saveProjectsToSupabase(
+  sb: SupabaseClient,
+  userId: string,
+  projects: Project[],
+): Promise<void> {
+  const { data: { session } } = await sb.auth.getSession()
+  if (!session) return
+  if (projects.length === 0) return
+
+  // Sessions are ephemeral — only persist project metadata
+  const rows = projects.map(p => ({
+    id:           p.id,
+    user_id:      userId,
+    name:         p.name,
+    path:         p.path,
+    branch:       p.branch,
+    app_port:     p.appPort ?? null,
+    app_start_cmd: p.appStartCmd ?? null,
+    updated_at:   new Date().toISOString(),
+  }))
+
+  const { error } = await sb.from('projects').upsert(rows, { onConflict: 'id' })
+  if (error) console.error('[supabaseSync] saveProjects error:', error.message)
+}
+
+export async function deleteProjectFromSupabase(
+  sb: SupabaseClient,
+  userId: string,
+  projectId: string,
+): Promise<void> {
+  const { error } = await sb.from('projects').delete().eq('id', projectId).eq('user_id', userId)
+  if (error) console.error('[supabaseSync] deleteProject error:', error.message)
 }
 
 // ─── Debounce helper ──────────────────────────────────────────────────────────
