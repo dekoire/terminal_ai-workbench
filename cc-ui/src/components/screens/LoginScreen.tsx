@@ -46,6 +46,7 @@ export function LoginScreen() {
 
   return (
     <div style={{ flex: 1, display: 'flex', background: 'var(--bg-0)', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 70, zIndex: 10, WebkitAppRegion: 'drag' } as React.CSSProperties} />
 
       {/* ── Background pattern ── */}
       <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
@@ -77,22 +78,22 @@ export function LoginScreen() {
         <div style={{ marginBottom: 4 }}>
           <img src={theme === 'light' ? logoBlack : logoWhite} alt="Codera AI" style={{ height: 60, width: 'auto', display: 'block' }} />
         </div>
-        <span style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 48 }}>v0.1.0 · macOS · arm64</span>
+        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, letterSpacing: 0.3, marginBottom: 48 }}>AI Development IDE</span>
 
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 380 }}>
           <h1 style={{ margin: '0 0 16px', fontSize: 32, fontWeight: 700, letterSpacing: -0.8, color: 'var(--fg-0)', lineHeight: 1.15 }}>
-            Dein Cockpit für<br/>
-            <span style={{ color: 'var(--accent)' }}>KI-gestütztes Coding.</span>
+            KI-Coding.<br/>
+            <span style={{ color: 'var(--accent)' }}>Zentral gesteuert.</span>
           </h1>
           <p style={{ margin: '0 0 28px', color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.65 }}>
-            Claude Code, DeepSeek und mehr — alle KI-Agenten in einer durchdachten Oberfläche. Sessions, Modelle, Prompt-Vorlagen und Git-Integration. Alles an einem Ort.
+            Arbeite mit Claude Code, DeepSeek und weiteren Agenten in einer Oberfläche — inklusive Terminal, Projektkontext, Session-Verlauf, Prompt-Vorlagen und Git-Integration.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <FeatureRow icon={<ISpark />} label="Orbit Chat — KI direkt im Kontext deines Projekts" />
-            <FeatureRow icon={<ITerminal />} label="Natives Terminal mit Gesprächsrunden-Ansicht" />
-            <FeatureRow icon={<IShield />}   label="Berechtigungsmodi und Prompt-Vorlagen pro Session" />
-            <FeatureRow icon={<IGit />}      label="Git-Integration und Worktree-Struktur" />
+            <FeatureRow icon={<ISpark />}    label="KI-Chat im Projektkontext" />
+            <FeatureRow icon={<ITerminal />} label="Terminal mit Session-Verlauf" />
+            <FeatureRow icon={<IShield />}   label="Modelle, Aliases & Templates verwalten" />
+            <FeatureRow icon={<IGit />}      label="Git-Workflow direkt im Workspace" />
           </div>
         </div>
         <div style={{ flex: 1 }} />
@@ -117,12 +118,11 @@ export function LoginScreen() {
         {showLogin ? (
           /* ── Hidden login form ── */
           <div>
-            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 8 }}>Anmelden</div>
-            <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 600, letterSpacing: -0.3, color: 'var(--fg-0)' }}>
+            <h2 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: -0.4, color: 'var(--fg-0)' }}>
               Willkommen zurück.
             </h2>
-            <p style={{ margin: '0 0 24px', fontSize: 12, color: 'var(--fg-2)' }}>
-              Synchronisiert Aliases, Templates und Verlauf geräteübergreifend.
+            <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.6 }}>
+              Melde dich an und arbeite dort weiter, wo du aufgehört hast.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>

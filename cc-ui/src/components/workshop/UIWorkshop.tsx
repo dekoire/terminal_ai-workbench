@@ -55,7 +55,7 @@ export function UIWorkshop() {
   }, [transferToAgent])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '97vw', height: '97vh', background: 'var(--bg-0)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line-strong)', boxShadow: '0 8px 28px rgba(0,0,0,0.35)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '89vw', height: '89vh', background: 'var(--bg-0)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line-strong)', boxShadow: '0 8px 28px rgba(0,0,0,0.35)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
 
       {/* ── Header — inverted chrome (light in dark mode, dark in light mode) ── */}
       {(() => {

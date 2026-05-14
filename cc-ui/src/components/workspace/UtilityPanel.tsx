@@ -5,7 +5,7 @@ import type { OrbitMessage } from '../../store/useAppStore'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages } from '../../lib/agentSync'
-import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders } from '../primitives/Icons'
+import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
@@ -166,6 +166,18 @@ function openWithApp(absPath: string, app: string) {
   fetch(`/api/open-with?path=${encodeURIComponent(absPath)}&app=${encodeURIComponent(app)}`)
 }
 
+// Module-level cache — fetched once per session
+let _installedApps: Set<string> | null = null
+async function fetchInstalledApps(): Promise<Set<string>> {
+  if (_installedApps) return _installedApps
+  try {
+    const r = await fetch('/api/installed-apps')
+    const d = await r.json() as { apps: string[] }
+    _installedApps = new Set(d.apps)
+  } catch { _installedApps = new Set() }
+  return _installedApps
+}
+
 const OPEN_WITH: Record<string, string[]> = {
   ts:   ['Visual Studio Code', 'Cursor', 'Zed'],
   tsx:  ['Visual Studio Code', 'Cursor', 'Zed'],
@@ -190,7 +202,7 @@ const OPEN_WITH: Record<string, string[]> = {
   csv:  ['Numbers', 'Microsoft Excel', 'TablePlus'],
 }
 
-function LiveTreeNode({ node, depth }: { node: LiveNode; depth: number }) {
+function LiveTreeNode({ node, depth, installedApps }: { node: LiveNode; depth: number; installedApps: Set<string> | null }) {
   const [open, setOpen]           = useState(depth <= 1)
   const [children, setChildren]   = useState<LiveNode[]>(node.children ?? [])
   const [loaded, setLoaded]       = useState(node.loaded ?? false)
@@ -364,10 +376,11 @@ function LiveTreeNode({ node, depth }: { node: LiveNode; depth: number }) {
             icon={<ICopy style={{ width: 11, height: 11, color: 'var(--fg-2)', flexShrink: 0 }} />}
             onClick={() => { navigator.clipboard.writeText(node.name); setMenu(null) }}
           />
-          {/* Öffnen mit — files only, based on extension */}
+          {/* Öffnen mit — files only, based on extension, filtered to installed apps */}
           {!node.isDir && (() => {
             const ext = node.name.includes('.') ? node.name.split('.').pop()!.toLowerCase() : ''
-            const apps = OPEN_WITH[ext] ?? []
+            const all = OPEN_WITH[ext] ?? []
+            const apps = installedApps ? all.filter(a => installedApps.has(a)) : all
             if (apps.length === 0) return null
             return (
               <>
@@ -409,7 +422,7 @@ function LiveTreeNode({ node, depth }: { node: LiveNode; depth: number }) {
       )}
 
       {node.isDir && open && children.map(child => (
-        <LiveTreeNode key={child.path} node={child} depth={depth + 1} />
+        <LiveTreeNode key={child.path} node={child} depth={depth + 1} installedApps={installedApps} />
       ))}
     </div>
   )
@@ -514,6 +527,11 @@ function FilesTab({ projectPath }: { projectName: string; projectPath: string })
   const [root, setRoot]       = useState<LiveNode | null>(null)
   const [error, setError]     = useState('')
   const [notFound, setNotFound] = useState(false)
+  const [installedApps, setInstalledApps] = useState<Set<string> | null>(null)
+
+  useEffect(() => {
+    fetchInstalledApps().then(setInstalledApps)
+  }, [])
 
   const loadRoot = (reset = false) => {
     if (reset) { setRoot(null); setError(''); setNotFound(false) }
@@ -561,7 +579,7 @@ function FilesTab({ projectPath }: { projectName: string; projectPath: string })
         {!error && !notFound && !root && (
           <div style={{ padding: 12, color: 'var(--fg-3)', fontSize: 11 }}>Lade…</div>
         )}
-        {root && <LiveTreeNode node={root} depth={0} />}
+        {root && <LiveTreeNode node={root} depth={0} installedApps={installedApps} />}
       </div>
 
     </div>
@@ -602,7 +620,7 @@ function _gitInvalidate(path: string) {
 }
 
 function _flagColor(f: string) {
-  return f === 'M' || f === ' M' || f === 'MM' ? '#7dc97d' : f.includes('A') || f === '??' ? '#f5a623' : f.includes('D') ? '#e24b4a' : 'var(--fg-2)'
+  return f === 'M' || f === ' M' || f === 'MM' ? 'var(--ok)' : f.includes('A') || f === '??' ? 'var(--warn)' : f.includes('D') ? 'var(--err)' : 'var(--fg-2)'
 }
 function _flagLabel(f: string) {
   return f.trim().startsWith('A') || f === '??' ? '+' : f.includes('D') ? '−' : 'M'
@@ -723,8 +741,8 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
   const MONO: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 11.5 }
   const LINE_H = 20
 
-  function sideColor(t: DiffSide['type']) { return t === 'removed' ? '#e24b4a' : t === 'added' ? '#7dc97d' : 'var(--fg-3)' }
-  function sideBg(t: DiffSide['type'])    { return t === 'removed' ? 'rgba(226,75,74,0.12)' : t === 'added' ? 'rgba(125,201,125,0.12)' : t === 'empty' ? 'rgba(255,255,255,0.02)' : 'transparent' }
+  function sideColor(t: DiffSide['type']) { return t === 'removed' ? 'var(--err)' : t === 'added' ? 'var(--ok)' : 'var(--fg-3)' }
+  function sideBg(t: DiffSide['type'])    { return t === 'removed' ? 'rgba(226,75,74,0.12)' : t === 'added' ? 'rgba(125,201,125,0.12)' : t === 'empty' ? 'var(--bg-3)' : 'transparent' }
 
   function SideLine({ side }: { side: DiffSide }) {
     return (
@@ -739,15 +757,15 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
     )
   }
 
-  const HUNK_ROW: React.CSSProperties = { padding: '3px 12px', background: 'rgba(255,255,255,0.03)', color: 'var(--fg-3)', fontSize: 10.5, borderTop: '0.5px solid rgba(255,255,255,0.06)', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }
+  const HUNK_ROW: React.CSSProperties = { padding: '3px 12px', background: 'var(--bg-3)', color: 'var(--fg-3)', fontSize: 10.5, borderTop: 'var(--line)', borderBottom: 'var(--line)' }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-    <div style={{ width: '98%', height: '98%', display: 'flex', flexDirection: 'column', background: 'var(--bg-0)', borderRadius: 12, overflow: 'hidden', border: '0.5px solid var(--line-strong)', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>
+    <div style={{ width: '89%', height: '89%', display: 'flex', flexDirection: 'column', background: 'var(--bg-0)', borderRadius: 12, overflow: 'hidden', border: '0.5px solid var(--line-strong)', boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.08)', background: 'var(--bg-1)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: 'var(--line-strong)', background: 'var(--bg-1)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <IGitFork style={{ width: 14, height: 14, color: 'var(--accent)', flexShrink: 0 }} />
           <span style={{ fontWeight: 500, fontSize: 13 }}>{readOnly ? 'Speicherpunkt' : 'Vergleich anzeigen'}</span>
@@ -755,14 +773,14 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
           <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>{files.length} Datei{files.length !== 1 ? 'en' : ''} geändert</span>
           {stats.added + stats.removed > 0 && (
             <span style={{ fontSize: 11 }}>
-              <span style={{ color: '#7dc97d' }}>+{stats.added}</span>
+              <span style={{ color: 'var(--ok)' }}>+{stats.added}</span>
               {' '}
-              <span style={{ color: '#e24b4a' }}>−{stats.removed}</span>
+              <span style={{ color: 'var(--err)' }}>−{stats.removed}</span>
             </span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 2 }}>
+          <div style={{ display: 'flex', background: 'var(--bg-3)', borderRadius: 6, padding: 2 }}>
             {(['side', 'inline'] as const).map(m => (
               <button key={m} onClick={() => setMode(m)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: mode === m ? 'rgba(255,138,76,0.2)' : 'transparent', color: mode === m ? 'var(--accent)' : 'var(--fg-3)', fontFamily: 'var(--font-ui)' }}>
                 {m === 'side' ? 'Nebeneinander' : 'Inline'}
@@ -779,7 +797,7 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '200px 1fr', overflow: 'hidden' }}>
 
         {/* Sidebar */}
-        <div style={{ borderRight: '0.5px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.15)', overflowY: 'auto', padding: '10px 0' }}>
+        <div style={{ borderRight: 'var(--line-strong)', background: 'var(--bg-1)', overflowY: 'auto', padding: '10px 0' }}>
           <div style={{ fontSize: 10, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 12px 8px' }}>Dateien</div>
           {files.map(f => {
             const active = f.file === selFile
@@ -813,8 +831,8 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
           {!loading && rows.length > 0 && mode === 'side' && (
             <>
               {/* Column labels */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: '0.5px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', flexShrink: 0 }}>
-                <div style={{ padding: '7px 12px', fontSize: 10.5, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5, borderRight: '0.5px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: 'var(--line-strong)', background: 'var(--bg-2)', flexShrink: 0 }}>
+                <div style={{ padding: '7px 12px', fontSize: 10.5, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: 0.5, borderRight: 'var(--line)', display: 'flex', alignItems: 'center', gap: 5 }}>
                   <IHistoryClock style={{ width: 11, height: 11 }} /> Vorher
                 </div>
                 <div style={{ padding: '7px 12px', fontSize: 10.5, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -828,7 +846,7 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
                     ? <div key={i} style={{ gridColumn: '1 / -1', ...HUNK_ROW }}>{row.hunkHeader}</div>
                     : (
                       <React.Fragment key={i}>
-                        <div style={{ borderRight: '0.5px solid rgba(255,255,255,0.05)', overflow: 'hidden', minWidth: 0 }}><SideLine side={row.left} /></div>
+                        <div style={{ borderRight: 'var(--line)', overflow: 'hidden', minWidth: 0 }}><SideLine side={row.left} /></div>
                         <div style={{ overflow: 'hidden', minWidth: 0 }}><SideLine side={row.right} /></div>
                       </React.Fragment>
                     )
@@ -845,15 +863,15 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
                   <React.Fragment key={i}>
                     {row.left.type === 'removed' && (
                       <div style={{ display: 'flex', background: 'rgba(226,75,74,0.12)', minHeight: LINE_H, lineHeight: `${LINE_H}px` }}>
-                        <span style={{ width: 36, textAlign: 'right', paddingRight: 8, color: '#e24b4a', fontSize: 10.5, flexShrink: 0, userSelect: 'none' }}>{row.left.lineNo}</span>
-                        <span style={{ color: '#e24b4a', paddingRight: 8, flexShrink: 0, userSelect: 'none' }}>−</span>
+                        <span style={{ width: 36, textAlign: 'right', paddingRight: 8, color: 'var(--err)', fontSize: 10.5, flexShrink: 0, userSelect: 'none' }}>{row.left.lineNo}</span>
+                        <span style={{ color: 'var(--err)', paddingRight: 8, flexShrink: 0, userSelect: 'none' }}>−</span>
                         <span style={{ color: 'var(--fg-1)', whiteSpace: 'pre' }}>{row.left.text}</span>
                       </div>
                     )}
                     {row.right.type === 'added' && (
                       <div style={{ display: 'flex', background: 'rgba(125,201,125,0.12)', minHeight: LINE_H, lineHeight: `${LINE_H}px` }}>
-                        <span style={{ width: 36, textAlign: 'right', paddingRight: 8, color: '#7dc97d', fontSize: 10.5, flexShrink: 0, userSelect: 'none' }}>{row.right.lineNo}</span>
-                        <span style={{ color: '#7dc97d', paddingRight: 8, flexShrink: 0, userSelect: 'none' }}>+</span>
+                        <span style={{ width: 36, textAlign: 'right', paddingRight: 8, color: 'var(--ok)', fontSize: 10.5, flexShrink: 0, userSelect: 'none' }}>{row.right.lineNo}</span>
+                        <span style={{ color: 'var(--ok)', paddingRight: 8, flexShrink: 0, userSelect: 'none' }}>+</span>
                         <span style={{ color: 'var(--fg-1)', whiteSpace: 'pre' }}>{row.right.text}</span>
                       </div>
                     )}
@@ -873,7 +891,7 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
       </div>
 
       {/* Footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderTop: '0.5px solid rgba(255,255,255,0.08)', background: 'var(--bg-1)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderTop: 'var(--line-strong)', background: 'var(--bg-1)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--fg-3)' }}>
           <IKeyboard style={{ width: 12, height: 12, flexShrink: 0 }} />
           ← → zwischen Dateien · Esc schließen · Tab Ansicht wechseln
@@ -882,19 +900,19 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
           {!readOnly && curFile && (
             confirmDiscard ? (
               <>
-                <span style={{ fontSize: 11, color: '#e24b4a' }}>Wirklich verwerfen?</span>
+                <span style={{ fontSize: 11, color: 'var(--err)' }}>Wirklich verwerfen?</span>
                 <button onClick={() => { onDiscard(selFile); setConfirmDiscard(false) }}
-                  style={{ background: 'transparent', color: '#e24b4a', border: '0.5px solid rgba(226,75,74,0.4)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>
+                  style={{ background: 'transparent', color: 'var(--err)', border: '0.5px solid rgba(226,75,74,0.4)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>
                   Ja, verwerfen
                 </button>
                 <button onClick={() => setConfirmDiscard(false)}
-                  style={{ background: 'transparent', color: 'var(--fg-2)', border: '0.5px solid rgba(255,255,255,0.15)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>
+                  style={{ background: 'transparent', color: 'var(--fg-2)', border: 'var(--line-strong)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}>
                   Abbrechen
                 </button>
               </>
             ) : (
               <button onClick={() => setConfirmDiscard(true)}
-                style={{ background: 'transparent', color: '#e24b4a', border: '0.5px solid rgba(226,75,74,0.4)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                style={{ background: 'transparent', color: 'var(--err)', border: '0.5px solid rgba(226,75,74,0.4)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 5 }}>
                 <IUndo style={{ width: 11, height: 11 }} /> Änderung verwerfen
               </button>
             )
@@ -1012,7 +1030,7 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
   const added   = data?.added   ?? 0
   const removed = data?.removed ?? 0
   const hasDiff = added > 0 || removed > 0
-  const statusColor = status === 'synced' ? '#7dc97d' : status === 'dirty' ? '#f5a623' : '#e24b4a'
+  const statusColor = status === 'synced' ? 'var(--ok)' : status === 'dirty' ? 'var(--warn)' : 'var(--err)'
   const borderColor = 'var(--line-strong)'
 
   return (
@@ -1032,13 +1050,15 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
         {/* diff stats — always shown, grayed when 0 */}
         <span
           onClick={hasDiff ? e => { e.stopPropagation(); if (data?.files.length) { setDiffFile(data.files[0].file); setDiffOpen(true) } } : undefined}
-          style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, background: 'rgba(255,255,255,0.04)', borderRadius: 4, padding: '2px 6px', cursor: hasDiff ? 'pointer' : 'default', flexShrink: 0 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, background: 'var(--bg-3)', border: 'var(--line-strong)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderRadius: 4, padding: '2px 6px', cursor: hasDiff ? 'pointer' : 'default', flexShrink: 0, transition: 'background 0.12s, border-color 0.12s' }}
+          onMouseEnter={hasDiff ? e => { e.currentTarget.style.background = 'var(--bg-2)'; e.currentTarget.style.borderColor = 'var(--line-strong)' } : undefined}
+          onMouseLeave={hasDiff ? e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.borderColor = 'var(--line)' } : undefined}
         >
           {status === 'loading'
             ? <span style={{ color: 'var(--fg-3)' }}>…</span>
             : <>
-                <span style={{ color: hasDiff ? '#7dc97d' : 'var(--fg-3)', fontWeight: hasDiff ? 600 : 400 }}>+{added}</span>
-                <span style={{ color: hasDiff ? '#e24b4a' : 'var(--fg-3)', fontWeight: hasDiff ? 600 : 400 }}>−{removed}</span>
+                <span style={{ color: hasDiff ? 'var(--ok)' : 'var(--fg-3)', fontWeight: hasDiff ? 600 : 400 }}>+{added}</span>
+                <span style={{ color: hasDiff ? 'var(--err)' : 'var(--fg-3)', fontWeight: hasDiff ? 600 : 400 }}>−{removed}</span>
               </>
           }
         </span>
@@ -1067,7 +1087,7 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
 
           {/* Toast */}
           {toast && (
-            <div style={{ padding: '6px 12px', background: toast.ok ? 'rgba(125,201,125,0.12)' : 'rgba(226,75,74,0.12)', color: toast.ok ? '#7dc97d' : '#e24b4a', fontSize: 11, borderBottom: `0.5px solid ${toast.ok ? 'rgba(125,201,125,0.2)' : 'rgba(226,75,74,0.2)'}` }}>
+            <div style={{ padding: '6px 12px', background: toast.ok ? 'rgba(125,201,125,0.12)' : 'rgba(226,75,74,0.12)', color: toast.ok ? 'var(--ok)' : 'var(--err)', fontSize: 11, borderBottom: `0.5px solid ${toast.ok ? 'rgba(125,201,125,0.2)' : 'rgba(226,75,74,0.2)'}` }}>
               {toast.msg}
             </div>
           )}
@@ -1105,12 +1125,12 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                 <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{data.log[0]?.when ?? ''}</span>
               </div>
               {data.log[0] && (
-                <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 5, padding: '5px 8px', marginBottom: 8, fontSize: 11 }}>
+                <div style={{ background: 'var(--card-bg)', borderRadius: 5, padding: '5px 8px', marginBottom: 8, fontSize: 11 }}>
                   <div style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.log[0].msg}</div>
                   <div style={{ color: 'var(--fg-3)', fontSize: 10, marginTop: 1, fontFamily: 'var(--font-mono)' }}>{data.log[0].hash.slice(0, 7)}</div>
                 </div>
               )}
-              <button onClick={handlePull} disabled={!!busy} style={{ width: '100%', background: 'transparent', color: 'var(--fg-2)', border: '0.5px solid rgba(255,255,255,0.12)', padding: '7px', borderRadius: 6, fontSize: 11.5, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', opacity: busy ? 0.6 : 1 }}>
+              <button onClick={handlePull} disabled={!!busy} style={{ width: '100%', background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-line)', padding: '7px', borderRadius: 6, fontSize: 11.5, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', opacity: busy ? 0.6 : 1 }}>
                 {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudDownload style={{ width: 12, height: 12 }} />}
                 Updates holen
               </button>
@@ -1125,9 +1145,9 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
             <div style={{ padding: '10px 12px' }}>
               {/* File list */}
               {data.files.length > 0 && (
-                <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 6, marginBottom: 8 }}>
+                <div style={{ background: 'var(--card-bg)', borderRadius: 6, marginBottom: 8 }}>
                   {data.files.slice(0, 4).map((f, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', borderBottom: i < Math.min(data.files.length, 4) - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', fontSize: 11.5, fontFamily: 'var(--font-mono)', minWidth: 0 }}>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', borderBottom: i < Math.min(data.files.length, 4) - 1 ? 'var(--line)' : 'none', fontSize: 11.5, fontFamily: 'var(--font-mono)', minWidth: 0 }}>
                       <span style={{ color: _flagColor(f.flag), marginRight: 6, fontWeight: 700, flexShrink: 0 }}>{_flagLabel(f.flag)}</span>
                       <span style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.file}</span>
                       <IEye onClick={e => { e.stopPropagation(); setDiffFile(f.file); setDiffOpen(true) }} style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0, marginLeft: 6, cursor: 'pointer' }} />
@@ -1145,16 +1165,16 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                 value={note}
                 onChange={e => setNote(e.target.value)}
                 placeholder="Was hast du geändert? (optional)"
-                style={{ width: '100%', padding: '6px 9px', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, background: 'rgba(255,255,255,0.03)', color: 'var(--fg-1)', fontSize: 11.5, fontFamily: 'var(--font-ui)', outline: 'none', marginBottom: 8, boxSizing: 'border-box' as const }}
+                style={{ width: '100%', padding: '6px 9px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 11.5, fontFamily: 'var(--font-ui)', outline: 'none', marginBottom: 8, boxSizing: 'border-box' as const }}
               />
               {/* Buttons */}
               <div style={{ display: 'flex', gap: 5 }}>
-                <button onClick={handleSave} disabled={!!busy} style={{ flex: 1, background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: 7, borderRadius: 6, fontWeight: 500, fontSize: 12, cursor: busy ? 'default' : 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: busy ? 0.7 : 1 }}>
-                  {busy === 'save' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudUpload style={{ width: 13, height: 13, strokeWidth: 2 }} />}
+                <button onClick={handleSave} disabled={!!busy} style={{ flex: 1, background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: 7, borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: busy ? 'default' : 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: busy ? 0.7 : 1 }}>
+                  {busy === 'save' ? <ISpinner style={{ width: 12, height: 12 }} /> : <IArrowUpLine style={{ width: 13, height: 13, strokeWidth: 2.5 }} />}
                   {busy === 'save' ? 'Wird hochgeladen…' : 'Speichern & Hochladen'}
                 </button>
-                <button onClick={handlePull} disabled={!!busy} title="Updates holen" style={{ background: 'transparent', color: 'var(--fg-2)', border: '0.5px solid rgba(255,255,255,0.12)', padding: '7px 9px', borderRadius: 6, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
-                  {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudDownload style={{ width: 13, height: 13 }} />}
+                <button onClick={handlePull} disabled={!!busy} title="Updates holen" style={{ background: 'rgba(255,255,255,0.92)', color: '#222', border: '1px solid rgba(255,255,255,0.5)', padding: '7px 9px', borderRadius: 6, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+                  {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <IArrowDownLine style={{ width: 13, height: 13, strokeWidth: 2.5 }} />}
                 </button>
               </div>
               <div style={{ textAlign: 'center', marginTop: 7 }}>
@@ -1280,7 +1300,7 @@ function GitSetupModal({
             <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>GitHub URL</label>
             <input style={inp} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus />
             {githubToken
-              ? <div style={{ fontSize: 10.5, color: '#7dc97d', marginBottom: 14 }}>✓ GitHub Token hinterlegt — authentifizierter Zugriff</div>
+              ? <div style={{ fontSize: 10.5, color: 'var(--ok)', marginBottom: 14 }}>✓ GitHub Token hinterlegt — authentifizierter Zugriff</div>
               : <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 14 }}>Kein GitHub Token — nur öffentliche Repos klonbar</div>
             }
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -1311,7 +1331,7 @@ function GitSetupModal({
 
         {/* Result */}
         {result && (
-          <div style={{ padding: '14px 16px', borderRadius: 8, background: result.ok ? 'rgba(125,201,125,0.1)' : 'rgba(226,75,74,0.1)', border: `1px solid ${result.ok ? 'rgba(125,201,125,0.3)' : 'rgba(226,75,74,0.3)'}`, color: result.ok ? '#7dc97d' : '#e24b4a', fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
+          <div style={{ padding: '14px 16px', borderRadius: 8, background: result.ok ? 'rgba(125,201,125,0.1)' : 'rgba(226,75,74,0.1)', border: `1px solid ${result.ok ? 'rgba(125,201,125,0.3)' : 'rgba(226,75,74,0.3)'}`, color: result.ok ? 'var(--ok)' : 'var(--err)', fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
             {result.msg}
             {!result.ok && (
               <button onClick={() => { setResult(null) }} style={{ display: 'block', margin: '10px auto 0', ...btnSec, fontSize: 11 }}>Nochmal versuchen</button>
@@ -1463,15 +1483,15 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
     _gitInvalidate(projectPath); load()
   }
 
-  const statusColor = status === 'synced' ? '#7dc97d' : status === 'dirty' ? '#f5a623' : status === 'error' ? '#e24b4a' : 'var(--fg-3)'
+  const statusColor = status === 'synced' ? 'var(--ok)' : status === 'dirty' ? 'var(--warn)' : status === 'error' ? 'var(--err)' : 'var(--fg-3)'
   const statusText  = status === 'synced' ? 'Alles gesichert' : status === 'dirty' ? `${data?.files.length ?? 0} ungespeicherte Änderung${(data?.files.length ?? 0) !== 1 ? 'en' : ''}` : status === 'error' ? 'Verbindung getrennt' : 'Wird geladen…'
 
   const flagColor = _flagColor
   const flagLabel = _flagLabel
 
-  const card: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }
-  const secBtn: React.CSSProperties = { width: '100%', background: 'transparent', color: 'var(--fg-1)', border: '0.5px solid rgba(255,255,255,0.18)', padding: '8px 10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8 }
-  const priBtn: React.CSSProperties = { width: '100%', background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '10px', borderRadius: 7, fontWeight: 600, fontSize: 12.5, cursor: (status === 'dirty' && !busy) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, opacity: (status !== 'dirty' || busy === 'save') ? 0.5 : 1 }
+  const card: React.CSSProperties = { background: 'var(--bg-0)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }
+  const secBtn: React.CSSProperties = { width: '100%', background: 'rgba(255,255,255,0.92)', color: '#222', border: '1px solid rgba(255,255,255,0.5)', padding: '10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8 }
+  const priBtn: React.CSSProperties = { width: '100%', background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: '10px', borderRadius: 7, fontWeight: 600, fontSize: 12.5, cursor: (status === 'dirty' && !busy) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, opacity: (status !== 'dirty' || busy === 'save') ? 0.5 : 1 }
 
   const ghUrl = (() => {
     if (!data?.remote) return null
@@ -1483,7 +1503,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
   const collRow = (label: string, icon: React.ReactNode, key: keyof typeof sections): React.ReactNode => (
     <div
       onClick={() => toggleSection(key)}
-      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 2px', borderTop: '0.5px solid rgba(255,255,255,0.07)', fontSize: 11.5, color: 'var(--fg-2)', cursor: 'pointer', userSelect: 'none' }}
+      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 2px', borderTop: 'var(--line)', fontSize: 11.5, color: 'var(--fg-2)', cursor: 'pointer', userSelect: 'none' }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{icon}{label}</span>
       {sections[key]
@@ -1518,7 +1538,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
 
       {/* Toast */}
       {toast && (
-        <div style={{ margin: '0 0 10px', padding: '6px 10px', borderRadius: 6, background: toast.ok ? 'rgba(125,201,125,0.12)' : 'rgba(226,75,74,0.12)', border: `0.5px solid ${toast.ok ? 'rgba(125,201,125,0.35)' : 'rgba(226,75,74,0.35)'}`, color: toast.ok ? '#7dc97d' : '#e24b4a', fontSize: 11, fontFamily: 'var(--font-ui)' }}>
+        <div style={{ margin: '0 0 10px', padding: '6px 10px', borderRadius: 6, background: toast.ok ? 'rgba(125,201,125,0.12)' : 'rgba(226,75,74,0.12)', border: `0.5px solid ${toast.ok ? 'rgba(125,201,125,0.35)' : 'rgba(226,75,74,0.35)'}`, color: toast.ok ? 'var(--ok)' : 'var(--err)', fontSize: 11, fontFamily: 'var(--font-ui)' }}>
           {toast.msg}
         </div>
       )}
@@ -1563,10 +1583,10 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
             <span
               onClick={() => { setDiffFile(data!.files[0]?.file ?? ''); setDiffOpen(true) }}
               title="Diff anzeigen"
-              style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: '1px 5px', marginLeft: 2 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, cursor: 'pointer', background: 'var(--bg-3)', borderRadius: 4, padding: '1px 5px', marginLeft: 2 }}
             >
-              <span style={{ color: '#7dc97d', fontWeight: 600 }}>+{data!.added}</span>
-              <span style={{ color: '#e24b4a', fontWeight: 600 }}>−{data!.removed}</span>
+              <span style={{ color: 'var(--ok)', fontWeight: 600 }}>+{data!.added}</span>
+              <span style={{ color: 'var(--err)', fontWeight: 600 }}>−{data!.removed}</span>
             </span>
           )}
         </div>
@@ -1589,16 +1609,16 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
         onChange={e => setNote(e.target.value)}
         placeholder="Was hast du geändert? (optional)"
         rows={2}
-        style={{ resize: 'none', background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, color: 'var(--fg-1)', fontSize: 11, fontFamily: 'var(--font-ui)', padding: '7px 10px', outline: 'none', marginBottom: 10, lineHeight: 1.5, boxSizing: 'border-box', width: '100%' }}
+        style={{ resize: 'none', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, color: 'var(--fg-1)', fontSize: 11, fontFamily: 'var(--font-ui)', padding: '7px 10px', outline: 'none', marginBottom: 10, lineHeight: 1.5, boxSizing: 'border-box', width: '100%' }}
       />
 
       {/* 3 — Buttons */}
       <button onClick={handleSave} disabled={status !== 'dirty' || !!busy} style={priBtn}>
-        {busy === 'save' ? <ISpinner style={{ width: 13, height: 13 }} /> : <ICloudUpload style={{ width: 13, height: 13, strokeWidth: 2 }} />}
-        {busy === 'save' ? 'Wird hochgeladen…' : status !== 'dirty' ? 'Speichern & Hochladen' : 'Speichern & Hochladen'}
+        {busy === 'save' ? <ISpinner size={13} /> : <IArrowUpLine style={{ width: 13, height: 13, strokeWidth: 2.5 }} />}
+        {busy === 'save' ? 'Wird hochgeladen…' : 'Speichern & Hochladen'}
       </button>
       <button onClick={handlePull} disabled={!!busy} style={{ ...secBtn, opacity: busy === 'pull' ? 0.6 : 1 }}>
-        {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudDownload style={{ width: 12, height: 12, strokeWidth: 2 }} />}
+        {busy === 'pull' ? <ISpinner size={12} /> : <IArrowDownLine style={{ width: 12, height: 12, strokeWidth: 2 }} />}
         Updates holen
       </button>
 
@@ -1611,9 +1631,9 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
               <IGitFork style={{ width: 10, height: 10 }} /> Diff
             </span>
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 6, marginBottom: 12 }}>
+          <div style={{ background: 'var(--bg-2)', borderRadius: 6, marginBottom: 12 }}>
             {(showAllFiles ? data!.files : data!.files.slice(0, 5)).map((f, i, arr) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderBottom: i < arr.length - 1 || (!showAllFiles && data!.files.length > 5) ? '0.5px solid rgba(255,255,255,0.04)' : 'none', fontSize: 11 }}>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderBottom: i < arr.length - 1 || (!showAllFiles && data!.files.length > 5) ? 'var(--line)' : 'none', fontSize: 11 }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                   <span style={{ color: flagColor(f.flag), fontWeight: 700, marginRight: 5, fontFamily: 'var(--font-mono)' }}>{flagLabel(f.flag)}</span>
                   <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-1)' }}>{f.file}</span>
@@ -1660,7 +1680,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
                 <select
                   value={reviewFile}
                   onChange={e => { setReviewFile(e.target.value); setReviewFindings(null); setReviewError(null) }}
-                  style={{ width: '100%', background: 'var(--bg-2)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 5, color: 'var(--fg-0)', fontSize: 11, padding: '5px 7px', fontFamily: 'var(--font-mono)', marginBottom: 8, cursor: 'pointer' }}
+                  style={{ width: '100%', background: 'var(--bg-2)', border: 'var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontSize: 11, padding: '5px 7px', fontFamily: 'var(--font-mono)', marginBottom: 8, cursor: 'pointer' }}
                 >
                   <option value="">Datei wählen…</option>
                   {(data?.files ?? []).map(f => <option key={f.file} value={f.file}>{f.file}</option>)}
@@ -1681,21 +1701,21 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
                   disabled={!reviewFile || reviewBusy}
                   style={{ width: '100%', padding: '7px', borderRadius: 6, border: 'none', background: reviewFile && !reviewBusy ? 'var(--accent)' : 'var(--bg-3)', color: reviewFile && !reviewBusy ? 'var(--accent-fg)' : 'var(--fg-3)', fontWeight: 600, fontSize: 11.5, cursor: reviewFile && !reviewBusy ? 'pointer' : 'default', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 8 }}
                 >
-                  {reviewBusy ? <><ISpinner style={{ width: 12, height: 12 }} />Wird analysiert…</> : 'Review starten'}
+                  {reviewBusy ? <><ISpinner size={12} />Wird analysiert…</> : 'Review starten'}
                 </button>
 
                 {/* Error */}
                 {reviewError && (
-                  <div style={{ fontSize: 11, color: '#e24b4a', padding: '6px 8px', background: 'rgba(226,75,74,0.08)', borderRadius: 5, marginBottom: 6 }}>{reviewError}</div>
+                  <div style={{ fontSize: 11, color: 'var(--err)', padding: '6px 8px', background: 'rgba(226,75,74,0.08)', borderRadius: 5, marginBottom: 6 }}>{reviewError}</div>
                 )}
 
                 {/* Results */}
                 {reviewFindings !== null && (
                   reviewFindings.length === 0
-                    ? <div style={{ fontSize: 11, color: '#7dc97d', padding: '6px 8px', background: 'rgba(125,201,125,0.08)', borderRadius: 5 }}>Keine Probleme gefunden ✓</div>
+                    ? <div style={{ fontSize: 11, color: 'var(--ok)', padding: '6px 8px', background: 'rgba(125,201,125,0.08)', borderRadius: 5 }}>Keine Probleme gefunden ✓</div>
                     : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {reviewFindings.map((f, i) => {
-                          const c = f.severity === 'error' ? '#e24b4a' : f.severity === 'warn' ? '#f5a623' : 'var(--fg-2)'
+                          const c = f.severity === 'error' ? 'var(--err)' : f.severity === 'warn' ? 'var(--warn)' : 'var(--fg-2)'
                           return (
                             <div key={i} style={{ padding: '7px 9px', background: 'var(--bg-2)', borderRadius: 6, border: `0.5px solid ${c}44` }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
@@ -1739,7 +1759,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
               <div
                 key={i}
                 onClick={() => { navigator.clipboard.writeText(c.hash).catch(() => {}); showToast(`Hash kopiert: ${c.hash.slice(0, 7)}`, true) }}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 6px', borderBottom: i < (data?.log.length ?? 0) - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', cursor: 'pointer', borderRadius: 4 }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 6px', borderBottom: i < (data?.log.length ?? 0) - 1 ? 'var(--line)' : 'none', cursor: 'pointer', borderRadius: 4 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 11, color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.msg}</div>
@@ -2001,7 +2021,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
               <button onClick={() => run('pull')} disabled={!!busy} style={{ ...smallBtn, flex: 1 }}>
                 {busy === 'pull' ? '…' : '↓ Pull'}
               </button>
-              <button onClick={() => run('push', { branch: currentBranch?.name })} disabled={!!busy} style={{ ...smallBtn, flex: 1 }}>
+              <button onClick={() => run('push', { branch: currentBranch?.name ?? '' })} disabled={!!busy} style={{ ...smallBtn, flex: 1 }}>
                 {busy === 'push' ? '…' : '↑ Push'}
               </button>
             </div>
@@ -2127,9 +2147,9 @@ function UserStoriesCard({ projectId: _projectId, sessionId }: { projectId?: str
         {allTickets.length === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>Keine Tasks</div>
         ) : (
-          allTickets.slice(0, 8).map(({ ticket: t, project: p }) => (
+          allTickets.slice(0, 8).map(({ ticket: t, project: p }, i, arr) => (
             <div key={t.id} onClick={() => setOpenTicket({ projectId: p.id, projectName: p.name, projectPath: p.path, ticketId: t.id })}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', cursor: 'pointer', borderBottom: '1px solid var(--line)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', cursor: 'pointer', borderBottom: i < arr.length - 1 ? '1px solid var(--line)' : 'none' }}>
               <StoryTypeIcon type={t.type} />
               <span style={{ flex: 1, fontSize: 11, color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
               <span style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0, textTransform: 'capitalize' }}>{t.status}</span>
@@ -2242,7 +2262,7 @@ function ChatTab({ projectId, sessionId }: { projectId: string; sessionId: strin
   const {
     orbitChats, orbitMessages, orbitMeta, setOrbitMeta,
     setActiveOrbitChat, activeOrbitChatId, removeOrbitChat,
-    orbitFavorites, removeOrbitFavorite,
+    orbitFavorites, removeOrbitFavorite, createOrbitChat,
   } = useAppStore()
 
   const [pill, setPill] = useState<'chats' | 'favoriten'>('chats')
@@ -2323,10 +2343,10 @@ function ChatTab({ projectId, sessionId }: { projectId: string; sessionId: strin
             </div>
           </div>
           <div style={{ display: 'flex', gap: 2, alignItems: 'center', flexShrink: 0, opacity: isHov ? 1 : 0, transition: 'opacity 0.1s' }} onClick={e => e.stopPropagation()}>
-            <button onClick={() => setOrbitMeta(chatId, { pinned: !isPinned })} title={isPinned ? 'Losgelöst' : 'Anpinnen'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isPinned ? 'var(--orbit)' : 'var(--fg-3)', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: 6 }}>
+            <button onClick={() => setOrbitMeta(chatId, { pinned: !isPinned })} title={isPinned ? 'Losgelöst' : 'Anpinnen'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isPinned ? (isActive ? '#fff' : 'var(--orbit)') : (isActive ? 'rgba(255,255,255,0.7)' : 'var(--fg-3)'), padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: 6 }}>
               <IBookmark style={{ width: 11, height: 11 }} />
             </button>
-            <button onClick={() => removeOrbitChat(projectId, chatId)} title="Chat löschen" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: 6 }}>
+            <button onClick={() => removeOrbitChat(projectId, chatId)} title="Chat löschen" style={{ background: 'none', border: 'none', cursor: 'pointer', color: isActive ? 'rgba(255,255,255,0.7)' : 'var(--fg-3)', padding: '2px 3px', display: 'flex', alignItems: 'center', borderRadius: 6 }}>
               <ITrash style={{ width: 11, height: 11 }} />
             </button>
           </div>
@@ -2352,8 +2372,8 @@ function ChatTab({ projectId, sessionId }: { projectId: string; sessionId: strin
         </div>
       </div>
 
-      {/* Pill bar */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 5, padding: '6px 10px 8px', flexShrink: 0 }}>
+      {/* Pill bar + New Chat button */}
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, padding: '6px 10px 8px', flexShrink: 0, position: 'relative' }}>
         {(['chats', 'favoriten'] as const).map(p => {
           const active = pill === p
           return (
@@ -2364,11 +2384,18 @@ function ChatTab({ projectId, sessionId }: { projectId: string; sessionId: strin
             >
               {p === 'chats' ? 'Chats' : 'Favoriten'}
               {p === 'favoriten' && favCount > 0 && (
-                <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 7.5, fontWeight: 700, minWidth: 13, height: 13, borderRadius: 99, background: active ? 'rgba(167,139,250,0.35)' : 'rgba(245,158,11,0.15)', border: active ? '1px solid rgba(167,139,250,0.6)' : '1px solid rgba(245,158,11,0.35)', color: active ? '#e9d5ff' : '#f59e0b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{favCount}</span>
+                <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 7.5, fontWeight: 700, minWidth: 13, height: 13, borderRadius: 99, background: 'rgba(167,139,250,0.35)', border: '1px solid rgba(167,139,250,0.6)', color: '#e9d5ff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{favCount}</span>
               )}
             </button>
           )
         })}
+        <button
+          onClick={() => createOrbitChat(projectId, sessionId)}
+          title="Neuer Chat"
+          style={{ position: 'absolute', right: 10, background: 'var(--orbit)', border: 'none', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center' }}
+        >
+          <IPlus style={{ width: 12, height: 12 }} />
+        </button>
       </div>
 
       {/* Content */}
@@ -2974,6 +3001,22 @@ export function UtilityPanel() {
                   style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
                 Research
               </label>
+
+              {/* Terminal toggle */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)' }}>
+                <input type="checkbox" checked={terminalOpen}
+                  onChange={e => {
+                    if (e.target.checked) {
+                      setTerminalOpen(true)
+                      setTimeout(() => setTab(isOrbitSession ? 7 : 6), 0)
+                    } else {
+                      if (tab === terminalTabIdx) setTab(0)
+                      setTerminalOpen(false)
+                    }
+                  }}
+                  style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
+                Terminal
+              </label>
             </div>
           )}
         </div>
@@ -3017,6 +3060,11 @@ export function UtilityPanel() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', fontSize: 11.5 }}>
                     <span style={{ width: 60, color: 'var(--fg-3)', flexShrink: 0 }}>Aktiv seit</span>
                     <span style={{ color: 'var(--fg-1)' }}>{startedLabel}</span>
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('cc:clear-agent-session', { detail: session.id }))}
+                      style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: '2px 6px', borderRadius: 4, fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', opacity: 0.7 }}
+                      title="Chat leeren & Kontext zurücksetzen"
+                    >clear session</button>
                   </div>
                 )}
               </div>

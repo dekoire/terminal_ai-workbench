@@ -34,6 +34,7 @@
   --danger: #e25c5c;
   --danger-soft: rgba(226, 92, 92, 0.12);
   --danger-line: rgba(226, 92, 92, 0.45);
+  --card-bg: #16140f;
 
   --r-xs: 3px;
   --r-sm: 5px;
@@ -84,6 +85,8 @@
   --danger-soft: rgba(192, 70, 63, 0.08);
   --danger-line: rgba(192, 70, 63, 0.40);
 
+  --card-bg: #e8e6e1;
+
   /* Syntax highlight token colors (light theme) */
   --tok-keyword: #7c3aed;
   --tok-string:  #15803d;
@@ -100,6 +103,7 @@ html, body, #root {
   margin: 0;
   padding: 0;
   height: 100%;
+  overflow: hidden;
   font-family: var(--font-ui);
   font-weight: var(--ui-font-weight, 400);
   background: var(--bg-0);

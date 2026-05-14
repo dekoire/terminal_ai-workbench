@@ -3,22 +3,19 @@
  * Attached to the shared http.Server in server/index.ts
  */
 import { createRequire } from 'module'
-import { fileURLToPath } from 'url'
 import fs   from 'fs'
 import path from 'path'
 import { WebSocketServer } from 'ws'
+
+const _require = createRequire(import.meta.url)
 import type { WebSocket } from 'ws'
 import type { IncomingMessage } from 'http'
 import type { Socket }          from 'net'
 
 import { pendingPerms, sessionWs, claudeSessionIds, activePtys } from '../state.js'
 
-const require    = createRequire(import.meta.url)
-const __filename = fileURLToPath(import.meta.url)
-const __dirname  = path.dirname(__filename)
-
 // permission-mcp.cjs lives next to package.json (project root → two levels up from server/routes/)
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..')
+const PROJECT_ROOT = process.env.APP_ROOT ?? process.cwd()
 const MCP_SCRIPT   = path.join(PROJECT_ROOT, 'permission-mcp.cjs')
 const BACKEND_PORT = 2003   // Express port that permission-mcp must call back
 
@@ -75,7 +72,7 @@ terminalWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         process.env.PATH ?? '',
       ].filter(Boolean).join(':')
 
-      const pty    = require('node-pty') as typeof import('node-pty')
+      const pty    = _require('node-pty') as typeof import('node-pty')
       const ptyEnv = {
         ...(process.env as Record<string, string>),
         PATH: safePath,
@@ -182,6 +179,12 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         return
       }
 
+      // Clear session → forget Claude session ID so next run starts fresh
+      if (msg.type === 'clear_session') {
+        claudeSessionIds.delete(sessionId)
+        return
+      }
+
       // Cancel → kill active PTY
       if (msg.type === 'cancel') {
         const ap = activePtys.get(sessionId)
@@ -270,15 +273,16 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         },
       }), 'utf8')
 
-      const pty = require('node-pty') as typeof import('node-pty')
+      const pty = _require('node-pty') as typeof import('node-pty')
 
       const isCustomProvider = !!settingsFile || !!baseEnv['ANTHROPIC_BASE_URL']
       const claudeArgs = [
         '--output-format', 'stream-json',
         '--verbose',
-        '--mcp-config', mcpConfigFile,
-        '--permission-prompt-tool', 'mcp__perm__permission_prompt',
-        ...(isCustomProvider ? ['--bare', '--add-dir', cwd] : []),
+        // --bare disables MCP tool use, so permission bridge only works for Anthropic sessions
+        ...(isCustomProvider
+          ? ['--dangerously-skip-permissions', '--bare', '--add-dir', cwd]
+          : ['--mcp-config', mcpConfigFile, '--permission-prompt-tool', 'mcp__perm__permission_prompt']),
         ...(settingsFile ? ['--settings', settingsFile] : []),
         ...(!settingsFile && orModel ? ['--model', orModel] : []),
         '--print', text,
