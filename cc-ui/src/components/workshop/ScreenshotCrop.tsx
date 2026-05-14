@@ -169,6 +169,7 @@ export function ScreenshotCrop({ dataUrl, onConfirm, onCancel }: Props) {
       background: 'rgba(0,0,0,0.88)',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', padding: '12px 16px 16px', gap: 10,
+      WebkitAppRegion: 'no-drag',
     }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', flexShrink: 0 }}>

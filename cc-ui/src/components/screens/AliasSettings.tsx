@@ -169,7 +169,7 @@ function CmdField({ cmd, onChange }: { cmd: string; onChange: (v: string) => voi
 
 function TitlebarLogo() {
   return (
-    <div style={{ height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 14px 0 88px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
+    <div style={{ height: 51, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 14px 0 88px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', pointerEvents: 'none' }}>Einstellungen</span>
     </div>
   )
@@ -1915,9 +1915,7 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
               {aiProviders.length > 0 && (
                 <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: adding || editId ? 12 : 0 }}>
                   {aiProviders.map((p, i) => (
-                    <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '14px 1fr 110px 1fr 52px', padding: '8px 12px', alignItems: 'center', gap: 10, fontSize: 11.5, borderBottom: i < aiProviders.length - 1 ? '1px solid var(--line)' : 'none', background: p.id === editId ? 'var(--accent-soft)' : 'transparent' }}>
-                      <span title={p.id === activeAiProvider ? 'Aktiv' : 'Als aktiv setzen'} onClick={() => setActiveAiProvider(p.id)}
-                        style={{ width: 9, height: 9, borderRadius: '50%', background: p.id === activeAiProvider ? 'var(--accent)' : 'var(--bg-4)', border: '1px solid var(--line-strong)', cursor: 'pointer', flexShrink: 0 }} />
+                    <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 1fr 52px', padding: '8px 12px', alignItems: 'center', gap: 10, fontSize: 11.5, borderBottom: i < aiProviders.length - 1 ? '1px solid var(--line)' : 'none', background: p.id === editId ? 'var(--accent-soft)' : 'transparent' }}>
                       <span style={{ fontWeight: 600, color: 'var(--fg-0)' }}>{p.name}</span>
                       <span style={{ fontSize: 10, color: 'var(--fg-3)', background: 'var(--bg-3)', borderRadius: 6, padding: '2px 6px', textAlign: 'center' }}>{PROVIDER_DEFAULTS[p.provider]?.label ?? p.provider}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>

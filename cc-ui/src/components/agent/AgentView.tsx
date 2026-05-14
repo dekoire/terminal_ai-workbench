@@ -623,7 +623,7 @@ function ThinkingCard({ ev }: { ev: Extract<AgentEvent, { type: 'thinking' }> })
         <span style={{ color: 'var(--fg-3)', fontSize: 10 }}>{open ? '↑' : '›'}</span>
       </button>
       {open && (
-        <div style={{ marginTop: 4, padding: '7px 12px', background: 'var(--bg-2)', borderRadius: 6, fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', borderLeft: '2px solid var(--accent)', borderRadius: '0 6px 6px 0' }}>
+        <div style={{ marginTop: 4, padding: '7px 12px', background: 'var(--bg-2)', borderRadius: '0 6px 6px 0', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', borderLeft: '2px solid var(--accent)' }}>
           <span style={{
             background: 'linear-gradient(135deg, var(--fg-3) 0%, var(--fg-0) 35%, var(--fg-1) 65%, var(--fg-3) 100%)',
             backgroundSize: '300% auto',
@@ -1232,7 +1232,7 @@ function EventRow({ ev, activeModel, inputTokens }: { ev: AgentEvent; activeMode
             maxWidth: '72%',
             background: 'var(--accent)',
             color: 'var(--accent-fg)',
-            borderRadius: '6px 15px 0 6px',
+            borderRadius: '18px 18px 4px 18px',
             padding: '10px 14px',
             fontSize: 13,
             fontWeight: 500,
@@ -1365,9 +1365,10 @@ interface Props {
   orModel?: string
   providerSettingsJson?: string
   providerAlias?: string
+  containerWidth?: number
 }
 
-export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSettingsJson, providerAlias }: Props) {
+export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSettingsJson, providerAlias, containerWidth = 9999 }: Props) {
   const [events, setEvents]       = useState<AgentEvent[]>([])
   const [connected, setConnected] = useState(false)
   const [running, setRunning]     = useState(false)
@@ -1482,7 +1483,31 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
   const greeted      = useRef(false)
   const runIdRef     = useRef<string>('')          // shared by user msg + assistant result
   const scrollRef       = useRef<HTMLDivElement>(null)
+  const sessionStartRef    = useRef<HTMLDivElement>(null)
+  const sessionScrolledRef = useRef(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const chatWidth = containerWidth
+
+  // ── Reset session-scroll flag whenever the session changes ──────────────────
+  useEffect(() => {
+    sessionScrolledRef.current = false
+  }, [sessionId])
+
+  // ── On first events: scroll so session_start marker is at top ────────────────
+  useEffect(() => {
+    if (sessionScrolledRef.current) return
+    if (events.length === 0) return
+    const marker = sessionStartRef.current
+    const scroller = scrollRef.current
+    if (!marker || !scroller) return
+    requestAnimationFrame(() => {
+      const markerRect   = marker.getBoundingClientRect()
+      const scrollerRect = scroller.getBoundingClientRect()
+      const relativeTop  = markerRect.top - scrollerRect.top + scroller.scrollTop
+      scroller.scrollTop = Math.max(0, relativeTop)
+      sessionScrolledRef.current = true
+    })
+  }, [events.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!running || runStartTs === null) { setElapsed(0); return }
@@ -1907,6 +1932,25 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
     return () => ro.disconnect()
   }, [events])
 
+  // Clear session — wipe chat + tell server to forget Claude session ID
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if ((e as CustomEvent).detail !== sessionId) return
+      setEvents([])
+      setOlderMessages([])
+      setOlderOffset(0)
+      olderOffsetRef.current = 0
+      setHasMoreOlder(false)
+      hasMoreOlderRef.current = false
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'clear_session' }))
+      }
+    }
+    window.addEventListener('cc:clear-agent-session', handler)
+    return () => window.removeEventListener('cc:clear-agent-session', handler)
+  }, [sessionId])
+
   // Auto-scroll to bottom when new events come in — only if already near bottom
   const isNearBottom = useCallback(() => {
     const el = scrollRef.current
@@ -2064,8 +2108,8 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
           flex: 1, minHeight: 0, overflowY: 'auto',
           // When only session_start: large top+bottom padding so we can scroll it to center
           padding: onlySessionStart
-            ? '50vh 120px calc(50vh - 20px) 100px'
-            : '80px 120px 32px 100px',
+            ? `50vh ${chatWidth < 680 ? '16px' : '120px'} calc(50vh - 20px) ${chatWidth < 680 ? '16px' : '100px'}`
+            : `80px ${chatWidth < 680 ? '16px' : '120px'} 32px ${chatWidth < 680 ? '16px' : '100px'}`,
           background: 'var(--bg-0)',
           display: 'flex', flexDirection: 'column', gap: 0,
           marginRight: 5,
@@ -2104,7 +2148,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
                 <div key={m.id ?? i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginBottom: 24, marginTop: 10 }}>
                   <div style={{
                     maxWidth: '72%', background: 'var(--accent)', color: 'var(--accent-fg)',
-                    borderRadius: '6px 15px 0 6px', padding: '10px 14px',
+                    borderRadius: '18px 18px 4px 18px', padding: '10px 14px',
                     fontSize: 13, fontWeight: 500, lineHeight: 1.65,
                     fontFamily: 'var(--font-ui)',
                   }}>
@@ -2130,6 +2174,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
         {!connected && events.length === 0 && (
           <div style={{ color: 'var(--fg-3)', fontSize: 12, marginTop: 8 }}>Verbinde...</div>
         )}
+        <div ref={sessionStartRef} />
         <EventList events={events} kind={kind} activeModel={activeModel} cwd={cwd} />
         {running && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingLeft: 4, color: 'var(--fg-3)', fontSize: 12 }}>

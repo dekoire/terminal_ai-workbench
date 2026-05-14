@@ -30,7 +30,7 @@ export function ProfileSettings() {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-0)', minHeight: 0, overflow: 'hidden' }}>
       {/* Titlebar — matches AliasSettings */}
       <div style={{
-        height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: 51, display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '0 14px 0 88px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)',
         userSelect: 'none', WebkitAppRegion: 'drag', flexShrink: 0,
       } as React.CSSProperties}>

@@ -7,10 +7,11 @@ import {
   HardDrive, Moon, Sun, Mic, LogOut, LayoutDashboard, LayoutList, Columns3, FileCode2,
   Wand2, Play, Cpu, FileCheck2, ScrollText, Image, Keyboard, Table2, FilePlus,
   ExternalLink, Download, FileText, Bug, Star, User, PanelLeft,
+  PanelLeftOpen, PanelLeftClose, PanelRightOpen, PanelRightClose,
   Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown, Users,
   Link2, Cloud, CloudUpload, CloudDownload, Camera, Lock, Bell, Paperclip, ChevronLeft, ChevronUp,
   History, Eye, AlertCircle,
-  MousePointer2, MousePointerClick, MessageSquare, MessageSquareCode, MoveUpRight, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal, SlidersHorizontal, Bot,
+  MousePointer2, MousePointerClick, MessageSquare, MessageSquareCode, MoveUpRight, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal, SlidersHorizontal, Bot, ArrowDownFromLine, ArrowUpFromLine,
   type LucideProps,
 } from 'lucide-react'
 
@@ -90,13 +91,18 @@ export const IBug          = ic(Bug)
 export const IStar         = ic(Star)
 export const IUser         = ic(User)
 export const IUsers        = ic(Users)
-export const IPanel        = ic(PanelLeft)
+export const IPanel           = ic(PanelLeft)
+export const IPanelLeftOpen   = ic(PanelLeftOpen)
+export const IPanelLeftClose  = ic(PanelLeftClose)
+export const IPanelRightOpen  = ic(PanelRightOpen)
+export const IPanelRightClose = ic(PanelRightClose)
 export const IGitFork      = ic(GitFork)
 export const IDatabase     = ic(Database)
 export const ITrophy       = ic(Trophy)
 export const IShipWheel       = ic(ShipWheel)
 export const ICircleCheckBig  = ic(CircleCheckBig)
 export const IOrbit           = ic(Globe)
+export const IGlobe           = ic(Globe)
 export const ILink            = ic(Link2)
 export const ICloud           = ic(Cloud)
 export const ICloudUpload     = ic(CloudUpload)
@@ -122,6 +128,8 @@ export const ISquareTerminal  = ic(SquareTerminal)
 export const IMoveUpRight     = ic(MoveUpRight)
 export const ISliders         = ic(SlidersHorizontal)
 export const IBot             = ic(Bot)
+export const IArrowDownLine   = ic(ArrowDownFromLine)
+export const IArrowUpLine     = ic(ArrowUpFromLine)
 
 // ── Logo spinner (SVG from assets/spinner.html) ───────────────────────────────
 export function ISpinner({ size = 20 }: { size?: number }) {

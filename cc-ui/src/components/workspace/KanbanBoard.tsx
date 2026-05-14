@@ -795,13 +795,13 @@ function TicketDetail({ ticket, projectId, projectPath, onSave, onClose }: {
 function TicketModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: 660, maxWidth: '90vw', maxHeight: '88vh',
+          width: '90vw', height: '90vh',
           background: 'var(--bg-1)', border: '1px solid var(--line)',
           borderRadius: 6, display: 'flex', flexDirection: 'column',
           boxShadow: '0 24px 64px rgba(0,0,0,0.55)', overflow: 'hidden',

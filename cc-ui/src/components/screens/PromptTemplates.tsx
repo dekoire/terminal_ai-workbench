@@ -69,12 +69,8 @@ export function PromptTemplates() {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-0)' }}>
-      <div style={{ height: 36, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)' }}>
-        <div style={{ display: 'flex', gap: 7 }}>
-          {['#3a3631', '#3a3631', '#3a3631'].map((c, i) => <span key={i} style={{ width: 11, height: 11, borderRadius: '50%', background: c }} />)}
-        </div>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'var(--fg-2)' }}>Prompt templates</div>
-        <button onClick={() => setScreen('workspace')} style={{ background: 'transparent', border: 'none', color: 'var(--fg-2)', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' }}>← Back</button>
+      <div style={{ height: 51, display: 'flex', alignItems: 'center', padding: '0 14px 0 88px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', flexShrink: 0, userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', pointerEvents: 'none' }}>Prompt templates</div>
       </div>
 
       <div style={{ flex: 1, padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}>
@@ -119,6 +115,11 @@ export function PromptTemplates() {
             <span style={{ fontSize: 12 }}>New template</span>
           </div>
         </div>
+      </div>
+
+      {/* Bottom bar */}
+      <div style={{ height: 44, display: 'flex', alignItems: 'center', padding: '0 18px', background: 'var(--bg-1)', borderTop: '1px solid var(--line)', flexShrink: 0 }}>
+        <button onClick={() => setScreen('workspace')} style={{ background: 'transparent', border: 'none', color: 'var(--fg-2)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, padding: '4px 0' }}>← Back</button>
       </div>
 
       {/* Delete confirm */}
