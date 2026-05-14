@@ -2121,7 +2121,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
         ref={scrollRef}
         style={{
           flex: 1, minHeight: 0, overflowY: 'auto',
-          padding: `0 ${chatWidth < 680 ? '16px' : '120px'} ${freshSessionStart ? '100vh' : '32px'} ${chatWidth < 680 ? '16px' : '100px'}`,
+          padding: `15px ${chatWidth < 680 ? '16px' : '120px'} ${freshSessionStart ? '100vh' : '32px'} ${chatWidth < 680 ? '16px' : '100px'}`,
           background: 'var(--bg-0)',
           display: 'flex', flexDirection: 'column', gap: 0,
           marginRight: 5,

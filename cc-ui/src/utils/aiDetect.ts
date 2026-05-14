@@ -1,5 +1,5 @@
 import { useAppStore } from '../store/useAppStore'
-import type { AIProvider } from '../store/useAppStore'
+import { getOrModel } from './orProvider'
 
 const PROBE_FILES = [
   'package.json', 'Makefile', 'docker-compose.yml', 'docker-compose.yaml',
@@ -57,8 +57,9 @@ async function probeFiles(basePath: string, label: string): Promise<string[]> {
 export async function aiDetectStartCmd(
   projectPath: string,
   port: number | undefined,
-  provider: AIProvider,
 ): Promise<string | null> {
+  const provider = getOrModel('devDetect')
+  if (!provider) return null
   const [rootParts, binaries] = await Promise.all([
     probeFiles(projectPath, ''),
     detectAvailableBinaries(),

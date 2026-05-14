@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import simpleLogo from '../../assets/simple_logo.svg'
 import { useAppStore } from '../../store/useAppStore'
+import { getOrModel } from '../../utils/orProvider'
 import type { OrbitMessage, QuickLink } from '../../store/useAppStore'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
@@ -1133,11 +1133,7 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                   <div style={{ color: 'var(--fg-3)', fontSize: 10, marginTop: 1, fontFamily: 'var(--font-mono)' }}>{data.log[0].hash.slice(0, 7)}</div>
                 </div>
               )}
-              <button onClick={handlePull} disabled={!!busy} style={{ width: '100%', background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-line)', padding: '7px', borderRadius: 6, fontSize: 11.5, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', opacity: busy ? 0.6 : 1 }}>
-                {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <ICloudDownload style={{ width: 12, height: 12 }} />}
-                Updates holen
-              </button>
-              <div style={{ textAlign: 'center', marginTop: 7 }}>
+              <div style={{ textAlign: 'center', marginTop: 0 }}>
                 <span onClick={onOpenGitTab} style={{ fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer' }}>Alle Details →</span>
               </div>
             </div>
@@ -1163,16 +1159,9 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                   )}
                 </div>
               )}
-              {/* Note */}
-              <input
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="Was hast du geändert? (optional)"
-                style={{ width: '100%', padding: '6px 9px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 11.5, fontFamily: 'var(--font-ui)', outline: 'none', marginBottom: 8, boxSizing: 'border-box' as const }}
-              />
               {/* Buttons */}
               <div style={{ display: 'flex', gap: 5 }}>
-                <button onClick={handleSave} disabled={!!busy} style={{ flex: 1, background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: 7, borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: busy ? 'default' : 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: busy ? 0.7 : 1 }}>
+                <button onClick={handleSave} disabled={!!busy} style={{ flex: 1, background: 'var(--accent)', color: '#fff', border: 'none', padding: 7, borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: busy ? 'default' : 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: busy ? 0.7 : 1 }}>
                   {busy === 'save' ? <ISpinner style={{ width: 12, height: 12 }} /> : <IArrowUpLine style={{ width: 13, height: 13, strokeWidth: 2.5 }} />}
                   {busy === 'save' ? 'Wird hochgeladen…' : 'Speichern & Hochladen'}
                 </button>
@@ -1496,7 +1485,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
   const card: React.CSSProperties = { background: 'var(--bg-0)', border: '1px solid var(--line-strong)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
   const secBtnBg = theme === 'light' ? '#333333' : 'var(--fg-0)'
   const secBtn: React.CSSProperties = { width: '100%', background: secBtnBg, color: 'var(--bg-0)', border: `1px solid ${secBtnBg}`, padding: '10px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
-  const priBtn: React.CSSProperties = { width: '100%', background: 'var(--accent)', color: '#fff', border: '1px solid rgba(249,115,22,0.6)', padding: '10px', borderRadius: 7, fontWeight: 600, fontSize: 12.5, cursor: (status === 'dirty' && !busy) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, opacity: (status !== 'dirty' || busy === 'save') ? 0.5 : 1, boxShadow: '0 1px 4px rgba(249,115,22,0.18)' }
+  const priBtn: React.CSSProperties = { width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', padding: '10px', borderRadius: 7, fontWeight: 600, fontSize: 12.5, cursor: (status === 'dirty' && !busy) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--font-ui)', marginBottom: 8, opacity: (status !== 'dirty' || busy === 'save') ? 0.5 : 1 }
 
   const ghUrl = (() => {
     if (!data?.remote) return null
@@ -1607,15 +1596,6 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
           </div>
         )}
       </div>
-
-      {/* 2 — Note */}
-      <textarea
-        value={note}
-        onChange={e => setNote(e.target.value)}
-        placeholder="Was hast du geändert? (optional)"
-        rows={2}
-        style={{ resize: 'none', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, color: 'var(--fg-1)', fontSize: 11, fontFamily: 'var(--font-ui)', padding: '7px 10px', outline: 'none', marginBottom: 10, lineHeight: 1.5, boxSizing: 'border-box', width: '100%' }}
-      />
 
       {/* 3 — Buttons */}
       <button onClick={handleSave} disabled={status !== 'dirty' || !!busy} style={priBtn}>
@@ -2080,7 +2060,7 @@ const smallBtn: React.CSSProperties = {
   cursor: 'pointer', fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap',
 }
 
-// ── User Stories card ─────────────────────────────────────────────────────────
+// ── Tasks card ────────────────────────────────────────────────────────────────
 
 function storyTypeColor(type?: string) {
   if (type === 'bug') return 'var(--err)'
@@ -2118,7 +2098,7 @@ function GenerateStoryButton({ projectId, sessionId }: { projectId?: string; ses
     <button
       onClick={generate}
       disabled={loading || !openrouterKey}
-      title={openrouterKey ? 'User Story aus Projekt-Kontext generieren' : 'OpenRouter-Key erforderlich'}
+      title={openrouterKey ? 'Task aus Projekt-Kontext generieren' : 'OpenRouter-Key erforderlich'}
       style={{
         background: 'none', border: 'none', cursor: openrouterKey ? 'pointer' : 'default',
         color: openrouterKey ? 'var(--accent)' : 'var(--fg-3)',
@@ -2131,9 +2111,96 @@ function GenerateStoryButton({ projectId, sessionId }: { projectId?: string; ses
   )
 }
 
-function UserStoriesCard({ projectId: _projectId, sessionId }: { projectId?: string; sessionId: string }) {
+function NewTaskModal({ projectId, projectName, onClose }: { projectId: string; projectName: string; onClose: () => void }) {
+  const addKanbanTicket = useAppStore(s => s.addKanbanTicket)
+  const [title,    setTitle]    = useState('')
+  const [type,     setType]     = useState<'feature' | 'bug' | 'nfc'>('feature')
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
+
+  const submit = () => {
+    const t = title.trim()
+    if (!t) return
+    addKanbanTicket(projectId, { title: t, text: '', status: 'todo', type, priority })
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }}
+      onClick={onClose}>
+      <div style={{ width: 400, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 12, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>Neuer Task</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>{projectName}</span>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', padding: 2 }}>
+              <IClose style={{ width: 13, height: 13 }} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Title */}
+          <input
+            autoFocus
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
+            placeholder="Task-Titel…"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--line-strong)', background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 13, fontFamily: 'var(--font-ui)', outline: 'none' }}
+          />
+
+          {/* Type + Priority row */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {/* Type */}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', marginBottom: 5, fontWeight: 600 }}>Typ</div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {(['feature', 'bug', 'nfc'] as const).map(t => (
+                  <button key={t} onClick={() => setType(t)}
+                    style={{ flex: 1, padding: '5px 4px', borderRadius: 6, border: `1px solid ${type === t ? 'var(--accent-line)' : 'var(--line)'}`, background: type === t ? 'var(--accent-soft)' : 'var(--bg-2)', color: type === t ? 'var(--accent)' : 'var(--fg-2)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: type === t ? 600 : 400, textTransform: 'capitalize' }}>
+                    {t === 'nfc' ? 'NFC' : t === 'bug' ? 'Bug' : 'Feature'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Priority */}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', marginBottom: 5, fontWeight: 600 }}>Priorität</div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {(['low', 'medium', 'high'] as const).map(p => (
+                  <button key={p} onClick={() => setPriority(p)}
+                    style={{ flex: 1, padding: '5px 4px', borderRadius: 6, border: `1px solid ${priority === p ? 'var(--accent-line)' : 'var(--line)'}`, background: priority === p ? 'var(--accent-soft)' : 'var(--bg-2)', color: priority === p ? 'var(--accent)' : 'var(--fg-2)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: priority === p ? 600 : 400, textTransform: 'capitalize' }}>
+                    {p === 'low' ? 'Niedrig' : p === 'medium' ? 'Mittel' : 'Hoch'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '0 16px 14px' }}>
+          <button
+            onClick={submit}
+            disabled={!title.trim()}
+            style={{ width: '100%', background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 7, padding: '9px', fontSize: 13, fontWeight: 600, cursor: title.trim() ? 'pointer' : 'default', fontFamily: 'var(--font-ui)', opacity: title.trim() ? 1 : 0.5 }}
+          >
+            Task erstellen
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function UserStoriesCard({ projectId: activeProjectId, sessionId }: { projectId?: string; sessionId: string }) {
   const { kanban, projects } = useAppStore()
-  const [openTicket, setOpenTicket] = useState<{ projectId: string; projectName: string; projectPath: string; ticketId: string } | null>(null)
+  const [openTicket,  setOpenTicket]  = useState<{ projectId: string; projectName: string; projectPath: string; ticketId: string } | null>(null)
+  const [showNewTask, setShowNewTask] = useState(false)
 
   const allTickets = projects.flatMap(p =>
     (kanban[p.id] ?? []).map(t => ({ ticket: t, project: p }))
@@ -2142,6 +2209,19 @@ function UserStoriesCard({ projectId: _projectId, sessionId }: { projectId?: str
     const db = b.ticket.createdAt ? new Date(b.ticket.createdAt).getTime() : 0
     return db - da
   })
+
+  // Target project for new task: active project, or first available
+  const targetProject = projects.find(p => p.id === activeProjectId) ?? projects[0]
+
+  const addBtn = (
+    <button
+      onClick={() => setShowNewTask(true)}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '0 2px' }}
+      title="Neuer Task"
+    >
+      <IPlus style={{ width: 12, height: 12 }} />
+    </button>
+  )
 
   return (
     <>
@@ -2154,7 +2234,14 @@ function UserStoriesCard({ projectId: _projectId, sessionId }: { projectId?: str
           onClose={() => setOpenTicket(null)}
         />
       )}
-      <Card title={`Tasks${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false}>
+      {showNewTask && targetProject && (
+        <NewTaskModal
+          projectId={targetProject.id}
+          projectName={targetProject.name}
+          onClose={() => setShowNewTask(false)}
+        />
+      )}
+      <Card title={`Tasks${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false} action={addBtn}>
         {allTickets.length === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>Keine Tasks</div>
         ) : (
@@ -2528,7 +2615,7 @@ function CopyButton({ text }: { text: string }) {
 type SearchResult = { humanSummary: string; detailed: string; agentContext: string; inputTokens: number; outputTokens: number }
 
 function AiSearchTab({ projectId }: { projectId: string }) {
-  const { aiProviders, activeAiProvider, aiFunctionMap, supabaseUrl, supabaseAnonKey, currentUser, setInputValue, docTemplates } = useAppStore()
+  const { aiFunctionMap, supabaseUrl, supabaseAnonKey, currentUser, setInputValue, docTemplates } = useAppStore()
   const [query, setQuery]       = useState('')
   const [loading, setLoading]   = useState(false)
   const [result, setResult]     = useState<SearchResult | null>(null)
@@ -2560,9 +2647,8 @@ function AiSearchTab({ projectId }: { projectId: string }) {
 
   const search = async () => {
     if (!query.trim() || loading) return
-    const providerId = aiFunctionMap['contextSearch'] || activeAiProvider || aiProviders[0]?.id
-    const provider   = aiProviders.find(p => p.id === providerId) ?? aiProviders[0]
-    if (!provider) { setError('Kein KI-Provider konfiguriert. Bitte unter Einstellungen → LLMs → KI Funktionen einrichten.'); return }
+    const orP = getOrModel('contextSearch')
+    if (!orP) { setError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -2609,7 +2695,7 @@ function AiSearchTab({ projectId }: { projectId: string }) {
       const r = await fetch('/api/context-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim(), messages: sorted, provider: provider.provider, apiKey: provider.apiKey, model: provider.model, systemPromptOverride: customPrompt }),
+        body: JSON.stringify({ query: query.trim(), messages: sorted, provider: orP.provider, apiKey: orP.apiKey, model: orP.model, systemPromptOverride: customPrompt }),
         signal: ctrl.signal,
       })
       const d = await r.json() as SearchResult & { ok: boolean; error?: string }
@@ -2629,9 +2715,8 @@ function AiSearchTab({ projectId }: { projectId: string }) {
 
   const costStr = (() => {
     if (!result) return null
-    const provider = aiProviders.find(p => p.id === (aiFunctionMap['contextSearch'] || activeAiProvider || aiProviders[0]?.id))
-    if (!provider) return null
-    const key = Object.keys(CS_PRICE_1K).find(k => provider.model.includes(k))
+    const modelId = aiFunctionMap['contextSearch'] || 'deepseek/deepseek-chat-v3-0324'
+    const key = Object.keys(CS_PRICE_1K).find(k => modelId.includes(k))
     if (!key) return null
     const cost = (result.outputTokens / 1000) * CS_PRICE_1K[key]
     return cost < 0.0001 ? '<$0.0001' : `~$${cost.toFixed(4)}`
@@ -2644,7 +2729,7 @@ function AiSearchTab({ projectId }: { projectId: string }) {
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 6 }}>
-        <img src={simpleLogo} alt="" style={{ width: 22, height: 22, flexShrink: 0 }} />
+        <ISpinner size={22} spin={false} style={{ flexShrink: 0 }} />
         <div>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Kontext Search</div>
           <div style={{ fontSize: 9.5, color: 'var(--fg-3)', lineHeight: 1.2 }}>Durchsucht Agent + Orbit Chat-Verlauf</div>
@@ -2669,7 +2754,7 @@ function AiSearchTab({ projectId }: { projectId: string }) {
         >
           {loading
             ? <><IX style={{ width: 12, height: 12 }} /> Stopp</>
-            : <><img src={simpleLogo} alt="" style={{ width: 13, height: 13, opacity: !query.trim() ? 0.35 : 1, filter: !query.trim() ? 'none' : 'brightness(10)' }} /> Kontext Search</>
+            : <><ISpinner size={13} spin={false} style={{ opacity: !query.trim() ? 0.35 : 1, color: !query.trim() ? 'var(--accent)' : 'var(--accent-fg)' }} /> Kontext Search</>
           }
         </button>
       </div>
@@ -3819,7 +3904,7 @@ function QuickLinksWidget() {
 
         {/* ── Section body ── */}
         {open && (
-          <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '10px 12px' }}>
+          <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 8 }}>
             {quickLinks.length === 0 ? (
               <div style={{ fontSize: 11, color: 'var(--fg-3)', textAlign: 'center', padding: '4px 0' }}>
                 Noch keine Quick Links angelegt
@@ -3829,9 +3914,9 @@ function QuickLinksWidget() {
               <div style={{ display: 'flex', gap: 8 }}>
                 {visibleLinks.map(link => (
                   <button key={link.id} onClick={() => openLink(link.url)} title={link.url}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '7px 6px', borderRadius: 8, background: 'var(--bg-3)', border: 'none', cursor: 'pointer', flex: 1, transition: 'background 0.15s', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '7px 6px', borderRadius: 8, background: 'var(--card-bg)', border: 'none', cursor: 'pointer', flex: 1, transition: 'background 0.15s' }}
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-soft)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-3)' }}>
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--card-bg)' }}>
                     <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=32`}
                       style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0 }}
                       onError={e => { (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23888"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12">${encodeURIComponent(link.title.charAt(0).toUpperCase())}</text></svg>` }} />
@@ -3841,12 +3926,12 @@ function QuickLinksWidget() {
               </div>
             ) : (
               /* ── Compact list (3+ links) ── */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {visibleLinks.map((link, i) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {visibleLinks.map(link => (
                   <button key={link.id} onClick={() => openLink(link.url)} title={link.url}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 6, background: 'var(--bg-3)', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', marginBottom: i < visibleLinks.length - 1 ? 4 : 0, transition: 'background 0.12s', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px', borderRadius: 6, background: 'var(--card-bg)', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', transition: 'background 0.12s' }}
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-soft)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-3)' }}>
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--card-bg)' }}>
                     <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=32`}
                       style={{ width: 14, height: 14, borderRadius: 3, flexShrink: 0 }}
                       onError={e => { (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23888"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12">${encodeURIComponent(link.title.charAt(0).toUpperCase())}</text></svg>` }} />
@@ -3860,9 +3945,12 @@ function QuickLinksWidget() {
             {hiddenCount > 0 && (
               <button
                 onClick={() => setExpanded(e => !e)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0 0', fontSize: 11, fontWeight: 600, color: 'var(--accent)', fontFamily: 'var(--font-ui)', display: 'block', width: '100%', textAlign: 'left' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '7px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, width: '100%', color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-ui)' }}
               >
-                {expanded ? '↑ Weniger anzeigen' : `+${hiddenCount} weitere…`}
+                {expanded
+                  ? <><IChevUp style={{ width: 11, height: 11 }} /> Weniger anzeigen</>
+                  : <><IChevDown style={{ width: 11, height: 11 }} /> {hiddenCount} weitere…</>
+                }
               </button>
             )}
           </div>

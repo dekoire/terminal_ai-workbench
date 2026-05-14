@@ -6,14 +6,31 @@ import { Router } from 'express'
 import { exec, spawn }  from 'child_process'
 import fs               from 'fs'
 import path             from 'path'
-import { tmpdir }        from 'os'
 import { pendingPerms, sessionWs, pendingPermsBySession } from '../state.js'
 
 const router = Router()
 
+// ── GET /api/app-config ────────────────────────────────────────────────────────
+// Returns app-level config that is baked into the server environment.
+// Groq key is returned so the frontend can use voice without user setup.
+// Never expose service role keys or other admin secrets here.
+router.get('/api/app-config', (_req, res) => {
+  res.json({
+    groqApiKey:    process.env.GROQ_API_KEY    || '',
+    hasGroqKey:    !!process.env.GROQ_API_KEY,
+  })
+})
+
 // ── helpers ────────────────────────────────────────────────────────────────────
 const home = () => process.env.HOME ?? '/Users/' + (process.env.USER ?? '')
 const tilde = (p: string) => p.replace(/^~/, home())
+
+/** ~/Documents/Codera/var — created on first use */
+function coderaVarDir(): string {
+  const dir = path.join(home(), 'Documents', 'Codera', 'var')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
 
 function readBody(req: import('express').Request): Promise<string> {
   return new Promise(resolve => {
@@ -81,15 +98,19 @@ router.post('/api/zshrc-alias', async (req, res) => {
 })
 
 // ── GET /api/store-read ────────────────────────────────────────────────────────
-router.get('/api/store-read', (_req, res) => {
-  const filePath = path.join(home(), '.cc-ui-data.json')
+router.get('/api/store-read', (req, res) => {
+  const userId = typeof req.query.userId === 'string' && req.query.userId ? req.query.userId : ''
+  const suffix = userId ? `-${userId}` : ''
+  const filePath = path.join(home(), `.cc-ui-data${suffix}.json`)
   try { res.send(fs.readFileSync(filePath, 'utf-8') || 'null') }
   catch { res.send('null') }
 })
 
 // ── POST /api/store-write ──────────────────────────────────────────────────────
 router.post('/api/store-write', async (req, res) => {
-  const filePath = path.join(home(), '.cc-ui-data.json')
+  const userId = typeof req.query.userId === 'string' && req.query.userId ? req.query.userId : ''
+  const suffix = userId ? `-${userId}` : ''
+  const filePath = path.join(home(), `.cc-ui-data${suffix}.json`)
   const body = await readBody(req)
   try {
     if (body && body !== 'null') fs.writeFileSync(filePath, body, 'utf-8')
@@ -652,9 +673,10 @@ router.post('/api/start-app', async (req, res) => {
 // ── POST /api/ai-refine ────────────────────────────────────────────────────────
 router.post('/api/ai-refine', async (req, res) => {
   try {
-    const { provider, apiKey, model, text, systemPrompt } = JSON.parse(await readBody(req)) as {
+    const { provider, apiKey: rawApiKey, model, text, systemPrompt } = JSON.parse(await readBody(req)) as {
       provider: string; apiKey: string; model: string; text: string; systemPrompt?: string
     }
+    const apiKey = rawApiKey.replace(/[^\x20-\x7E]/g, '').trim()
     const sysMsg = systemPrompt ?? 'Verbessere den folgenden Text sprachlich und inhaltlich. Mache ihn klarer, präziser und professioneller. Gib nur den verbesserten Text zurück, ohne Erklärungen oder zusätzliche Kommentare.'
     console.log('\n[ai-refine] ▶ provider:', provider, '| model:', model)
 
@@ -668,14 +690,30 @@ router.post('/api/ai-refine', async (req, res) => {
       if (!r.ok) { res.json({ ok: false, error: d?.error?.message ?? 'API error' }); return }
       res.json({ ok: true, text: d.content?.[0]?.text ?? text })
     } else {
-      const baseUrl = provider === 'deepseek' ? 'https://api.deepseek.com/v1' : 'https://api.openai.com/v1'
+      const baseUrl = provider === 'deepseek'   ? 'https://api.deepseek.com/v1'
+              : provider === 'openrouter' ? 'https://openrouter.ai/api/v1'
+              : provider === 'groq'       ? 'https://api.groq.com/openai/v1'
+              : null
+      if (!baseUrl) { res.json({ ok: false, error: `Unbekannter Provider: "${provider}". Bitte einen gültigen Provider wählen.` }); return }
+      console.log(`[ai-refine] ▶ sending to ${baseUrl} | model: ${model}`)
       const r = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...(provider === 'openrouter' ? { 'HTTP-Referer': 'https://codera.ai', 'X-Title': 'Codera AI' } : {}) },
         body: JSON.stringify({ model, messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: text }] }),
       })
       const d = await r.json() as { choices?: { message: { content: string } }[]; error?: { message: string } }
-      if (!r.ok) { res.json({ ok: false, error: d?.error?.message ?? 'API error' }); return }
+      if (!r.ok) {
+        const rawErr = d?.error?.message ?? 'API error'
+        console.error(`[ai-refine] ✗ ${provider} HTTP ${r.status}: ${rawErr}`)
+        const userErr = provider === 'openrouter' && r.status === 401
+          ? `OpenRouter: Key ungültig/abgelaufen (HTTP 401). Bitte openrouter.ai/keys prüfen. Orig: ${rawErr.slice(0, 100)}`
+          : provider === 'openrouter' && r.status === 402
+          ? 'OpenRouter-Konto hat kein Guthaben. Bitte unter openrouter.ai/credits aufladen.'
+          : provider === 'openrouter'
+          ? `OpenRouter HTTP ${r.status}: ${rawErr}`
+          : rawErr
+        res.json({ ok: false, error: userErr }); return
+      }
       res.json({ ok: true, text: d.choices?.[0]?.message?.content ?? text })
     }
   } catch (e) { res.json({ ok: false, error: String(e) }) }
@@ -684,12 +722,13 @@ router.post('/api/ai-refine', async (req, res) => {
 // ── POST /api/context-search ──────────────────────────────────────────────────
 router.post('/api/context-search', async (req, res) => {
   try {
-    const { query, messages, provider, apiKey, model, systemPromptOverride } = JSON.parse(await readBody(req)) as {
+    const { query, messages, provider, apiKey: rawApiKey2, model, systemPromptOverride } = JSON.parse(await readBody(req)) as {
       query: string
       messages: Array<{ role: string; content: string; ts: number; model?: string; source: 'agent' | 'orbit' }>
       provider: string; apiKey: string; model: string
       systemPromptOverride?: string
     }
+    const apiKey = rawApiKey2.replace(/[^\x20-\x7E]/g, '').trim()
 
     // Format messages as readable history block (newest last, truncate each to 600 chars)
     const historyText = messages
@@ -730,21 +769,30 @@ Antworte AUSSCHLIESSLICH als gültiges JSON-Objekt (kein Markdown drumherum, nur
       rawText = d.content?.[0]?.text ?? ''
       usage = d.usage ?? {}
     } else {
-      const baseUrl = provider === 'deepseek' ? 'https://api.deepseek.com/v1'
-        : provider === 'groq' ? 'https://api.groq.com/openai/v1'
-        : 'https://api.openai.com/v1'
+      const baseUrl = provider === 'deepseek'   ? 'https://api.deepseek.com/v1'
+        : provider === 'openrouter' ? 'https://openrouter.ai/api/v1'
+        : provider === 'groq'       ? 'https://api.groq.com/openai/v1'
+        : null
+      if (!baseUrl) { res.json({ ok: false, error: `Unbekannter Provider: "${provider}"` }); return }
       const r = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...(provider === 'openrouter' ? { 'HTTP-Referer': 'https://codera.ai', 'X-Title': 'Codera AI' } : {}) },
         body: JSON.stringify({
           model,
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
           max_tokens: 4096,
-          response_format: provider === 'openai' ? { type: 'json_object' } : undefined,
         }),
       })
       const d = await r.json() as { choices?: { message: { content: string } }[]; error?: { message: string }; usage?: Usage }
-      if (!r.ok) { res.json({ ok: false, error: d?.error?.message ?? 'API error' }); return }
+      if (!r.ok) {
+        const rawErr = d?.error?.message ?? 'API error'
+        const userErr = provider === 'openrouter' && r.status === 401
+          ? `OpenRouter API-Key ungültig oder abgelaufen. Bitte unter openrouter.ai/keys prüfen. (${rawErr.slice(0, 80)})`
+          : provider === 'openrouter' && r.status === 402
+          ? 'OpenRouter-Konto hat kein Guthaben. Bitte unter openrouter.ai/credits aufladen.'
+          : rawErr
+        res.json({ ok: false, error: userErr }); return
+      }
       rawText = d.choices?.[0]?.message?.content ?? ''
       usage = d.usage ?? {}
     }
@@ -771,7 +819,7 @@ router.post('/api/transcribe', async (req, res) => {
   req.on('data', (c: Buffer) => chunks.push(c))
   req.on('end', async () => {
     try {
-      const apiKey = req.headers['x-api-key'] as string
+      const apiKey = (req.headers['x-api-key'] as string) || process.env.GROQ_API_KEY || ''
       const lang   = (req.headers['x-language'] as string) || 'de'
       if (!apiKey) { res.json({ ok: false, error: 'no api key' }); return }
       const provider = (req.headers['x-provider'] as string) || 'openai'
@@ -809,6 +857,34 @@ router.get('/api/serve-image', (req, res) => {
   } catch { res.status(404).send('not found') }
 })
 
+// ── GET /api/serve-local ──────────────────────────────────────────────────────
+// Serves files from ~/Documents/Codera/var/ for locally saved attachments
+router.get('/api/serve-local', (req, res) => {
+  const filePath = tilde(req.query.path as string ?? '')
+  if (!filePath) { res.status(400).send('missing path'); return }
+  // Security: only allow serving from the Codera var dir
+  const allowed = path.join(home(), 'Documents', 'Codera', 'var')
+  if (!filePath.startsWith(allowed)) { res.status(403).send('forbidden'); return }
+  try {
+    const stat = fs.statSync(filePath)
+    if (stat.size > 50 * 1024 * 1024) { res.status(413).send('too large'); return }
+    const ext = path.extname(filePath).replace(/^\d+-/, '').toLowerCase()
+    const mime: Record<string, string> = {
+      '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg',
+      '.gif':'image/gif', '.webp':'image/webp', '.svg':'image/svg+xml',
+      '.avif':'image/avif', '.bmp':'image/bmp',
+      '.pdf':'application/pdf', '.json':'application/json',
+      '.txt':'text/plain', '.md':'text/plain', '.mdx':'text/plain',
+      '.csv':'text/csv', '.xml':'text/xml', '.yaml':'text/plain', '.yml':'text/plain',
+      '.ts':'text/plain', '.tsx':'text/plain', '.js':'text/plain', '.jsx':'text/plain',
+      '.css':'text/plain', '.html':'text/html', '.sql':'text/plain', '.log':'text/plain',
+    }
+    res.setHeader('Content-Type', mime[ext] ?? 'application/octet-stream')
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+    res.send(fs.readFileSync(filePath))
+  } catch { res.status(404).send('not found') }
+})
+
 // ── POST /api/write-temp-image ─────────────────────────────────────────────────
 router.post('/api/write-temp-image', (req, res) => {
   const chunks: Buffer[] = []
@@ -817,9 +893,9 @@ router.post('/api/write-temp-image', (req, res) => {
     try {
       const fileName = decodeURIComponent((req.headers['x-file-name'] as string) ?? 'image')
       const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')
-      const tmpPath  = path.join(tmpdir(), `cc-ui-img-${Date.now()}-${safeName}`)
-      fs.writeFileSync(tmpPath, Buffer.concat(chunks))
-      res.json({ ok: true, path: tmpPath })
+      const filePath = path.join(coderaVarDir(), `${Date.now()}-${safeName}`)
+      fs.writeFileSync(filePath, Buffer.concat(chunks))
+      res.json({ ok: true, path: filePath })
     } catch (e) { res.json({ ok: false, error: String(e) }) }
   })
 })
@@ -832,26 +908,18 @@ const readStore = () => {
 }
 
 router.post('/api/r2-upload', (req, res) => {
+  // Saves locally to ~/Documents/Codera/var/ — no CDN upload
   const chunks: Buffer[] = []
   req.on('data', (c: Buffer) => chunks.push(c))
-  req.on('end', async () => {
+  req.on('end', () => {
     try {
-      const store = readStore()
-      const bucket = store['cloudflareR2BucketName'] ?? ''; const accessKey = store['cloudflareR2AccessKeyId'] ?? ''; const secretKey = store['cloudflareR2SecretAccessKey'] ?? ''
-      const r2Endpoint = store['cloudflareR2Endpoint'] || (store['cloudflareAccountId'] ? `https://${store['cloudflareAccountId']}.r2.cloudflarestorage.com` : '')
-      const publicUrl  = (store['cloudflareR2PublicUrl'] as string ?? '').replace(/\/$/, '')
-      if (!r2Endpoint || !bucket || !accessKey || !secretKey) { res.status(400).json({ ok: false, error: 'Cloudflare R2 nicht konfiguriert.' }); return }
-      const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3')
-      const s3 = new S3Client({ region: 'auto', endpoint: r2Endpoint, forcePathStyle: true, credentials: { accessKeyId: accessKey, secretAccessKey: secretKey } })
       const fileName = decodeURIComponent((req.headers['x-file-name'] as string) ?? 'file')
-      const userId   = (req.headers['x-user-id'] as string) ?? 'anonymous'
-      const folder   = (req.headers['x-folder'] as string) ?? 'image-text-context'
-      const mimeType = (req.headers['content-type'] as string) ?? 'application/octet-stream'
-      const key = `${userId}/${folder}/${Date.now()}-${path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')}`
-      await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: Buffer.concat(chunks), ContentType: mimeType }))
-      // Use public URL if configured (no proxy), otherwise fall back to local proxy
-      const fileUrl = publicUrl ? `${publicUrl}/${key}` : `/api/r2-proxy?key=${encodeURIComponent(key)}`
-      res.json({ ok: true, url: fileUrl, key })
+      const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')
+      const filePath = path.join(coderaVarDir(), `${Date.now()}-${safeName}`)
+      fs.writeFileSync(filePath, Buffer.concat(chunks))
+      // Return a local serve URL — accessible by the frontend (same host)
+      const fileUrl = `/api/serve-local?path=${encodeURIComponent(filePath)}`
+      res.json({ ok: true, url: fileUrl })
     } catch (e) { res.status(500).json({ ok: false, error: String(e) }) }
   })
 })

@@ -74,7 +74,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 export function NewProjectModal() {
   const {
     setNewProjectOpen, addProject, setScreen, setActiveProject, setNewSessionOpen,
-    aiProviders, aiFunctionMap, docTemplates, updateDocTemplate, lastProjectPath, setLastProjectPath,
+    openrouterKey, docTemplates, updateDocTemplate, lastProjectPath, setLastProjectPath,
     tokens, addToken,
   } = useAppStore()
 
@@ -94,7 +94,7 @@ export function NewProjectModal() {
   const [runGraphify, setRunGraphify] = useState(false)
   const [graphifyStatus, setGraphifyStatus] = useState<'unknown' | 'installed' | 'missing'>('unknown')
   const [refreshDocs, setRefreshDocs] = useState(true)
-  const [selectedAiId, setSelectedAiId] = useState(aiProviders[0]?.id ?? '')
+  // selectedAiId removed — doc refresh now uses OpenRouter directly
 
   // Step 3
   const [repoUrl, setRepoUrl]       = useState('')
@@ -189,14 +189,12 @@ export function NewProjectModal() {
   }
 
   // ── AI detect start cmd ─────────────────────────────────────────────────────
+  // provider now resolved inside aiDetectStartCmd via getOrModel
   const detectWithAI = async () => {
     if (!path.trim()) return
-    const provId = aiFunctionMap['devDetect']
-    const provider = aiProviders.find(p => p.id === provId) ?? aiProviders[0]
-    if (!provider) return
     setDetecting(true)
     try {
-      const cmd = await aiDetectStartCmd(path.trim(), undefined, provider)
+      const cmd = await aiDetectStartCmd(path.trim(), undefined)
       if (cmd) setStartCmd(cmd)
     } finally { setDetecting(false) }
   }
@@ -312,9 +310,9 @@ export function NewProjectModal() {
                       />
                       <button
                         onClick={detectWithAI}
-                        disabled={detecting || !path.trim() || aiProviders.length === 0}
-                        title={aiProviders.length === 0 ? 'Kein AI-Anbieter konfiguriert' : 'Per AI ermitteln'}
-                        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--accent)', cursor: (detecting || !path.trim() || aiProviders.length === 0) ? 'not-allowed' : 'pointer', opacity: (!path.trim() || aiProviders.length === 0) ? 0.4 : 1 }}
+                        disabled={detecting || !path.trim() || !openrouterKey}
+                        title={!openrouterKey ? 'OpenRouter API-Key fehlt' : 'Per AI ermitteln'}
+                        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--accent)', cursor: (detecting || !path.trim() || !openrouterKey) ? 'not-allowed' : 'pointer', opacity: (!path.trim() || !openrouterKey) ? 0.4 : 1 }}
                       >
                         <ISpark className={detecting ? 'anim-pulse' : ''} style={{ width: 14, height: 14 }} />
                       </button>
@@ -361,20 +359,9 @@ export function NewProjectModal() {
                     <span style={{ fontSize: 11.5, color: 'var(--fg-0)', fontWeight: 500 }}>Dokumentation einmalig aktualisieren</span>
                     <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--fg-3)' }}>AI ergänzt vorhandene Docs</span>
                   </div>
-                  {refreshDocs && aiProviders.length > 0 && (
-                    <select
-                      value={selectedAiId}
-                      onChange={e => setSelectedAiId(e.target.value)}
-                      style={{ ...fi, width: 'auto', minWidth: 140, maxWidth: 200, fontFamily: 'var(--font-ui)', padding: '4px 8px', fontSize: 11 }}
-                    >
-                      {aiProviders.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  {refreshDocs && aiProviders.length === 0 && (
+                  {refreshDocs && !openrouterKey && (
                     <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>
-                      <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={() => { setNewProjectOpen(false); setScreen('settings') }}>AI konfigurieren →</span>
+                      <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={() => { setNewProjectOpen(false); setScreen('settings') }}>OpenRouter-Key konfigurieren →</span>
                     </span>
                   )}
                 </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useAppStore } from '../../store/useAppStore'
+import { useAppStore, setActiveStorageUser } from '../../store/useAppStore'
 import type { Project, Session } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
 import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag } from '../primitives/Icons'
@@ -193,7 +193,7 @@ function AvatarPopoverBtn() {
           <PopMenuItem
             icon={<ILogout style={{ width: 13, height: 13 }} />}
             label="Ausloggen"
-            onClick={() => { setOpen(false); setCurrentUser(null); setScreen('login') }}
+            onClick={() => { setOpen(false); setActiveStorageUser(''); setCurrentUser(null); setScreen('login') }}
           />
           <div style={{ height: 6 }} />
         </div>
