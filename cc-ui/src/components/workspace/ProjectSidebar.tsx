@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { Project, Session } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
-import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell } from '../primitives/Icons'
+import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag } from '../primitives/Icons'
 import { AdminPanel } from '../screens/AdminPanel'
 import avatarDefault from '../../assets/avatar.jpg'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
@@ -136,7 +136,7 @@ function AvatarPopoverBtn() {
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           background: open || hovered ? 'var(--bg-3)' : 'none',
-          border: open ? '1px solid var(--line)' : hovered ? '1px solid var(--line)' : '1px solid transparent',
+          border: '1px solid transparent',
           borderRadius: 99, cursor: 'pointer', padding: '4px 10px 4px 4px',
           transition: 'background 0.12s, border-color 0.12s', maxWidth: 160, overflow: 'hidden',
         }}
@@ -187,6 +187,7 @@ function AvatarPopoverBtn() {
             </>
           )}
           <PopMenuItem icon={<IUser style={{ width: 13, height: 13 }} />} label="Profil" onClick={() => { setOpen(false); setScreen('profile') }} />
+          <PopMenuItem icon={<ISliders style={{ width: 13, height: 13 }} />} label="Einrichten" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent('cc:open-getting-started')) }} />
           <PopMenuItem icon={<ISettings style={{ width: 13, height: 13 }} />} label="Einstellungen" onClick={() => { setOpen(false); setScreen('settings') }} />
           <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
           <PopMenuItem
@@ -253,27 +254,20 @@ export function ProjectSidebar() {
           ))}
         </CollapsibleSection>
 
-        {/* Prompts */}
-        <TemplatesSection
-          templates={templates}
-          onAdd={() => setScreen('templates')}
-          onPick={(body) => setInputValue(inputValue ? inputValue + '\n' + body : body)}
-        />
+        {/* Prompts — only visible when at least one workspace exists */}
+        {projects.length > 0 && (
+          <TemplatesSection
+            templates={templates}
+            onAdd={() => setScreen('templates')}
+            onPick={(body) => setInputValue(inputValue ? inputValue + '\n' + body : body)}
+          />
+        )}
 
       </div>
 
       <div style={{ padding: '8px 10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
         <AvatarPopoverBtn />
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {isAdmin && (
-            <button
-              onClick={() => setScreen('settings')}
-              title="Admin-Einstellungen"
-              style={{ background: 'none', border: '1px solid transparent', cursor: 'pointer', color: 'var(--accent)', display: 'flex', alignItems: 'center', padding: '4px 5px', borderRadius: 6 }}
-            >
-              <IShield style={{ width: 16, height: 16 }} />
-            </button>
-          )}
           <ThemeToggleBtn />
         </div>
       </div>
@@ -322,6 +316,92 @@ function toRepoUrl(remoteUrl: string): string | null {
   return null
 }
 
+// ── Remove-Workspace confirmation dialog ──────────────────────────────────────
+function RemoveWorkspaceDialog({ projectName, onConfirm, onCancel }: {
+  projectName: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const deleted = [
+    'Alle Chat-Verläufe und Nachrichten',
+    'Agent-Sessions und deren Kontext',
+    'Orbit-Chats und KI-Antworten',
+    'Kanban-Tickets und Notizen',
+    'Projekt-Erinnerungen (Brain)',
+  ]
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)' }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width: 400, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 14, boxShadow: '0 24px 64px rgba(0,0,0,0.55)', overflow: 'hidden' }}
+      >
+        {/* Header */}
+        <div style={{ padding: '22px 24px 16px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ITrash style={{ width: 14, height: 14, color: 'var(--err)' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)' }}>Workspace entfernen</div>
+              <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 1 }}>„{projectName}"</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '18px 24px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Safe info */}
+          <div style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ fontSize: 13, marginTop: 1 }}>🗂️</span>
+            <span style={{ fontSize: 11.5, color: 'var(--fg-1)', lineHeight: 1.55 }}>
+              Deine <strong>lokalen Dateien</strong> und das <strong>GitHub-Repository</strong> bleiben vollständig erhalten — es wird nichts vom Laufwerk gelöscht.
+            </span>
+          </div>
+
+          {/* What gets deleted */}
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', marginBottom: 9 }}>
+              Folgende Projektdaten werden entfernt
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {deleted.map(item => (
+                <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M2 5.2L4 7.2L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--fg-1)' }}>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '12px 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--bg-3)', color: 'var(--fg-1)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer' }}
+          >
+            Abbrechen
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--err)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Workspace entfernen
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelectSession, onNewSession, onDeleteProject, onCloseSession }: {
   project: Project; active: boolean; activeSessionId: string
   onSelectProject: (id: string) => void
@@ -334,6 +414,7 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
   const [hovered, setHovered] = useState(false)
   const [kanbanOpen, setKanbanOpen] = useState(false)
   const [docUpdating, setDocUpdating] = useState(false)
+  const [removeConfirm, setRemoveConfirm] = useState(false)
   const isDocApplying = useAppStore(s => s.docApplying[project.id] ?? false)
   const hasGit = useHasGit(project.path)
   const remoteUrl = useGitRemote(project.path)
@@ -361,12 +442,19 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
     null,
     { label: docUpdating ? 'Docu wird aktualisiert…' : 'Docu aktualisieren', icon: <IEdit />, action: () => { if (!docUpdating) handleDocUpdate() } },
     null,
-    { label: 'Workspace löschen', icon: <ITrash />, danger: true, action: onDeleteProject },
+    { label: 'Workspace entfernen', icon: <ITrash />, danger: true, action: () => setRemoveConfirm(true) },
   ])
 
   return (
     <div>
       {ctxMenu}
+      {removeConfirm && (
+        <RemoveWorkspaceDialog
+          projectName={project.name}
+          onConfirm={() => { setRemoveConfirm(false); onDeleteProject() }}
+          onCancel={() => setRemoveConfirm(false)}
+        />
+      )}
       {kanbanOpen && (
         <KanbanBoard
           projectId={project.id}
@@ -537,6 +625,87 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
 
 const TEMPLATES_COLLAPSED = 6
 
+function TemplateRow({
+  t, onPick, onToggleFavorite, onDelete, onEditDone,
+}: {
+  t: { id: string; name: string; hint?: string; body: string; favorite?: boolean }
+  onPick: () => void
+  onToggleFavorite: () => void
+  onDelete: () => void
+  onEditDone: (name: string) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(t.name)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const { open: openCtx, menu: ctxMenu } = useCtxMenu()
+
+  const startEdit = () => { setDraft(t.name); setEditing(true); setTimeout(() => inputRef.current?.select(), 0) }
+  const commitEdit = () => { if (draft.trim()) onEditDone(draft.trim()); setEditing(false) }
+
+  const handleContextMenu = (e: React.MouseEvent) => openCtx(e, [
+    { label: 'Bearbeiten', icon: <IEdit />, action: startEdit },
+    { label: t.favorite ? 'Als Favorit entfernen' : 'Als Favorit speichern', icon: <IStar />, action: onToggleFavorite },
+    null,
+    { label: 'Löschen', icon: <ITrash />, danger: true, action: onDelete },
+  ])
+
+  return (
+    <div>
+      {ctxMenu}
+      <div
+        onClick={() => { if (!editing) onPick() }}
+        onContextMenu={handleContextMenu}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px',
+          cursor: editing ? 'default' : 'pointer', color: 'var(--fg-1)', fontSize: 11.5,
+          background: hovered && !editing ? 'var(--bg-3)' : 'transparent',
+          borderRadius: 6, transition: 'background 0.1s', margin: '0 4px',
+        }}
+      >
+        {/* Left icon: always tag */}
+        <ITag style={{ color: t.favorite ? 'var(--warn)' : 'var(--fg-3)', flexShrink: 0, width: 12, height: 12 }} />
+
+        {/* Name — inline editable */}
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false) }}
+            onClick={e => e.stopPropagation()}
+            style={{
+              flex: 1, background: 'var(--bg-1)', border: '1px solid var(--accent)',
+              borderRadius: 4, padding: '1px 6px', fontSize: 11.5, color: 'var(--fg-0)',
+              outline: 'none',
+            }}
+          />
+        ) : (
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+        )}
+
+        {/* Right side: star on hover, hint/favorite indicator otherwise */}
+        {!editing && (
+          hovered
+            ? <IStar
+                onClick={e => { e.stopPropagation(); onToggleFavorite() }}
+                style={{ width: 11, height: 11, color: t.favorite ? 'var(--warn)' : 'var(--fg-3)', flexShrink: 0, cursor: 'pointer', transition: 'color 0.1s' }}
+                title={t.favorite ? 'Favorit entfernen' : 'Als Favorit speichern'}
+              />
+            : t.hint
+              ? <Kbd>{t.hint}</Kbd>
+              : t.favorite
+                ? <span style={{ fontSize: 9, color: 'var(--warn)' }}>★</span>
+                : null
+        )}
+      </div>
+    </div>
+  )
+}
+
 function TemplatesSection({
   templates, onAdd, onPick,
 }: {
@@ -547,13 +716,11 @@ function TemplatesSection({
   const { updateTemplate, removeTemplate } = useAppStore()
   const [expanded, setExpanded] = useState(false)
   const [sectionOpen, setSectionOpen] = useState(false)
-  const { open: openCtx, menu: ctxMenu } = useCtxMenu()
   const visible = expanded ? templates : templates.slice(0, TEMPLATES_COLLAPSED)
   const hidden  = templates.length - TEMPLATES_COLLAPSED
 
   return (
     <div style={{ marginBottom: 20, padding: '0 10px' }}>
-      {ctxMenu}
       <div
         onClick={() => setSectionOpen(o => !o)}
         style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', paddingBottom: sectionOpen ? 6 : 0, cursor: 'pointer', userSelect: 'none' }}
@@ -572,24 +739,14 @@ function TemplatesSection({
       {sectionOpen && (
         <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', padding: '4px 0', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           {visible.map((t) => (
-            <div
+            <TemplateRow
               key={t.id}
-              onClick={() => onPick(t.body)}
-              onContextMenu={e => openCtx(e, [
-                { label: t.favorite ? '★ Als Favorit entfernen' : '☆ Als Favorit markieren', icon: <ISpark />, action: () => updateTemplate(t.id, { favorite: !t.favorite }) },
-                null,
-                { label: 'Löschen', icon: <ITrash />, danger: true, action: () => removeTemplate(t.id) },
-              ])}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
-                cursor: 'pointer', color: 'var(--fg-1)', fontSize: 11.5,
-              }}
-            >
-              <ISpark style={{ color: t.favorite ? 'var(--warn)' : 'var(--accent)', flexShrink: 0 }} />
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-              {t.favorite && <span style={{ fontSize: 9, color: 'var(--warn)' }}>★</span>}
-              {t.hint && <Kbd>{t.hint}</Kbd>}
-            </div>
+              t={t}
+              onPick={() => onPick(t.body)}
+              onToggleFavorite={() => updateTemplate(t.id, { favorite: !t.favorite })}
+              onDelete={() => removeTemplate(t.id)}
+              onEditDone={(name) => updateTemplate(t.id, { name })}
+            />
           ))}
           {templates.length > TEMPLATES_COLLAPSED && (
             <div
@@ -807,7 +964,7 @@ function CollapsibleSection({ label, count, action, children, defaultOpen = true
           : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
         }
       </div>
-      {open && (
+      {open && React.Children.count(children) > 0 && (
         <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden' }}>
           {children}
         </div>

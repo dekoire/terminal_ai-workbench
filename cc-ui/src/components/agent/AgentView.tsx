@@ -38,7 +38,7 @@ export type AgentEvent =
   | { type: 'permission';  requestId: string; toolName: string; input: Record<string, unknown>; toolUseId: string; fallbackText?: string; resolved?: { allow: boolean; scope: 'once' | 'session' | 'always' }; ts: number }
   | { type: 'rate_limit';  utilization: number; resets_at?: number;        ts: number }
   | { type: 'greeting';   suffix: string;                                   ts: number }
-  | { type: 'session_start'; model: string;                                 ts: number }
+  | { type: 'session_start'; model: string; contextMsgCount?: number;       ts: number }
 
 // ── Anthropic avatar — same SVG as orbit but in accent color ─────────────────
 function AgentAvatar({ pulsing = false }: { pulsing?: boolean }) {
@@ -1255,15 +1255,19 @@ function EventRow({ ev, activeModel, inputTokens }: { ev: AgentEvent; activeMode
       return null
     case 'session_start':
       return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-          <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20, marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 10 }}>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '4px 11px', borderRadius: 6,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            width: '90%', padding: '5px 12px', borderRadius: 20,
             background: 'var(--bg-2)', border: '1px solid var(--line)',
             color: 'var(--fg-3)',
           }}>
-            <span style={{ opacity: 0.55 }}>◈</span>
+            {/* Green traffic-light dot */}
+            <div style={{
+              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+              background: '#22c55e',
+              boxShadow: '0 0 5px rgba(34,197,94,0.55)',
+            }} />
             <span>Session Start</span>
             {ev.model && (
               <>
@@ -1272,9 +1276,14 @@ function EventRow({ ev, activeModel, inputTokens }: { ev: AgentEvent; activeMode
               </>
             )}
             <span style={{ opacity: 0.25 }}>·</span>
-            <span style={{ color: 'var(--fg-3)' }}>{formatTs(ev.ts)}</span>
+            <span>{formatTs(ev.ts)}</span>
+            {(ev.contextMsgCount ?? 0) > 0 && (
+              <>
+                <span style={{ opacity: 0.25 }}>·</span>
+                <span style={{ opacity: 0.65 }}>Kontext {ev.contextMsgCount} Msg.</span>
+              </>
+            )}
           </div>
-          <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
         </div>
       )
     case 'thinking':
@@ -1397,6 +1406,9 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
   // Context summary — loaded silently, injected into first message of session
   const [contextSummary, setContextSummary] = useState<string | null>(null)
   const contextInjectedRef = useRef(false)
+  // Sync mirror so WS onopen can read the count without stale-closure issues
+  const olderMsgCountRef = useRef(0)
+  useEffect(() => { olderMsgCountRef.current = olderMessages.length }, [olderMessages.length])
   const prevScrollHeightRef = useRef(0)
   const seenPermissionsRef  = useRef(new Set<string>())   // dedup permission requestIds
   const PAGE = 20
@@ -1488,9 +1500,13 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const chatWidth = containerWidth
 
-  // ── Reset session-scroll flag whenever the session changes ──────────────────
+  // ── Reset all per-session flags whenever the session changes ─────────────────
   useEffect(() => {
     sessionScrolledRef.current = false
+    greeted.current            = false   // allow session_start to fire on next WS connect
+    setEvents([])                        // clear stale events from previous session
+    setConnected(false)
+    setRunning(false)
   }, [sessionId])
 
   // ── On first events: scroll so session_start marker is at top ────────────────
@@ -1679,7 +1695,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
         // Session-start separator — fires immediately on connect
         if (!greeted.current) {
           greeted.current = true
-          addEvents([{ type: 'session_start', model: activeModel, ts: Date.now() }])
+          addEvents([{ type: 'session_start', model: activeModel, ts: Date.now(), contextMsgCount: olderMsgCountRef.current }])
         }
         // Flush any message that was queued while WS was still connecting
         if (pendingMsg.current !== null) {
@@ -1962,11 +1978,8 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onlySessionStart = events.length === 1 && events[0].type === 'session_start' && olderMessages.length === 0
-    if (onlySessionStart) {
-      el.scrollTop = el.scrollHeight
-      return
-    }
+    // freshSessionStart: rAF in the session-scroll effect handles positioning — skip here
+    if (events.length === 1 && events[0].type === 'session_start') return
     if (isNearBottom()) el.scrollTop = el.scrollHeight
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events])
@@ -2059,8 +2072,10 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
     navigator.clipboard.writeText(sessionId).then(() => { setSidCopied(true); setTimeout(() => setSidCopied(false), 1200) }).catch(() => {})
   }
 
-  // Only-session_start state → use large padding so we can scroll the pill to center
-  const onlySessionStart = events.length === 1 && events[0].type === 'session_start' && olderMessages.length === 0
+  // freshSessionStart: events contains only the session_start marker (no real messages yet)
+  const freshSessionStart = events.length === 1 && events[0].type === 'session_start'
+  // onlySessionStart: fresh start with no older messages — spacer collapses, pill sits at top naturally
+  const onlySessionStart = freshSessionStart && olderMessages.length === 0
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -2106,10 +2121,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
         ref={scrollRef}
         style={{
           flex: 1, minHeight: 0, overflowY: 'auto',
-          // When only session_start: large top+bottom padding so we can scroll it to center
-          padding: onlySessionStart
-            ? `50vh ${chatWidth < 680 ? '16px' : '120px'} calc(50vh - 20px) ${chatWidth < 680 ? '16px' : '100px'}`
-            : `80px ${chatWidth < 680 ? '16px' : '120px'} 32px ${chatWidth < 680 ? '16px' : '100px'}`,
+          padding: `0 ${chatWidth < 680 ? '16px' : '120px'} ${freshSessionStart ? '100vh' : '32px'} ${chatWidth < 680 ? '16px' : '100px'}`,
           background: 'var(--bg-0)',
           display: 'flex', flexDirection: 'column', gap: 0,
           marginRight: 5,
@@ -2117,6 +2129,9 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
           scrollbarGutter: 'stable',
         }}
       >
+        {/* ── Top spacer — pushes content to bottom; collapses when fresh session starts (pill sits at top) ── */}
+        <div style={{ flex: onlySessionStart ? 0 : 1, minHeight: onlySessionStart ? 0 : 80 }} />
+
         {/* ── Load-more sentinel (scroll-up pagination) ── */}
         {hasMoreOlder && (
           <div style={{ textAlign: 'center', paddingBottom: 12 }}>

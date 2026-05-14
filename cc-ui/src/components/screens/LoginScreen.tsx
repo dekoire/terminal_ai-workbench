@@ -36,6 +36,8 @@ export function LoginScreen() {
         lastName:  (meta['last_name']  as string) ?? '',
         avatarDataUrl: (meta['avatar_data_url'] as string) ?? undefined,
       })
+      // Mark this browser-tab session as active — cleared on tab close / server restart
+      sessionStorage.setItem('cc-active-session', '1')
       setScreen('workspace')
     } finally {
       setLoading(false)
@@ -75,10 +77,10 @@ export function LoginScreen() {
         flex: 1, padding: '48px 56px', display: 'flex', flexDirection: 'column',
         position: 'relative', zIndex: 1, borderRight: '1px solid var(--line)',
       }}>
-        <div style={{ marginBottom: 4 }}>
+        <div style={{ marginBottom: 0 }}>
           <img src={theme === 'light' ? logoBlack : logoWhite} alt="Codera AI" style={{ height: 60, width: 'auto', display: 'block' }} />
         </div>
-        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, letterSpacing: 0.3, marginBottom: 48 }}>AI Development IDE</span>
+        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, letterSpacing: 0.3, margin: '-16px 0 0', paddingLeft: 47 }}>AI Development IDE</span>
 
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 380 }}>

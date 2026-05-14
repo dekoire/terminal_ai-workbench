@@ -233,23 +233,11 @@ export function NewSessionModal() {
           {kind === 'openrouter-claude' && (
             <>
               <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-                {/* Name */}
-                <div>
-                  <label style={fieldLabel}>Session-Titel (optional)</label>
-                  <input
-                    autoFocus
-                    style={inputStyle}
-                    value={orClaudeTitle}
-                    onChange={e => setOrClaudeTitle(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && startOpenRouterClaude()}
-                    placeholder="z.B. Refactor mit Sonnet"
-                  />
-                </div>
 
-                {/* LLMs / Provider picker — comes first */}
+                {/* LLMs / Provider picker — first, with orange border */}
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    <label style={{ ...fieldLabel, marginBottom: 0 }}>LLMs</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <label style={{ ...fieldLabel, marginBottom: 0, color: 'var(--accent)' }}>LLMs</label>
                     {claudeProviders.length > 0 && <span style={{ fontSize: 9, color: 'var(--fg-3)' }}>{claudeProviders.length} verfügbar</span>}
                   </div>
                   <SingleCombobox
@@ -269,17 +257,28 @@ export function NewSessionModal() {
                     if (!p) return null
                     const shellName = 'cc-' + p.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
                     return (
-                      <div style={{ marginTop: 6, padding: '6px 10px', background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', borderRadius: 6, fontSize: 10.5, color: 'var(--fg-2)' }}>
-                        ✓ Eigener Provider: <strong>{p.baseUrl}/anthropic</strong> · Modell: <strong>{p.modelName}</strong>
-                        <div style={{ marginTop: 4, fontSize: 10, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
-                          Shell-Alias: <strong>{shellName}</strong>
-                        </div>
+                      <div style={{ marginTop: 8, fontSize: 10.5, color: 'var(--fg-3)', opacity: 0.75 }}>
+                        ✓ <strong>{p.baseUrl}/anthropic</strong> · Modell: <strong>{p.modelName}</strong>
+                        <span style={{ marginLeft: 8, fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontSize: 10 }}>{shellName}</span>
                       </div>
                     )
                   })()}
-                  <p style={{ fontSize: 10.5, color: 'var(--fg-3)', margin: '6px 0 0', lineHeight: 1.5 }}>
+                  <p style={{ fontSize: 10, color: 'var(--fg-3)', margin: '6px 0 0', lineHeight: 1.5, opacity: 0.7 }}>
                     Claude Provider aus den Einstellungen erscheinen hier oben. OpenRouter-Modelle via <strong>Einstellungen → LLM → Claude Provider</strong> anlegen.
                   </p>
+                </div>
+
+                {/* Name — after LLMs */}
+                <div>
+                  <label style={fieldLabel}>Name (Optional)</label>
+                  <input
+                    autoFocus
+                    style={inputStyle}
+                    value={orClaudeTitle}
+                    onChange={e => setOrClaudeTitle(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && startOpenRouterClaude()}
+                    placeholder="z.B. Refactor mit Sonnet"
+                  />
                 </div>
 
                 {/* Permission mode — comes second */}
@@ -333,21 +332,23 @@ export function NewSessionModal() {
                     <button onClick={() => { setNewSessionOpen(false); setScreen('settings') }} style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: 11.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>In Settings anlegen</button>
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                     {aliases.map((a, idx) => {
                       const isSelected = aliasName === a.name
                       const isShellAlias = a.cmd ? !a.cmd.startsWith('/') : false
                       return (
-                        <div key={a.name} onClick={() => setAliasName(a.name)} style={{ padding: '10px 12px', borderRadius: 6, border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--line-strong)'}`, background: isSelected ? 'var(--accent-soft)' : 'var(--bg-2)', cursor: 'pointer' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 3, padding: '0 4px', lineHeight: '14px', flexShrink: 0 }}>{idx + 1}</span>
-                            <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                            {isSelected && <ICheck style={{ color: 'var(--accent)', marginLeft: 'auto', flexShrink: 0 }} />}
-                          </div>
-                          <div className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.cmd} {a.args}</div>
-                          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                            <span style={{ fontSize: 10.5, color: a.permMode === 'dangerous' ? 'var(--danger)' : 'var(--fg-3)' }}>{a.permMode === 'dangerous' ? '⚠ dangerous' : 'ask each time'}</span>
-                            {isShellAlias && <span style={{ fontSize: 9, color: 'var(--warn, #e6a817)', background: 'rgba(230,168,23,0.1)', border: '1px solid rgba(230,168,23,0.3)', borderRadius: 3, padding: '0 4px', lineHeight: '14px' }}>shell alias</span>}
+                        <div key={a.name} onClick={() => setAliasName(a.name)} style={{ padding: '7px 10px', borderRadius: 6, border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--line-strong)'}`, background: isSelected ? 'var(--accent-soft)' : 'var(--bg-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {/* Number badge */}
+                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 3, padding: '0 4px', lineHeight: '15px', flexShrink: 0 }}>{idx + 1}</span>
+                          {/* Name */}
+                          <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--fg-0)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                          {/* Command */}
+                          <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}>{a.cmd}{a.args ? ` ${a.args}` : ''}</span>
+                          {/* Badges */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto', flexShrink: 0 }}>
+                            {a.permMode === 'dangerous' && <span style={{ fontSize: 9.5, color: 'var(--danger)' }}>⚠ dangerous</span>}
+                            {isShellAlias && <span style={{ fontSize: 9, color: 'var(--warn, #e6a817)', background: 'rgba(230,168,23,0.1)', border: '1px solid rgba(230,168,23,0.3)', borderRadius: 3, padding: '0 4px', lineHeight: '15px' }}>shell alias</span>}
+                            {isSelected && <ICheck style={{ color: 'var(--accent)', width: 12, height: 12 }} />}
                           </div>
                         </div>
                       )

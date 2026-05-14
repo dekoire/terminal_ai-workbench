@@ -11,7 +11,7 @@ import {
   Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown, Users,
   Link2, Cloud, CloudUpload, CloudDownload, Camera, Lock, Bell, Paperclip, ChevronLeft, ChevronUp,
   History, Eye, AlertCircle,
-  MousePointer2, MousePointerClick, MessageSquare, MessageSquareCode, MoveUpRight, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal, SlidersHorizontal, Bot, ArrowDownFromLine, ArrowUpFromLine,
+  MousePointer2, MousePointerClick, MessageSquare, MessageSquareCode, MoveUpRight, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal, SlidersHorizontal, Bot, ArrowDownFromLine, ArrowUpFromLine, Tag,
   type LucideProps,
 } from 'lucide-react'
 
@@ -130,6 +130,7 @@ export const ISliders         = ic(SlidersHorizontal)
 export const IBot             = ic(Bot)
 export const IArrowDownLine   = ic(ArrowDownFromLine)
 export const IArrowUpLine     = ic(ArrowUpFromLine)
+export const ITag             = ic(Tag)
 
 // ── Logo spinner (SVG from assets/spinner.html) ───────────────────────────────
 export function ISpinner({ size = 20 }: { size?: number }) {

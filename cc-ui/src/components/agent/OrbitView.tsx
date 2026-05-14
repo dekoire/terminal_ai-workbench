@@ -550,7 +550,7 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
           )}
           <div style={{
             padding: '10px 14px',
-            borderRadius: '6px 15px 0 6px',
+            borderRadius: '18px 18px 4px 18px',
             background: 'var(--orbit)', color: '#fff',
             fontWeight: 300, wordBreak: 'break-word', fontFamily: 'var(--font-ui)',
           }}>
@@ -638,9 +638,9 @@ function StreamingBubble({ text }: { text: string }) {
   )
 }
 
-interface OrbitViewProps { sessionId: string }
+interface OrbitViewProps { sessionId: string; containerWidth?: number }
 
-export function OrbitView({ sessionId }: OrbitViewProps) {
+export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) {
   const {
     openrouterKey, setScreen,
     orbitMessages, orbitMeta, addOrbitMessage, setOrbitMessages, clearOrbitMessages, setOrbitMeta,
@@ -721,6 +721,7 @@ export function OrbitView({ sessionId }: OrbitViewProps) {
 
   const bottomRef      = useRef<HTMLDivElement>(null)
   const orbitScrollRef = useRef<HTMLDivElement>(null)
+  const orbitWidth = containerWidth
   const initialScrollDoneRef = useRef(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const abortRef  = useRef<AbortController | null>(null)
@@ -930,7 +931,7 @@ export function OrbitView({ sessionId }: OrbitViewProps) {
         } else if ('url' in item && item.url) {
           images.push(item.url as string)
         } else {
-          const id = item.inline_data ?? item.inlineData
+          const id = (item as Record<string, unknown>).inline_data as { data?: string; mime_type?: string; mimeType?: string } | undefined ?? (item as Record<string, unknown>).inlineData as { data?: string; mime_type?: string; mimeType?: string } | undefined
           if (id?.data) images.push(`data:${id.mime_type ?? id.mimeType ?? 'image/png'};base64,${id.data}`)
         }
       }
@@ -1161,12 +1162,6 @@ export function OrbitView({ sessionId }: OrbitViewProps) {
       <div style={{ position: 'absolute', top: 8, right: 12, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))' }}>
         {/* Row 1: action buttons + model combobox */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button onClick={clearChat} title="Verlauf löschen" style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '5px 7px', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-            <ITrash style={{ width: 13, height: 13 }} />
-          </button>
-          <button onClick={newChat} title="Neuer Chat" style={{ background: 'var(--orbit)', border: 'none', borderRadius: 6, padding: '5px 7px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-            <IPlus style={{ width: 13, height: 13 }} />
-          </button>
           <SingleCombobox
             options={modelOptions}
             value={selectedModel}
@@ -1207,15 +1202,15 @@ export function OrbitView({ sessionId }: OrbitViewProps) {
         <button
           onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
           style={{
-            position: 'absolute', bottom: 80, right: 22, zIndex: 50,
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'var(--accent-soft)',
+            position: 'absolute', top: 50, left: '50%', marginLeft: -22, zIndex: 50,
+            width: 44, height: 44, borderRadius: '50%',
+            background: 'rgba(139,92,246,0.15)',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-            border: '2px solid var(--accent-line)',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+            border: '2px solid rgba(139,92,246,0.5)',
+            boxShadow: '0 2px 12px rgba(139,92,246,0.25)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-            color: 'var(--accent)', fontSize: 16, transition: 'opacity 0.2s',
+            cursor: 'pointer', padding: 0,
+            color: 'rgb(139,92,246)', fontSize: 20, transition: 'opacity 0.2s',
             animation: 'scroll-bounce 1.4s ease-in-out infinite',
           }}
           title="Ganz nach unten"
@@ -1224,7 +1219,8 @@ export function OrbitView({ sessionId }: OrbitViewProps) {
 
       {/* ── Messages ── */}
       <div ref={orbitScrollRef} onScroll={handleOrbitScroll} style={{ flex: 1, overflowY: 'auto', scrollbarGutter: 'stable', marginRight: 5, maskImage: 'linear-gradient(to bottom, transparent 0%, black 60px, black calc(100% - 40px), transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 60px, black calc(100% - 40px), transparent 100%)' }}>
-      <div style={{ padding: '80px 120px 16px 100px', paddingRight: 132 }}>
+      <div style={{ padding: `0 ${orbitWidth < 680 ? '16px' : '132px'} 16px ${orbitWidth < 680 ? '16px' : '100px'}`, display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+        <div style={{ flex: 1, minHeight: 80 }} />
         {messages.length === 0 && !streaming && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
             <IOrbit style={{ width: 52, height: 52, color: 'var(--orbit)', opacity: 0.85, strokeWidth: 1.2 }} />

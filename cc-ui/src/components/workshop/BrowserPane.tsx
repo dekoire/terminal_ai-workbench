@@ -12,7 +12,7 @@ import type { WorkshopElementRef } from '../../store/useAppStore'
 import { useAppStore } from '../../store/useAppStore'
 import {
   IChevLeft, IEdit, IMousePointer, IMousePointerClick, ISave, IClose, IEraser,
-  IUndo, ITrash, IRefresh, ICamera, IMessageSquare,
+  IUndo, ITrash, IRefresh, ICamera, IMessageSquare, IGlobe,
 } from '../primitives/Icons'
 import { DrawCanvas } from './DrawCanvas'
 import type { DrawCanvasHandle, DrawTool } from './DrawCanvas'
@@ -39,24 +39,81 @@ interface Props {
 
 // ── Inject inspect script into iframe ────────────────────────────────────────
 function injectInspect(doc: Document, onCapture: (r: WorkshopElementRef) => void): () => void {
-  let hl: HTMLElement | null = null
-  const clearHl = () => {
-    if (hl) { try { hl.style.outline = ''; hl.style.outlineOffset = '' } catch {} hl = null }
+  const win = doc.defaultView!
+
+  // ── Overlay fill div (transparent red, no border) ────────────────────────
+  const overlay = doc.createElement('div')
+  overlay.style.cssText = [
+    'position:fixed', 'pointer-events:none', 'z-index:2147483646',
+    'background:rgba(139,92,246,0.45)', 'border:2px solid rgba(139,92,246,0.9)', 'border-radius:4px',
+    'transition:top .06s,left .06s,width .06s,height .06s',
+    'display:none',
+  ].join(';')
+  doc.body.appendChild(overlay)
+
+  // ── Info badge shown above the hovered element ───────────────────────────
+  const badge = doc.createElement('div')
+  badge.style.cssText = [
+    'position:fixed', 'pointer-events:none', 'z-index:2147483647',
+    'background:rgba(15,15,15,0.88)', 'color:#fff',
+    'font:600 11px/1.4 ui-monospace,monospace',
+    'padding:3px 7px', 'border-radius:4px',
+    'white-space:nowrap', 'display:none',
+    'backdrop-filter:blur(4px)',
+  ].join(';')
+  doc.body.appendChild(badge)
+
+  const positionOverlay = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect()
+    overlay.style.display = 'block'
+    overlay.style.left   = r.left   + 'px'
+    overlay.style.top    = r.top    + 'px'
+    overlay.style.width  = r.width  + 'px'
+    overlay.style.height = r.height + 'px'
+
+    // Badge content
+    const tag    = el.tagName.toLowerCase()
+    const idPart = el.id ? '#' + el.id : ''
+    const clsPart = [...el.classList].slice(0, 3).map(c => '.' + c).join('')
+    const ident  = (idPart + clsPart) || ''
+    const size = `${Math.round(r.width)}×${Math.round(r.height)}`
+    // React component name
+    let compName: string | undefined
+    try {
+      const fk = Object.keys(el).find(k => k.startsWith('__reactFiber'))
+      if (fk) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let f = (el as any)[fk]
+        while (f) { if (f.type?.name) { compName = f.type.name; break }; f = f.return }
+      }
+    } catch {}
+    badge.textContent = [compName ?? tag, ident, size].filter(Boolean).join('  ·  ')
+
+    // Position badge above element; clamp to viewport
+    badge.style.display = 'block'
+    const bRect = badge.getBoundingClientRect()
+    const bTop  = r.top - bRect.height - 6
+    badge.style.top  = (bTop < 4 ? r.bottom + 4 : bTop) + 'px'
+    badge.style.left = Math.min(Math.max(r.left, 4), win.innerWidth - bRect.width - 4) + 'px'
+  }
+
+  const clearOverlay = () => {
+    overlay.style.display = 'none'
+    badge.style.display   = 'none'
   }
 
   const onMove = (e: MouseEvent) => {
-    clearHl()
-    hl = e.target as HTMLElement
-    try { hl.style.outline = '2px solid #ef4444'; hl.style.outlineOffset = '1px' } catch {}
+    const el = e.target as HTMLElement
+    if (el === overlay || el === badge) return
+    positionOverlay(el)
   }
 
   const onClick = (e: MouseEvent) => {
     if (!e.shiftKey) return
     e.preventDefault(); e.stopPropagation()
     const el = e.target as HTMLElement
-    const win = doc.defaultView!
 
-    // ── React component name ──────────────────────────────────────────────────
+    // ── React component name ────────────────────────────────────────────────
     let component: string | undefined
     try {
       const fk = Object.keys(el).find(k => k.startsWith('__reactFiber'))
@@ -67,23 +124,17 @@ function injectInspect(doc: Document, onCapture: (r: WorkshopElementRef) => void
       }
     } catch {}
 
-    const classes = [...el.classList].slice(0, 5)
+    const classes  = [...el.classList].slice(0, 5)
     const selector = el.id ? '#' + el.id : classes.length ? '.' + classes[0] : el.tagName.toLowerCase()
+    const page     = doc.title?.trim() || win.location.pathname.split('/').filter(Boolean).pop() || win.location.pathname || 'unbekannt'
 
-    // ── Page label ────────────────────────────────────────────────────────────
-    const page = doc.title?.trim() || win.location.pathname.split('/').filter(Boolean).pop() || win.location.pathname || 'unbekannt'
-
-    // ── Viewport position label ───────────────────────────────────────────────
     const rect = el.getBoundingClientRect()
-    const vw = win.innerWidth
-    const vh = win.innerHeight
-    const cx = rect.left + rect.width  / 2
-    const cy = rect.top  + rect.height / 2
+    const vw = win.innerWidth, vh = win.innerHeight
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2
     const hPos = cx < vw * 0.33 ? 'links' : cx < vw * 0.67 ? 'mitte' : 'rechts'
     const vPos = cy < vh * 0.33 ? 'oben'  : cy < vh * 0.67 ? 'mitte' : 'unten'
     const position = vPos === 'mitte' && hPos === 'mitte' ? 'mitte' : vPos === hPos ? vPos : `${vPos} ${hPos}`
 
-    // ── Ancestor hierarchy (max 2 levels) ─────────────────────────────────────
     const ancestors: string[] = []
     let parent = el.parentElement
     for (let i = 0; i < 2 && parent && parent.tagName !== 'BODY' && parent.tagName !== 'HTML'; i++, parent = parent.parentElement) {
@@ -92,17 +143,24 @@ function injectInspect(doc: Document, onCapture: (r: WorkshopElementRef) => void
     }
     const hierarchy = ancestors.length > 0 ? ancestors.join(' › ') + ' › ' + selector : undefined
 
-    // ── Text preview ─────────────────────────────────────────────────────────
     const rawText = el.textContent?.trim().replace(/\s+/g, ' ') ?? ''
-    const text = rawText.length > 15 ? rawText.slice(0, 15) + '…' : rawText || undefined
+    const text    = rawText.length > 15 ? rawText.slice(0, 15) + '…' : rawText || undefined
 
     onCapture({ tag: el.tagName.toLowerCase(), id: el.id, classes, text, component, selector, page, position, hierarchy })
-    clearHl()
+    clearOverlay()
   }
 
   doc.addEventListener('mousemove', onMove)
+  doc.addEventListener('mouseleave', clearOverlay)
   doc.addEventListener('click', onClick, true)
-  return () => { clearHl(); doc.removeEventListener('mousemove', onMove); doc.removeEventListener('click', onClick, true) }
+  return () => {
+    clearOverlay()
+    overlay.remove()
+    badge.remove()
+    doc.removeEventListener('mousemove', onMove)
+    doc.removeEventListener('mouseleave', clearOverlay)
+    doc.removeEventListener('click', onClick, true)
+  }
 }
 
 // ── Server-side Playwright screenshot ────────────────────────────────────────
@@ -300,17 +358,26 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           <IRefresh style={{ width: 15, height: 15, strokeWidth: 2.2 }} />
         </button>
 
-        <form onSubmit={e => { e.preventDefault(); navigate(inputUrl) }} style={{ flex: 1, display: 'flex' }}>
+        <form onSubmit={e => { e.preventDefault(); navigate(inputUrl) }}
+          style={{ flex: 1, display: 'flex', position: 'relative', alignItems: 'center',
+            borderRadius: 6,
+            border: error ? '1px solid #ef4444' : `1px solid ${theme === 'dark' ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.1)'}`,
+            background: theme === 'dark' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)',
+            transition: 'border-color 0.12s, background 0.12s',
+          }}
+          onMouseEnter={e => { const f = e.currentTarget; f.style.borderColor = theme === 'dark' ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.22)'; f.style.background = theme === 'dark' ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.13)' }}
+          onMouseLeave={e => { const f = e.currentTarget; f.style.borderColor = error ? '#ef4444' : theme === 'dark' ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.1)'; f.style.background = theme === 'dark' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)' }}
+        >
+          <IGlobe style={{ position: 'absolute', left: 9, width: 13, height: 13, color: theme === 'dark' ? 'rgba(26,26,26,0.4)' : 'rgba(224,224,224,0.45)', pointerEvents: 'none', flexShrink: 0 }} />
           <input
             value={inputUrl}
             onChange={e => setInputUrl(e.target.value)}
             placeholder="http://localhost:3000"
             style={{
-              flex: 1, padding: '4px 10px', borderRadius: 6,
-              border: error ? '1px solid #ef4444' : 'none',
-              background: theme === 'dark' ? '#ffffff' : '#2a2a2a',
-              color: theme === 'dark' ? '#111111' : '#e8e8e8',
-              fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none',
+              flex: 1, padding: '4px 10px 4px 28px', borderRadius: 6,
+              border: 'none', background: 'transparent',
+              color: bChrome.color,
+              fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none',
             }}
           />
         </form>

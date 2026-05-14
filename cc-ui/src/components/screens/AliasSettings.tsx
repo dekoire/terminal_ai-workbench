@@ -205,7 +205,7 @@ export function AliasSettings() {
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         {/* Sidebar */}
-        <aside style={{ width: 180, background: 'var(--bg-1)', borderRight: '1px solid var(--line)', padding: '12px 0', flexShrink: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <aside style={{ width: 220, background: 'var(--bg-1)', borderRight: '1px solid var(--line)', padding: '12px 0', flexShrink: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {/* User settings */}
           <div style={{ padding: '2px 14px 6px', fontSize: 8.5, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--fg-3)', fontWeight: 700, opacity: 0.6 }}>Einstellungen</div>
           {NAV.map(label => (
@@ -476,7 +476,7 @@ type AgentsPanelProps = {
 }
 
 function AgentsPanel(props: AgentsPanelProps) {
-  const [agentTab, setAgentTab] = useState<'terminal' | 'agent-chat'>('terminal')
+  const [agentTab, setAgentTab] = useState<'terminal' | 'agent-chat'>('agent-chat')
 
   const tabBtn = (t: 'terminal' | 'agent-chat'): React.CSSProperties => ({
     padding: '5px 22px', border: 'none', borderRadius: 6, fontSize: 11.5, cursor: 'pointer',
@@ -500,8 +500,8 @@ function AgentsPanel(props: AgentsPanelProps) {
       {/* Centered tab bar */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
-          <button style={tabBtn('terminal')}   onClick={() => setAgentTab('terminal')}>Terminal</button>
           <button style={tabBtn('agent-chat')} onClick={() => setAgentTab('agent-chat')}>Agent Chat</button>
+          <button style={tabBtn('terminal')}   onClick={() => setAgentTab('terminal')}>Terminal</button>
         </div>
       </div>
 
@@ -641,13 +641,11 @@ function AliasesPanel({ aliases, cmdChecks, activeId, editMode, form, setForm, o
 
 // ── Tokens panel ──────────────────────────────────────────────────────────────
 function TokensPanel() {
-  const { tokens, addToken, updateToken, removeToken, githubToken, setGithubToken } = useAppStore()
+  const { tokens, addToken, updateToken, removeToken } = useAppStore()
   const [editId, setEditId]   = useState<string | null>(null)
   const [adding, setAdding]   = useState(false)
   const [form, setForm]       = useState({ label: '', host: 'github.com', token: '' })
   const [showIds, setShowIds] = useState<Set<string>>(new Set())
-  const [editingGhToken, setEditingGhToken] = useState(false)
-  const [ghTokenDraft, setGhTokenDraft]     = useState(githubToken)
 
   const toggleShow = (id: string) =>
     setShowIds(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -680,64 +678,8 @@ function TokensPanel() {
         <button style={btnPrimary} onClick={openAdd}><IPlus />Token hinzufügen</button>
       </div>
 
-      {/* ── Primäres GitHub Token (für Push/Clone-Aktionen) ── */}
-      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Primäres GitHub Token</div>
-      <section style={{ border: '1px solid var(--line-strong)', borderRadius: 6, overflow: 'hidden', marginBottom: 20 }}>
-        <div style={{ padding: '10px 14px', background: 'var(--bg-2)', borderBottom: '1px solid var(--line)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-            <IGit style={{ color: 'var(--accent)', width: 13, height: 13 }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>GitHub Token</span>
-            <span style={{ flex: 1 }} />
-            {!editingGhToken && (
-              <button onClick={() => { setEditingGhToken(true); setGhTokenDraft(githubToken) }}
-                style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>
-                {githubToken ? 'Ändern' : 'Hinterlegen'}
-              </button>
-            )}
-          </div>
-          <div style={{ fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.45 }}>
-            Personal Access Token für GitHub-Aktionen — Repo einrichten, pushen und synchronisieren.
-          </div>
-        </div>
-        <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {editingGhToken ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Personal Access Token</div>
-              <input
-                style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' as const }}
-                type="password" value={ghTokenDraft} onChange={e => setGhTokenDraft(e.target.value)} placeholder="ghp_..." autoFocus
-              />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => { setGithubToken(ghTokenDraft); setEditingGhToken(false) }} style={btnPrimary}>Speichern</button>
-                <button onClick={() => setEditingGhToken(false)} style={btnGhost}>Abbrechen</button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
-              {githubToken
-                ? <><ICheck style={{ color: 'var(--ok)', flexShrink: 0, width: 13, height: 13 }} /><span className="mono" style={{ fontSize: 11, color: 'var(--fg-2)' }}>{githubToken.slice(0, 12)}···</span></>
-                : <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>Kein Token hinterlegt — für GitHub-Aktionen benötigt</span>
-              }
-            </div>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 2 }}>
-            {[
-              { label: 'Token-Typ',       value: 'Fine-grained oder Classic' },
-              { label: 'Benötigte Rechte', value: 'repo, read:user' },
-              { label: 'Erstellen unter', value: 'github.com/settings/tokens' },
-              { label: 'Speicherort',     value: 'Lokal — nur auf diesem Gerät' },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--fg-3)', marginBottom: 2 }}>{label}</div>
-                <div style={{ padding: '5px 10px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--fg-3)' }}>{value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Weitere Git-Host Tokens ── */}
-      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Weitere Git-Host Tokens</div>
+      {/* ── Git-Host Tokens ── */}
+      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, marginBottom: 8 }}>Git-Host Tokens</div>
 
       {/* Token list */}
       {tokens.length === 0 && !adding ? (
@@ -2040,7 +1982,7 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
 // ── Claude Provider Tab ───────────────────────────────────────────────────────
 
 function ClaudeProviderTab() {
-  const { claudeProviders, addClaudeProvider, updateClaudeProvider, removeClaudeProvider } = useAppStore()
+  const { claudeProviders, addClaudeProvider, updateClaudeProvider, removeClaudeProvider, aliases, addAlias, updateAlias } = useAppStore()
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
   const emptyForm = (): Omit<ClaudeProvider, 'id' | 'endpointOk'> => ({
@@ -2055,6 +1997,7 @@ function ClaudeProviderTab() {
   const [jsonDraft, setJsonDraft] = useState('')
   const [jsonError, setJsonError] = useState('')
   const [savedCmd, setSavedCmd] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
   const [homeDir, setHomeDir]   = useState<string>('')
 
   React.useEffect(() => {
@@ -2122,7 +2065,6 @@ function ClaudeProviderTab() {
     const shellName  = 'cc-' + form.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
 
     const fullJsonPath = `${homeDir || '~'}/cc-ui-providers/${providerId}.json`
-    // Use --bare so OAuth/keychain is skipped; auth comes from inline env vars
     const envPrefix = [
       form.baseUrl.trim()    ? `ANTHROPIC_BASE_URL=${form.baseUrl.trim().replace(/\/+$/, '')}` : '',
       form.authToken.trim()  ? `ANTHROPIC_API_KEY=${form.authToken.trim()}` : '',
@@ -2131,19 +2073,24 @@ function ClaudeProviderTab() {
     ].filter(Boolean).join(' ')
     const aliasCmd = `${envPrefix} claude --bare --settings ${fullJsonPath}`
 
-    // Write JSON settings file
-    await fetch('/api/file-write', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: jsonPath, content: jsonDraft }),
-    })
+    try {
+      // Write JSON settings file
+      await fetch('/api/file-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: jsonPath, content: jsonDraft }),
+      })
 
-    // Write alias directly into ~/.zshrc
-    await fetch('/api/zshrc-alias', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aliasName: shellName, aliasCmd }),
-    })
+      // Write alias directly into ~/.zshrc
+      await fetch('/api/zshrc-alias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aliasName: shellName, aliasCmd }),
+      })
+    } catch (e) {
+      setJsonError(`Fehler beim Speichern: ${String(e)}`)
+      return
+    }
 
     const data: Omit<ClaudeProvider, 'id'> = {
       name: form.name.trim(),
@@ -2161,9 +2108,25 @@ function ClaudeProviderTab() {
       updateClaudeProvider(editId, data)
     }
 
-    // Show the written alias command
+    // Sync Terminal alias — create or update so it appears in the Aliases list
+    const displayName = form.name.trim()
+    const existingAlias = aliases.find(a => a.cmd === shellName || a.id === `alias-${providerId}`)
+    if (existingAlias) {
+      updateAlias(existingAlias.id, { name: displayName, cmd: shellName, args: '' })
+    } else {
+      addAlias({
+        id: `alias-${providerId}`,
+        name: displayName,
+        cmd: shellName,
+        args: '',
+        permMode: 'normal',
+        status: 'ok',
+      })
+    }
+
     setSavedCmd(`alias ${shellName}='${aliasCmd}'`)
     setAdding(false); setEditId(null); setEndpointStatus(null); setJsonError('')
+    setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 3000)
   }
 
   const checkEndpoint = async () => {
@@ -2199,15 +2162,17 @@ function ClaudeProviderTab() {
         Definiere einen LLM-Provider mit eigenem API-Endpunkt. Die generierte <span className="mono">claude.json</span>-Config setzt Env-Vars, die claude CLI beim Start liest. Provider tauchen beim Erstellen einer Session als Modell-Option auf.
       </div>
 
-      {/* Shell alias command banner after save */}
-      {savedCmd && (
-        <div style={{ padding: '10px 12px', background: 'var(--bg-2)', border: '1px solid var(--ok)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, color: 'var(--ok)', fontWeight: 600, marginBottom: 4 }}>✓ Gespeichert — Shell-Alias im Terminal ausführen:</div>
-            <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-0)', wordBreak: 'break-all' }}>{savedCmd}</code>
+      {/* Success toast */}
+      {saveSuccess && (
+        <div style={{ padding: '10px 14px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>✓</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>Provider gespeichert</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 1 }}>Shell-Alias wurde automatisch in ~/.zshrc eingetragen.</div>
           </div>
-          <button onClick={() => navigator.clipboard.writeText(savedCmd)} style={{ ...btnGhost, padding: '3px 10px', fontSize: 10.5, flexShrink: 0 }}>Kopieren</button>
-          <button onClick={() => setSavedCmd(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 14, padding: 2 }}>×</button>
+          {savedCmd && (
+            <button onClick={() => navigator.clipboard.writeText(savedCmd)} style={{ ...btnGhost, padding: '3px 10px', fontSize: 10.5, flexShrink: 0 }}>Alias kopieren</button>
+          )}
         </div>
       )}
 

@@ -7,11 +7,7 @@ import { exec, spawn }  from 'child_process'
 import fs               from 'fs'
 import path             from 'path'
 import { tmpdir }        from 'os'
-import { fileURLToPath } from 'url'
 import { pendingPerms, sessionWs, pendingPermsBySession } from '../state.js'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname  = path.dirname(__filename)
 
 const router = Router()
 
@@ -57,10 +53,29 @@ router.post('/api/zshrc-alias', async (req, res) => {
     const { aliasName, aliasCmd } = JSON.parse(await readBody(req)) as { aliasName: string; aliasCmd: string }
     const zshrcPath = path.join(home(), '.zshrc')
     const line = `alias ${aliasName}='${aliasCmd}'`
+
+    // 1. Write into ~/.zshrc (persists across all future sessions)
     let content = ''
     try { content = fs.readFileSync(zshrcPath, 'utf-8') } catch { /* new file */ }
     const filtered = content.split('\n').filter(l => !l.match(new RegExp(`^\\s*alias\\s+${aliasName}=`))).join('\n')
     fs.writeFileSync(zshrcPath, filtered.trimEnd() + '\n' + line + '\n', 'utf-8')
+
+    // 2. Also write a small helper script and source it so the alias is immediately
+    //    available in any new zsh session started by this process tree
+    const helperDir  = path.join(home(), '.cc-ui-aliases')
+    const helperFile = path.join(helperDir, `${aliasName}.sh`)
+    fs.mkdirSync(helperDir, { recursive: true })
+    fs.writeFileSync(helperFile, `#!/bin/zsh\nalias ${aliasName}='${aliasCmd}'\n`, 'utf-8')
+    fs.chmodSync(helperFile, 0o755)
+
+    // Ensure the helper dir is sourced from .zshrc too (one-time setup line)
+    const sourceDir = path.join(home(), '.zshrc')
+    const sourceLine = `[ -d ~/.cc-ui-aliases ] && for f in ~/.cc-ui-aliases/*.sh; do source "$f"; done`
+    const currentZshrc = fs.readFileSync(sourceDir, 'utf-8')
+    if (!currentZshrc.includes('.cc-ui-aliases')) {
+      fs.appendFileSync(sourceDir, '\n# Codera AI — auto-registered aliases\n' + sourceLine + '\n')
+    }
+
     res.json({ ok: true })
   } catch (e) { res.json({ ok: false, error: String(e) }) }
 })
@@ -458,6 +473,118 @@ router.get('/api/read-docs', (req, res) => {
   readMdRecursive(docsDir)
   if (files.length === 0) res.json({ ok: false, error: 'Keine Dokumentationsdateien unter docs/ gefunden', files: [] })
   else res.json({ ok: true, files })
+})
+
+// ── Admin User Management (proxies to Supabase with service role key) ──────────
+async function sbFetch(supabaseUrl: string, serviceRoleKey: string, path: string, init: RequestInit = {}) {
+  return fetch(`${supabaseUrl}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      ...(init.headers as Record<string, string> ?? {}),
+    },
+  })
+}
+
+router.get('/api/admin/users', async (req, res) => {
+  const { supabaseUrl, serviceRoleKey } = req.query as Record<string, string>
+  if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+  try {
+    const [usersR, adminsR] = await Promise.all([
+      sbFetch(supabaseUrl, serviceRoleKey, '/auth/v1/admin/users?page=1&per_page=1000'),
+      sbFetch(supabaseUrl, serviceRoleKey, '/rest/v1/admin_users?select=user_id'),
+    ])
+    const usersData = await usersR.json() as { users?: Record<string, unknown>[] }
+    const adminsData = await adminsR.json() as { user_id: string }[]
+    const adminIds = new Set(Array.isArray(adminsData) ? adminsData.map(a => a.user_id) : [])
+    const users = (usersData.users ?? []).map((u: Record<string, unknown>) => ({
+      id: u.id,
+      email: u.email,
+      firstName: (u.user_metadata as Record<string, string>)?.firstName ?? (u.user_metadata as Record<string, string>)?.first_name ?? '',
+      lastName:  (u.user_metadata as Record<string, string>)?.lastName  ?? (u.user_metadata as Record<string, string>)?.last_name  ?? '',
+      createdAt: u.created_at,
+      lastSignIn: u.last_sign_in_at,
+      isAdmin: adminIds.has(u.id as string),
+    }))
+    res.json({ ok: true, users })
+  } catch (e) { res.json({ ok: false, error: String(e) }) }
+})
+
+router.post('/api/admin/users', async (req, res) => {
+  try {
+    const { supabaseUrl, serviceRoleKey, email, password, firstName, lastName } = JSON.parse(await readBody(req)) as Record<string, string>
+    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+    const r = await sbFetch(supabaseUrl, serviceRoleKey, '/auth/v1/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { firstName, lastName } }),
+    })
+    const d = await r.json() as Record<string, unknown>
+    if (d.id) res.json({ ok: true, user: d })
+    else res.json({ ok: false, error: (d.msg ?? d.message ?? JSON.stringify(d)) as string })
+  } catch (e) { res.json({ ok: false, error: String(e) }) }
+})
+
+router.put('/api/admin/users/:id', async (req, res) => {
+  try {
+    const { supabaseUrl, serviceRoleKey, email, firstName, lastName, password } = JSON.parse(await readBody(req)) as Record<string, string>
+    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+    const payload: Record<string, unknown> = { user_metadata: { firstName, lastName } }
+    if (email) payload.email = email
+    if (password) payload.password = password
+    const r = await sbFetch(supabaseUrl, serviceRoleKey, `/auth/v1/admin/users/${req.params.id}`, {
+      method: 'PUT', body: JSON.stringify(payload),
+    })
+    const d = await r.json() as Record<string, unknown>
+    res.json({ ok: !!d.id, error: d.id ? undefined : (d.msg ?? d.message) as string })
+  } catch (e) { res.json({ ok: false, error: String(e) }) }
+})
+
+router.delete('/api/admin/users/:id', async (req, res) => {
+  try {
+    const { supabaseUrl, serviceRoleKey } = req.query as Record<string, string>
+    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+    await sbFetch(supabaseUrl, serviceRoleKey, `/auth/v1/admin/users/${req.params.id}`, { method: 'DELETE' })
+    res.json({ ok: true })
+  } catch (e) { res.json({ ok: false, error: String(e) }) }
+})
+
+router.post('/api/admin/users/:id/admin', async (req, res) => {
+  try {
+    const { supabaseUrl, serviceRoleKey, grantedBy } = JSON.parse(await readBody(req)) as Record<string, string>
+    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+    await sbFetch(supabaseUrl, serviceRoleKey, '/rest/v1/admin_users', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify({ user_id: req.params.id, granted_by: grantedBy }),
+    })
+    res.json({ ok: true })
+  } catch (e) { res.json({ ok: false, error: String(e) }) }
+})
+
+router.delete('/api/admin/users/:id/admin', async (req, res) => {
+  try {
+    const { supabaseUrl, serviceRoleKey } = req.query as Record<string, string>
+    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+    await sbFetch(supabaseUrl, serviceRoleKey, `/rest/v1/admin_users?user_id=eq.${req.params.id}`, { method: 'DELETE' })
+    res.json({ ok: true })
+  } catch (e) { res.json({ ok: false, error: String(e) }) }
+})
+
+// ── GET /api/installed-apps ────────────────────────────────────────────────────
+let _appsCache: string[] | null = null
+let _appsCacheAt = 0
+router.get('/api/installed-apps', (_req, res) => {
+  if (_appsCache && Date.now() - _appsCacheAt < 60_000) { res.json({ apps: _appsCache }); return }
+  const dirs = ['/Applications', '/System/Applications', '/System/Applications/Utilities', `${process.env.HOME}/Applications`]
+  const apps = new Set<string>()
+  for (const dir of dirs) {
+    try { for (const e of fs.readdirSync(dir)) { if (e.endsWith('.app')) apps.add(e.slice(0, -4)) } } catch { /* ignore */ }
+  }
+  _appsCache = [...apps]
+  _appsCacheAt = Date.now()
+  res.json({ apps: _appsCache })
 })
 
 // ── GET /api/open-with ─────────────────────────────────────────────────────────
