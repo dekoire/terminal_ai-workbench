@@ -1060,7 +1060,7 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
         <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
           GitHub
           {status !== 'loading' && (
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: compactGhUrl ? '#8b5cf6' : 'var(--fg-3)', flexShrink: 0 }} />
           )}
           {compactGhUrl && (
             <a

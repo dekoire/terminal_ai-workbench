@@ -258,7 +258,13 @@ router.post('/api/git-action', async (req, res) => {
           // Detect default branch via remote HEAD symref (no extra network call needed)
           await run('git remote set-head origin --auto')
           const headR = await run('git symbolic-ref refs/remotes/origin/HEAD')
-          const defBranch = headR.ok ? headR.out.replace('refs/remotes/origin/', '').trim() : 'main'
+          // headR fails when the remote is empty (no commits pushed yet)
+          if (!headR.ok) {
+            // Empty remote repo — git init + remote set up, no checkout possible
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+            return { ok: true, out: 'empty' }
+          }
+          const defBranch = headR.out.replace('refs/remotes/origin/', '').trim()
           // -B creates or resets branch (handles case where git init already made 'main')
           const checkR = await run(`git checkout -B ${defBranch} origin/${defBranch}`)
           await run(`git branch --set-upstream-to=origin/${defBranch} ${defBranch}`)
@@ -268,6 +274,11 @@ router.post('/api/git-action', async (req, res) => {
         } else {
           const cloneR = await run(`git clone ${JSON.stringify(remote)} ${JSON.stringify(folderName)}`, parentDir)
           if (cloneR.ok && cleanUrl !== remote) await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+          // git clone on empty remote exits with error — treat as success (remote is set up)
+          if (!cloneR.ok && cloneR.out.includes('empty repository')) {
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+            return { ok: true, out: 'empty' }
+          }
           return cloneR
         }
       })()

@@ -16,7 +16,7 @@ async function applyDocTemplates(projectId: string, projectPath: string, appPort
   const store = useAppStore.getState()
   const { docTemplates } = store
   store.setDocApplying(projectId, true)
-  const enabled = docTemplates.filter(t => t.enabled)
+  const enabled = docTemplates.filter(t => t.enabled && (t.category ?? 'doc') === 'doc' && t.relativePath)
   if (enabled.length === 0) { store.setDocApplying(projectId, false); return }
   for (const tpl of enabled) {
     const fullPath = `${projectPath}/${tpl.relativePath}`
@@ -98,7 +98,8 @@ export function NewProjectModal() {
   // selectedAiId removed — doc refresh now uses OpenRouter directly
 
   // Step 3
-  const [repoUrl, setRepoUrl]             = useState('')
+  const [repoUrl, setRepoUrl]             = useState('')       // display URL — never contains token
+  const [pickedAuthUrl, setPickedAuthUrl]  = useState('')       // token-injected URL from picker
   const [showRepoPicker, setShowRepoPicker] = useState(false)
   const [pickedTokenId, setPickedTokenId]   = useState<string | undefined>(undefined)
   const [hasGit, setHasGit]         = useState(false)
@@ -108,6 +109,7 @@ export function NewProjectModal() {
   const [addingToken, setAddingToken] = useState(false)
 
   const [applying, setApplying] = useState(false)
+  const [cloneErr, setCloneErr] = useState<string | null>(null)
 
   // ── Derive platform info from repo URL ──────────────────────────────────────
   const repoHost = (() => {
@@ -203,15 +205,36 @@ export function NewProjectModal() {
   }
 
   // ── Create project ──────────────────────────────────────────────────────────
-  const create = async () => {
+  const create = async (skipClone = false) => {
     if (!name.trim() || !path.trim()) return
     setApplying(true)
+    setCloneErr(null)
     try {
       const { newProjectId } = await import('../../lib/ids')
       const id = newProjectId()
       const port = await findFreePort()
+
+      // Clone FIRST — before any files are written — so the folder is clean
+      if (repoUrl.trim() && !skipClone) {
+        // pickedAuthUrl already has token injected by picker
+        // for manual URL input, inject selectedTokenId token
+        const tok = !pickedTokenId && selectedTokenId
+          ? (tokens.find(t => t.id === selectedTokenId)?.token ?? '')
+          : ''
+        const authedUrl = pickedAuthUrl || (tok
+          ? repoUrl.replace('https://github.com/', `https://${tok}@github.com/`)
+          : repoUrl)
+        const r = await fetch('/api/git-action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'clone', path: path.trim(), remote: authedUrl }),
+        }).then(res => res.json()) as { ok: boolean; out: string }
+        if (!r.ok) { setCloneErr(r.out.slice(0, 200)); return }
+      }
+
       addProject({ id, name: name.trim(), path: path.trim(), branch: '', sessions: [], appPort: port, appStartCmd: startCmd.trim() || undefined })
-      if (pickedTokenId) setProjectGithubToken(id, pickedTokenId)
+      const tokenId = pickedTokenId ?? (selectedTokenId || undefined)
+      if (tokenId) setProjectGithubToken(id, tokenId)
       setLastProjectPath(path.trim())
       setActiveProject(id)
       await applyDocTemplates(id, path.trim(), port, startCmd.trim())
@@ -507,6 +530,11 @@ export function NewProjectModal() {
                   )}
                 </>
               )}
+              {cloneErr && (
+                <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: 'rgba(255,80,80,0.08)', border: '1px solid rgba(255,80,80,0.25)', fontSize: 11, color: 'var(--err)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  {cloneErr}
+                </div>
+              )}
             </div>
             </div>
           )}
@@ -557,15 +585,15 @@ export function NewProjectModal() {
 
           {step === 3 && (
             <>
-              <button style={btnGhost} onClick={create} disabled={applying}>
+              <button style={btnGhost} onClick={() => create(true)} disabled={applying}>
                 {applying ? 'Wird angelegt…' : 'Überspringen & anlegen'}
               </button>
               <button
                 style={{ ...btnPrimary, opacity: applying ? 0.6 : 1 }}
                 disabled={applying}
-                onClick={create}
+                onClick={() => create(false)}
               >
-                {applying ? 'Wird angelegt…' : 'Workspace anlegen'}
+                {applying ? (repoUrl.trim() ? 'Wird geklont…' : 'Wird angelegt…') : 'Workspace anlegen'}
               </button>
             </>
           )}
@@ -578,7 +606,8 @@ export function NewProjectModal() {
         tokens={tokens}
         preselectedTokenId={pickedTokenId ?? tokens.find(t => t.host === 'github.com')?.id}
         onSelect={(url, tokenId) => {
-          setRepoUrl(url)
+          setPickedAuthUrl(url)
+          setRepoUrl(url.replace(/https?:\/\/[^@]+@/, 'https://'))
           setPickedTokenId(tokenId)
           setShowRepoPicker(false)
         }}
