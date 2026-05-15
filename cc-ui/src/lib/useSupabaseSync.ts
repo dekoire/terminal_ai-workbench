@@ -12,6 +12,18 @@
 
 import { useEffect, useRef } from 'react'
 import { useAppStore, setActiveStorageUser } from '../store/useAppStore'
+
+// Clears all user-specific local state on logout so the next user starts clean.
+function clearUserState() {
+  setActiveStorageUser('')
+  // currentUser must be null BEFORE resetUserData so the doSave guard catches
+  // the immediate save that fires when projects.length drops to 0.
+  useAppStore.setState({
+    currentUser: null,
+    screen: 'login',
+  } as Partial<ReturnType<typeof useAppStore.getState>>)
+  useAppStore.getState().resetUserData()
+}
 import { getSupabase }        from './supabase'
 import {
   loadFromSupabase,
@@ -25,40 +37,20 @@ import {
   saveGlobalPrompts,
   saveProjectsToSupabase,
   deleteProjectFromSupabase,
+  saveSessionsToSupabase,
+  deleteSessionFromSupabase,
+  upsertOrbitFavoriteToSupabase,
+  deleteOrbitFavoriteFromSupabase,
   debounce,
 } from './supabaseSync'
 
-export { saveGlobalTemplates, saveGlobalCliConfig, saveGlobalPrompts }
+export { saveGlobalTemplates, saveGlobalCliConfig, saveGlobalPrompts, saveSessionsToSupabase, deleteSessionFromSupabase, upsertOrbitFavoriteToSupabase, deleteOrbitFavoriteFromSupabase }
 
 export function useSupabaseSync() {
   const currentUser   = useAppStore(s => s.currentUser)
   const supabaseUrl   = useAppStore(s => s.supabaseUrl)
   const supabaseKey   = useAppStore(s => s.supabaseAnonKey)
 
-  // ── Force re-login on every new app/server start ───────────────────────────
-  // sessionStorage is cleared when the tab/window closes or the server restarts
-  // (page reloads). If the flag is absent but a Supabase session exists in
-  // localStorage, the user must log in again rather than being silently resumed.
-  useEffect(() => {
-    const SESSION_FLAG = 'cc-active-session'
-    if (sessionStorage.getItem(SESSION_FLAG)) return   // already running this session
-
-    const sb = getSupabase(supabaseUrl, supabaseKey)
-    if (!sb) return
-
-    sb.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        // There's a persisted Supabase token but no sessionStorage flag →
-        // this is a fresh start (server restart / page reload). Force sign-out.
-        sb.auth.signOut().then(() => {
-          setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
-        }).catch(() => {
-          setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
-        })
-      }
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])   // run once on mount only
 
   // track whether initial load is done so we don't re-save what we just loaded
   const loadedRef  = useRef(false)
@@ -106,7 +98,7 @@ export function useSupabaseSync() {
       loadingRef.current = false
       userIdRef.current  = null
       sessionStorage.removeItem('cc-active-session')
-      setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+      clearUserState()
     }, 15 * 60 * 1000)   // check every 15 minutes
     return () => clearInterval(id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,7 +117,7 @@ export function useSupabaseSync() {
           loadedRef.current  = false
           loadingRef.current = false
           userIdRef.current  = null
-          setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+          clearUserState()
         } else {
           // Still active — silently refresh the session so the user stays in
           sb.auth.refreshSession().catch(() => {
@@ -133,7 +125,7 @@ export function useSupabaseSync() {
             loadedRef.current  = false
             loadingRef.current = false
             userIdRef.current  = null
-            setActiveStorageUser(''); useAppStore.setState({ currentUser: null, screen: 'login' } as Partial<ReturnType<typeof useAppStore.getState>>)
+            clearUserState()
           })
         }
       }
@@ -157,14 +149,19 @@ export function useSupabaseSync() {
     if (userId === userIdRef.current) return
     if (loadingRef.current) return
 
-    // Different user logged in → wipe all user-specific data before loading new user's data
-    if (userIdRef.current !== null && userIdRef.current !== userId) {
-      useAppStore.getState().resetUserData()
-    }
+    // Capture local projects (with sessions) BEFORE resetting, so we can
+    // merge them back after DB load. resetUserData() clears sessions to [],
+    // so we must snapshot them here or they'd be lost in the merge.
+    const preResetProjects = useAppStore.getState().projects
 
-    userIdRef.current  = userId
+    // Always reset to a clean slate before loading from DB.
+    // IMPORTANT: set loadedRef = false BEFORE resetUserData() so that any
+    // subscribe callbacks triggered by the reset see loadedRef=false and bail,
+    // preventing a stale save from overwriting DB data with empty state.
     loadedRef.current  = false
     loadingRef.current = true
+    userIdRef.current  = userId
+    useAppStore.getState().resetUserData()
 
     const sb = getSb()
     if (!sb) {
@@ -190,13 +187,30 @@ export function useSupabaseSync() {
       // Settings: Supabase is authoritative for preferences & API keys.
       // But runtime state (active project/session/chatId, projects-with-sessions)
       // must be MERGED — not blindly overwritten — to avoid disrupting live work.
+      // Snapshot local runtime state BEFORE any merge.
+      const local = useAppStore.getState()
+      const localActiveProjectId   = local.activeProjectId
+      const localActiveOrbitChatId = local.activeOrbitChatId
+      // Use preResetProjects (captured before resetUserData) so sessions from
+      // localStorage survive the merge — resetUserData() sets sessions to [].
+      const localProjects          = preResetProjects
+      const deletedProjectIds      = new Set(local.deletedProjectIds ?? [])
+
       if (settings && Object.keys(settings).length > 0) {
-        // Snapshot local runtime state BEFORE the merge so we can restore it.
-        const local = useAppStore.getState()
-        const localActiveProjectId   = local.activeProjectId
-        const localActiveOrbitChatId = local.activeOrbitChatId
-        const localProjects          = local.projects
-        const deletedProjectIds      = new Set(local.deletedProjectIds ?? [])
+        // QuickLinks safety-net: if Supabase returned no/empty quickLinks,
+        // fall back to the per-user localStorage backup saved on last successful load.
+        if (!settings.quickLinks || (settings.quickLinks as unknown[]).length === 0) {
+          try {
+            const backup = localStorage.getItem(`ql_backup_${userId}`)
+            if (backup) {
+              const parsed = JSON.parse(backup)
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                settings.quickLinks = parsed
+                console.info('[supabaseSync] ℹ️ QuickLinks restored from localStorage backup')
+              }
+            }
+          } catch { /* non-fatal */ }
+        }
 
         // Apply everything in ONE setState to avoid intermediate states where
         // chatId is briefly wrong (causing in-flight messages to go to wrong chat).
@@ -221,31 +235,43 @@ export function useSupabaseSync() {
             ...localActiveOrbitChatId,
           }
 
-          // Merge projects: DB is authoritative for metadata; local sessions (running
-          // processes) take priority. Projects the user deleted are never restored.
-          const sbProjects = (result.projects ?? []).filter(p => !deletedProjectIds.has(p.id))
-
-          if (sbProjects.length > 0 || localProjects.length > 0) {
-            const sbMap = new Map(sbProjects.map(p => [p.id, p]))
-            const lMap  = new Map(localProjects.map(p => [p.id, p]))
-            // DB project + keep any live local sessions on top
-            const merged = sbProjects.map(sp => {
-              const lp = lMap.get(sp.id)
-              return lp ? { ...sp, sessions: lp.sessions } : sp
-            })
-            // Local-only projects not yet in DB (new ones created before first sync)
-            for (const lp of localProjects) {
-              if (!sbMap.has(lp.id)) merged.push(lp)
-            }
-            next.projects = merged
-          } else {
-            next.projects = []
-          }
-
           return next
         })
+
+        // Persist quickLinks backup to localStorage after successful load
+        try {
+          const ql = useAppStore.getState().quickLinks
+          if (ql && ql.length > 0) {
+            localStorage.setItem(`ql_backup_${userId}`, JSON.stringify(ql))
+          }
+        } catch { /* non-fatal */ }
+
+        console.info('[supabaseSync] ✅ Settings loaded from Supabase')
+      }
+
+      // Always merge projects from DB regardless of whether settings exist.
+      // This ensures new users (no settings row yet) still get their projects.
+      {
+        const sbProjects = (result.projects ?? []).filter(p => !deletedProjectIds.has(p.id))
+
+        if (sbProjects.length > 0 || localProjects.length > 0) {
+          const sbMap = new Map(sbProjects.map(p => [p.id, p]))
+          const lMap  = new Map(localProjects.map(p => [p.id, p]))
+          // DB project + keep any live local sessions on top (prefer local if non-empty, else DB)
+          const merged = sbProjects.map(sp => {
+            const lp = lMap.get(sp.id)
+            // If local has running sessions, keep them; otherwise use DB sessions
+            const sessions = (lp && lp.sessions.length > 0) ? lp.sessions : sp.sessions
+            return { ...sp, sessions }
+          })
+          // Local-only projects not yet synced to DB (created before first sync)
+          for (const lp of localProjects) {
+            if (!sbMap.has(lp.id)) merged.push(lp)
+          }
+          useAppStore.setState({ projects: merged })
+        }
         const projCount = useAppStore.getState().projects.length
-        console.info(`[supabaseSync] ✅ Settings + ${projCount} project(s) loaded from Supabase`)
+        console.info(`[supabaseSync] ✅ ${projCount} project(s) loaded from Supabase`)
       }
 
       // Chat metadata: merge (local takes priority for active chats)
@@ -341,6 +367,7 @@ export function useSupabaseSync() {
 
       loadedRef.current  = true
       loadingRef.current = false
+      useAppStore.getState().setDataLoaded(true)
 
       // Push any local-only projects that aren't in the DB yet (initial migration)
       const dbIds    = new Set((result.projects ?? []).map(p => p.id))
@@ -351,6 +378,34 @@ export function useSupabaseSync() {
         if (newLocal.length > 0)
           console.info(`[supabaseSync] ✅ Synced ${newLocal.length} local project(s) to DB`)
       }
+      // Push sessions for ALL projects that have local sessions.
+      // This handles: (a) brand-new local projects, (b) existing DB projects whose
+      // sessions were wiped from the DB by a prior logout bug but still live in
+      // Zustand/localStorage. saveSessionsToSupabase is idempotent (upsert).
+      const dbSessionCounts = new Map<string, number>(
+        (result.projects ?? []).map(p => [p.id, (p.sessions ?? []).length]),
+      )
+      for (const p of allProjs) {
+        if (p.sessions.length === 0) continue
+        const dbCount = dbSessionCounts.get(p.id) ?? 0
+        // Only push if local has more sessions than DB (avoids redundant writes)
+        if (p.sessions.length > dbCount) {
+          void saveSessionsToSupabase(sb, userId, p.id, p.sessions)
+          console.info(`[supabaseSync] ✅ Pushed ${p.sessions.length} session(s) for project ${p.id} (DB had ${dbCount})`)
+        }
+      }
+      // Migrate orbit favorites from JSON blob → table (one-time, if table was empty)
+      void (async () => {
+        const { data: existingFavs } = await sb.from('orbit_favorites').select('id').eq('user_id', userId).limit(1)
+        if (existingFavs && existingFavs.length > 0) return  // already in table
+        const state = useAppStore.getState()
+        const allFavs = Object.values(state.orbitFavorites).flat()
+        if (allFavs.length === 0) return
+        for (const fav of allFavs) {
+          await upsertOrbitFavoriteToSupabase(sb, userId, fav)
+        }
+        console.info(`[supabaseSync] ✅ Migrated ${allFavs.length} orbit favorite(s) to table`)
+      })()
     }).catch(err => {
       console.error('[supabaseSync] load error:', err)
       loadedRef.current  = true
@@ -419,6 +474,9 @@ export function useSupabaseSync() {
 
     const unsub = useAppStore.subscribe((state, prev) => {
       if (!loadedRef.current) return
+      // Never write to DB during logout — currentUser is cleared before projects are reset,
+      // so this guard prevents wiping the DB when resetUserData() fires on sign-out.
+      if (!state.currentUser) return
       if (state.projects === prev.projects) return
 
       const shrunk = state.projects.length < prev.projects.length
@@ -445,6 +503,96 @@ export function useSupabaseSync() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabaseUrl, supabaseKey])
 
+  // ── on session changes within projects: upsert added/updated, delete removed ──
+
+  useEffect(() => {
+    const sessionTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+
+    const unsub = useAppStore.subscribe((state, prev) => {
+      if (!loadedRef.current) return
+      if (!state.currentUser) return  // don't delete sessions during logout
+      if (state.projects === prev.projects) return
+
+      const userId = userIdRef.current
+      const sb = getSb()
+      if (!sb || !userId) return
+
+      for (const proj of state.projects) {
+        const prevProj = prev.projects.find(p => p.id === proj.id)
+        if (!prevProj) {
+          // Brand-new project: its sessions (if any) will be saved once it exists in DB
+          continue
+        }
+        if (proj.sessions === prevProj.sessions) continue
+
+        const prevSessIds = new Set(prevProj.sessions.map(s => s.id))
+        const newSessIds  = new Set(proj.sessions.map(s => s.id))
+
+        // Sessions removed → immediate delete from DB
+        for (const prevSess of prevProj.sessions) {
+          if (!newSessIds.has(prevSess.id)) {
+            void deleteSessionFromSupabase(sb, userId, prevSess.id)
+          }
+        }
+
+        // Sessions added or updated → debounced upsert
+        const hasChanges = proj.sessions.some(s => {
+          if (!prevSessIds.has(s.id)) return true  // new
+          const old = prevProj.sessions.find(ps => ps.id === s.id)
+          return old !== s  // updated
+        })
+        if (hasChanges) {
+          // Capture userId and sessions NOW (not in the timer) so logout can't
+          // null out userIdRef before the 1-second debounce fires.
+          const capturedUserId   = userId
+          const capturedProjId   = proj.id
+          const capturedSessions = proj.sessions
+          clearTimeout(sessionTimers[proj.id])
+          sessionTimers[proj.id] = setTimeout(() => {
+            void saveSessionsToSupabase(sb, capturedUserId, capturedProjId, capturedSessions)
+          }, 1000)
+        }
+      }
+    })
+
+    return () => {
+      unsub()
+      Object.values(sessionTimers).forEach(clearTimeout)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabaseUrl, supabaseKey])
+
+  // ── on orbitFavorites change: upsert added, delete removed (immediate) ────────
+
+  useEffect(() => {
+    const unsub = useAppStore.subscribe((state, prev) => {
+      if (!loadedRef.current) return
+      if (state.orbitFavorites === prev.orbitFavorites) return
+
+      const userId = userIdRef.current
+      const sb = getSb()
+      if (!sb || !userId) return
+
+      // Flatten all favorites from both states for comparison
+      const allPrev = Object.values(prev.orbitFavorites).flat()
+      const allNext = Object.values(state.orbitFavorites).flat()
+
+      const prevIds = new Set(allPrev.map(f => f.id))
+      const nextIds = new Set(allNext.map(f => f.id))
+
+      // Added → upsert
+      for (const fav of allNext) {
+        if (!prevIds.has(fav.id)) void upsertOrbitFavoriteToSupabase(sb, userId, fav)
+      }
+      // Removed → delete
+      for (const fav of allPrev) {
+        if (!nextIds.has(fav.id)) void deleteOrbitFavoriteFromSupabase(sb, userId, fav.id)
+      }
+    })
+    return unsub
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabaseUrl, supabaseKey])
+
   // ── on store change: save settings (debounced 4 s, immediate on deletion) ──
 
   useEffect(() => {
@@ -452,11 +600,18 @@ export function useSupabaseSync() {
       if (!loadedRef.current) return
       const userId = userIdRef.current
       if (!userId) return
+      if (!useAppStore.getState().currentUser) return
       const sb = getSb()
       if (!sb) return
       const state = useAppStore.getState()
       await saveSettingsToSupabase(sb, userId, state)
       await syncGlobalConfig(sb, userId, state).catch(() => {})
+      // Keep localStorage backup in sync so quickLinks survive any edge case
+      try {
+        if (state.quickLinks && state.quickLinks.length > 0) {
+          localStorage.setItem(`ql_backup_${userId}`, JSON.stringify(state.quickLinks))
+        }
+      } catch { /* non-fatal */ }
     }
 
     const saveDebounced = debounce(doSave, 4000)

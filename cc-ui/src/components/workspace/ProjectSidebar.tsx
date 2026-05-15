@@ -193,7 +193,7 @@ function AvatarPopoverBtn() {
           <PopMenuItem
             icon={<ILogout style={{ width: 13, height: 13 }} />}
             label="Ausloggen"
-            onClick={() => { setOpen(false); setActiveStorageUser(''); setCurrentUser(null); setScreen('login') }}
+            onClick={() => { setOpen(false); setActiveStorageUser(''); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
           />
           <div style={{ height: 6 }} />
         </div>
@@ -322,6 +322,8 @@ function RemoveWorkspaceDialog({ projectName, onConfirm, onCancel }: {
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const theme = useAppStore(s => s.theme)
+  const deleteBtnBg = theme === 'dark' ? '#ff3b4e' : '#c0192e'
   const deleted = [
     'Alle Chat-Verläufe und Nachrichten',
     'Agent-Sessions und deren Kontext',
@@ -340,23 +342,16 @@ function RemoveWorkspaceDialog({ projectName, onConfirm, onCancel }: {
         style={{ width: 400, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 14, boxShadow: '0 24px 64px rgba(0,0,0,0.55)', overflow: 'hidden' }}
       >
         {/* Header */}
-        <div style={{ padding: '22px 24px 16px', borderBottom: '1px solid var(--line)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <ITrash style={{ width: 14, height: 14, color: 'var(--err)' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)' }}>Workspace entfernen</div>
-              <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 1 }}>„{projectName}"</div>
-            </div>
-          </div>
+        <div style={{ padding: '22px 24px 16px' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)' }}>Workspace entfernen</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 3 }}>„{projectName}"</div>
         </div>
 
         {/* Body */}
         <div style={{ padding: '18px 24px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Safe info */}
-          <div style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 13, marginTop: 1 }}>🗂️</span>
+          <div style={{ background: 'var(--bg-3)', borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <IFolder style={{ width: 16, height: 16, marginTop: 1, flexShrink: 0, color: 'var(--accent)' }} />
             <span style={{ fontSize: 11.5, color: 'var(--fg-1)', lineHeight: 1.55 }}>
               Deine <strong>lokalen Dateien</strong> und das <strong>GitHub-Repository</strong> bleiben vollständig erhalten — es wird nichts vom Laufwerk gelöscht.
             </span>
@@ -383,16 +378,16 @@ function RemoveWorkspaceDialog({ projectName, onConfirm, onCancel }: {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '12px 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex' }}>
           <button
             onClick={onCancel}
-            style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--bg-3)', color: 'var(--fg-1)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer' }}
+            style={{ flex: 1, padding: '14px 0', border: 'none', borderTop: '1px solid var(--line)', background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: '0 0 0 14px' }}
           >
             Abbrechen
           </button>
           <button
             onClick={onConfirm}
-            style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--err)', color: '#fff', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+            style={{ flex: 1, padding: '14px 0', border: 'none', borderTop: '1px solid var(--line)', background: deleteBtnBg, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', borderRadius: '0 0 14px 0' }}
           >
             Workspace entfernen
           </button>

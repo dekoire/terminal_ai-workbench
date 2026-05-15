@@ -3,10 +3,12 @@
  *
  * Syncs the Zustand store to/from Supabase.
  *
- * Save:  saveSettingsToSupabase()  — debounced, called on every store change
+ * Save:  saveSettingsToSupabase()    — debounced, called on every store change
+ *        saveSessionsToSupabase()    — debounced 1s, called on session add/update
+ *        deleteSessionFromSupabase() — immediate, called on session remove
  *        saveOrbitMessagesToSupabase() — called when orbit messages change
  *
- * Load:  loadFromSupabase() — called once after login
+ * Load:  loadFromSupabase() — called once after login (includes projects + sessions)
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -55,6 +57,11 @@ export interface SettingsPayload {
   orbit_ctx_after: number
   orbit_compress_prompt: string
   orbit_compress_model: string
+  agent_compress_prompt: string
+  agent_compress_model: string
+  agent_auto_compress_on_start: boolean
+  agent_tail_message_count: number
+  brain_update_prompt: string
   default_manager_model: string
   // Keys
   openrouter_key: string
@@ -77,7 +84,8 @@ export interface SettingsPayload {
   groq_api_key: string
   voice_provider: string
   code_review_model: string
-  // JSON blobs — projects are stored locally only (per-user JSON file)
+  // JSON blobs
+  projects_json: Pick<Project, 'id' | 'name' | 'path' | 'branch' | 'appPort' | 'appStartCmd'>[]
   aliases_json: Alias[]
   templates_json: Template[]
   doc_templates_json: DocTemplate[]
@@ -87,9 +95,7 @@ export interface SettingsPayload {
   kanban_json: Record<string, KanbanTicket[]>
   notes_json: Record<string, string>
   ai_function_map_json: Record<string, string>
-  orbit_chats_json: Record<string, string[]>       // projectId → chatIds
-  active_orbit_chat_json: Record<string, string>   // sessionId → chatId
-  orbit_favorites_json: Record<string, OrbitFavorite[]>
+  active_orbit_chat_json: Record<string, string>   // sessionId → chatId (UI state only)
   quick_links_json: QuickLink[]
   // Timestamps
   updated_at: string
@@ -115,6 +121,11 @@ export function buildSettingsPayload(s: AppState): SettingsPayload {
     orbit_ctx_after:                s.orbitCtxAfter,
     orbit_compress_prompt:          s.orbitCompressPrompt,
     orbit_compress_model:           s.orbitCompressModel,
+    agent_compress_prompt:          s.agentCompressPrompt,
+    agent_compress_model:           s.agentCompressModel,
+    agent_auto_compress_on_start:   s.agentAutoCompressOnStart,
+    agent_tail_message_count:       s.agentTailMessageCount,
+    brain_update_prompt:            s.brainUpdatePrompt,
     default_manager_model:          s.defaultManagerModel,
     openrouter_key:                 s.openrouterKey,
     supabase_url:                   s.supabaseUrl,
@@ -143,10 +154,12 @@ export function buildSettingsPayload(s: AppState): SettingsPayload {
     kanban_json:                    s.kanban,
     notes_json:                     s.notes,
     ai_function_map_json:           s.aiFunctionMap,
-    orbit_chats_json:               s.orbitChats,
     active_orbit_chat_json:         s.activeOrbitChatId,
-    orbit_favorites_json:           s.orbitFavorites,
     quick_links_json:               s.quickLinks,
+    projects_json:                  s.projects.map(p => ({
+      id: p.id, name: p.name, path: p.path, branch: p.branch,
+      appPort: p.appPort, appStartCmd: p.appStartCmd,
+    })),
     updated_at:                     new Date().toISOString(),
   }
 }
@@ -268,6 +281,11 @@ export async function loadFromSupabase(
       orbitCtxAfter:                  row.orbit_ctx_after    ?? undefined,
       orbitCompressPrompt:            row.orbit_compress_prompt ?? undefined,
       orbitCompressModel:             row.orbit_compress_model  ?? undefined,
+      agentCompressPrompt:            (row.agent_compress_prompt as string) || undefined,
+      agentCompressModel:             (row.agent_compress_model as string) || undefined,
+      agentAutoCompressOnStart:       row.agent_auto_compress_on_start != null ? (row.agent_auto_compress_on_start as boolean) : undefined,
+      agentTailMessageCount:          row.agent_tail_message_count != null ? (row.agent_tail_message_count as number) : undefined,
+      brainUpdatePrompt:              (row.brain_update_prompt as string) || undefined,
       defaultManagerModel:            row.default_manager_model ?? undefined,
       openrouterKey:                  row.openrouter_key     ?? undefined,
       supabaseUrl:                    row.supabase_url       ?? undefined,
@@ -296,10 +314,10 @@ export async function loadFromSupabase(
       kanban:                         (row.kanban_json as Record<string, KanbanTicket[]>) || undefined,
       notes:                          (row.notes_json as Record<string, string>)       || undefined,
       aiFunctionMap:                  (row.ai_function_map_json as Record<string, string>) || undefined,
-      orbitChats:                     (row.orbit_chats_json as Record<string, string[]>)  || undefined,
       activeOrbitChatId:              (row.active_orbit_chat_json as Record<string, string>) || undefined,
-      orbitFavorites:                 (row.orbit_favorites_json as Record<string, OrbitFavorite[]>) || undefined,
       quickLinks:                     (row.quick_links_json as QuickLink[]) || undefined,
+      // orbitChats → built from orbit_chats table in step 2
+      // orbitFavorites → loaded from orbit_favorites table in step 2b
     }
     // strip undefined keys so we don't accidentally overwrite with undefined
     for (const k of Object.keys(result.settings) as (keyof AppState)[]) {
@@ -307,30 +325,96 @@ export async function loadFromSupabase(
     }
   }
 
-  // ── 2. Load orbit chat metadata only (messages are lazy-loaded per chat) ─────
-  const { data: chats, error: chatsErr } = await sb
-    .from('orbit_chats')
-    .select('id, title, pinned')
-    .eq('user_id', userId)
+  // ── 2–5. Load orbit chats, favorites, brains, global_config, projects in PARALLEL ─
+  const jsonMapping = (row?.orbit_chats_json as Record<string, string[]> | null) ?? {}
+
+  const [chatsRes, favsRes, brainsRes, gcRes, projsRes] = await Promise.all([
+    // 2. orbit_chats
+    sb.from('orbit_chats').select('id, project_id, title, pinned').eq('user_id', userId),
+    // 2b. orbit_favorites
+    sb.from('orbit_favorites').select('*').eq('user_id', userId),
+    // 3. project_brain
+    sb.from('project_brain').select('*').eq('user_id', userId),
+    // 4. global_config
+    sb.from('global_config').select('*').eq('id', 'singleton').maybeSingle(),
+    // 5. projects
+    sb.from('projects').select('id, name, path, branch, app_port, app_start_cmd').eq('user_id', userId).order('updated_at', { ascending: false }),
+  ])
+
+  // ── Process 2: orbit chats ───────────────────────────────────────────────────
+  const { data: chats, error: chatsErr } = chatsRes
+  // chatId → projectId reverse index from the JSON blob
+  const chatToProjectFromJson: Record<string, string> = {}
+  for (const [pid, chatIds] of Object.entries(jsonMapping)) {
+    for (const cid of chatIds) chatToProjectFromJson[cid] = pid
+  }
+  const orbitChatsMap: Record<string, string[]> = { ...jsonMapping }
 
   if (chatsErr) {
     console.error('[supabaseSync] loadOrbitChats error:', chatsErr.message)
   } else if (chats?.length) {
+    const backfillUpdates: { id: string; project_id: string }[] = []
     for (const chat of chats) {
       const cid = chat.id as string
+      const dbPid = (chat.project_id as string | null) ?? ''
       result.orbitMeta[cid] = {
         title:  (chat.title as string | undefined) ?? undefined,
         pinned: (chat.pinned as boolean | undefined) ?? undefined,
       }
+      if (dbPid) {
+        if (!orbitChatsMap[dbPid]) orbitChatsMap[dbPid] = []
+        if (!orbitChatsMap[dbPid].includes(cid)) orbitChatsMap[dbPid].push(cid)
+      } else {
+        const pid = chatToProjectFromJson[cid]
+        if (pid) backfillUpdates.push({ id: cid, project_id: pid })
+      }
+    }
+    if (backfillUpdates.length > 0) {
+      void (async () => {
+        for (const u of backfillUpdates) {
+          await sb.from('orbit_chats').update({ project_id: u.project_id }).eq('id', u.id)
+        }
+        console.info(`[supabaseSync] ✅ Back-filled project_id for ${backfillUpdates.length} orbit chat(s)`)
+      })()
     }
   }
+  if (Object.keys(orbitChatsMap).length > 0) {
+    if (!result.settings) result.settings = {}
+    ;(result.settings as Record<string, unknown>)['orbitChats'] = orbitChatsMap
+    const total = Object.values(orbitChatsMap).flat().length
+    console.info(`[supabaseSync] ✅ orbitChats: ${total} chat(s) across ${Object.keys(orbitChatsMap).length} project(s)`)
+  }
 
-  // ── 3. Load all project brains ───────────────────────────────────────────────
-  const { data: brains, error: brainsErr } = await sb
-    .from('project_brain')
-    .select('*')
-    .eq('user_id', userId)
+  // ── Process 2b: orbit favorites ──────────────────────────────────────────────
+  const { data: favRows, error: favErr } = favsRes
+  if (favErr) {
+    console.error('[supabaseSync] loadOrbitFavorites error:', favErr.message)
+  } else if (favRows?.length) {
+    const favMap: Record<string, OrbitFavorite[]> = {}
+    for (const f of favRows) {
+      const pid = (f.project_id as string) ?? ''
+      if (!favMap[pid]) favMap[pid] = []
+      favMap[pid].push({
+        id:             f.id as string,
+        kind:           (f.kind as OrbitFavorite['kind']),
+        projectId:      pid,
+        chatId:         (f.chat_id as string) ?? '',
+        chatTitle:      (f.chat_title as string) || undefined,
+        messageId:      (f.message_id as string) || undefined,
+        messageContent: (f.message_content as string) || undefined,
+        messageRole:    (f.message_role as OrbitFavorite['messageRole']) || undefined,
+        messageModel:   (f.message_model as string) || undefined,
+        msgTs:          (f.msg_ts as number) || undefined,
+        ts:             f.ts as number,
+      })
+    }
+    if (!result.settings) result.settings = {}
+    ;(result.settings as Record<string, unknown>)['orbitFavorites'] = favMap
+    console.info(`[supabaseSync] ✅ orbitFavorites loaded from table (${favRows.length})`)
+  }
 
+  // ── Process 3: project brains ────────────────────────────────────────────────
+  const { data: brains, error: brainsErr } = brainsRes
   if (brainsErr) {
     console.error('[supabaseSync] loadProjectBrains error:', brainsErr.message)
   } else if (brains?.length) {
@@ -343,14 +427,17 @@ export async function loadFromSupabase(
         recentWork:    (b.recent_work as ProjectBrainEntry['recentWork']) ?? [],
         openTasks:     (b.open_tasks as string[]) ?? [],
         keyFiles:      (b.key_files as ProjectBrainEntry['keyFiles']) ?? [],
-        brainTokens:   (b.brain_tokens as number) ?? 0,
-        lastUpdatedAt: (b.last_updated_at as string) ?? new Date().toISOString(),
+        brainTokens:             (b.brain_tokens as number) ?? 0,
+        lastUpdatedAt:           (b.last_updated_at as string) ?? new Date().toISOString(),
+        generationModel:         (b.generation_model as string) || undefined,
+        generationInputTokens:   (b.generation_input_tokens as number) || undefined,
+        generationOutputTokens:  (b.generation_output_tokens as number) || undefined,
       }
     }
   }
 
-  // ── 4. Load global_config — infra credentials + admin templates + CLI config ──
-  const { data: gc } = await sb.from('global_config').select('*').eq('id', 'singleton').maybeSingle()
+  // ── Process 4: global_config ─────────────────────────────────────────────────
+  const { data: gc } = gcRes
   if (gc) {
     if (!result.settings) result.settings = {}
     const s = result.settings as Record<string, unknown>
@@ -362,36 +449,116 @@ export async function loadFromSupabase(
     if (!s['cloudflareR2BucketName']    && gc.cloudflare_r2_bucket_name)       s['cloudflareR2BucketName']    = gc.cloudflare_r2_bucket_name
     if (!s['cloudflareR2Endpoint']      && gc.cloudflare_r2_endpoint)          s['cloudflareR2Endpoint']      = gc.cloudflare_r2_endpoint
     if (!s['cloudflareR2PublicUrl']     && gc.cloudflare_r2_public_url)        s['cloudflareR2PublicUrl']     = gc.cloudflare_r2_public_url
-    // Global admin templates
     if (gc.global_templates_json) result.globalTemplates = gc.global_templates_json as AppState['docTemplates']
-    // Global CLI config
-    if (gc.global_cli_json) result.globalCli = gc.global_cli_json as { tweakccConfig: unknown; systemPrompt: string }
-    // Global prompt templates
-    if (gc.global_prompts_json) result.globalPrompts = gc.global_prompts_json as AppState['templates']
+    if (gc.global_cli_json)       result.globalCli       = gc.global_cli_json as { tweakccConfig: unknown; systemPrompt: string }
+    if (gc.global_prompts_json)   result.globalPrompts   = gc.global_prompts_json as AppState['templates']
   }
 
-  // ── 5. Load projects ─────────────────────────────────────────────────────────
-  const { data: projs, error: projsErr } = await sb
-    .from('projects')
-    .select('id, name, path, branch, app_port, app_start_cmd')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-
+  // ── Process 5: projects ──────────────────────────────────────────────────────
+  const { data: projs, error: projsErr } = projsRes
   if (projsErr) {
     console.error('[supabaseSync] loadProjects error:', projsErr.message)
   } else if (projs?.length) {
     result.projects = projs.map(p => ({
-      id:           p.id as string,
-      name:         (p.name as string) ?? '',
-      path:         (p.path as string) ?? '',
-      branch:       (p.branch as string) ?? '',
-      sessions:     [],
-      appPort:      (p.app_port as number | null) ?? undefined,
-      appStartCmd:  (p.app_start_cmd as string | null) ?? undefined,
+      id:          p.id as string,
+      name:        (p.name as string) ?? '',
+      path:        (p.path as string) ?? '',
+      branch:      (p.branch as string) ?? '',
+      sessions:    [],
+      appPort:     (p.app_port as number | null) ?? undefined,
+      appStartCmd: (p.app_start_cmd as string | null) ?? undefined,
     }))
+  }
+  if (!result.projects && row?.projects_json) {
+    const stored = row.projects_json as Pick<Project, 'id' | 'name' | 'path' | 'branch' | 'appPort' | 'appStartCmd'>[]
+    if (Array.isArray(stored) && stored.length > 0) {
+      result.projects = stored.map(p => ({ ...p, sessions: [] }))
+    }
+  }
+
+  // ── 6. Load sessions for all projects from the sessions table ──────────────
+  if (result.projects && result.projects.length > 0) {
+    const projectIds = result.projects.map(p => p.id)
+    const { data: sessRows, error: sessErr } = await sb
+      .from('sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .in('project_id', projectIds)
+    if (sessErr) {
+      console.error('[supabaseSync] loadSessions error:', sessErr.message)
+    } else if (sessRows && sessRows.length > 0) {
+      result.projects = result.projects.map(p => ({
+        ...p,
+        sessions: sessRows
+          .filter(s => s.project_id === p.id)
+          .map(s => ({
+            id:                   s.id as string,
+            name:                 (s.name as string) ?? '',
+            alias:                (s.alias as string) ?? '',
+            cmd:                  (s.cmd as string) ?? '',
+            args:                 (s.args as string) ?? '',
+            // Sessions can't be "active" on a fresh load — reset to idle
+            status:               (s.status === 'active' ? 'idle' : (s.status as Session['status'])) ?? 'idle',
+            permMode:             (s.perm_mode as Session['permMode']) ?? 'normal',
+            startedAt:            s.started_at ? new Date(s.started_at as string).getTime() : Date.now(),
+            kind:                 (s.kind as Session['kind']) ?? 'single',
+            orModel:              (s.or_model as string) || undefined,
+            providerSettingsJson: (s.provider_settings_json as string) || undefined,
+          })),
+      }))
+      console.info(`[supabaseSync] ✅ ${sessRows.length} session(s) loaded from Supabase`)
+    }
   }
 
   return result
+}
+
+// ─── Save sessions ────────────────────────────────────────────────────────────
+
+export async function saveSessionsToSupabase(
+  sb: SupabaseClient,
+  userId: string,
+  projectId: string,
+  sessions: Session[],
+): Promise<void> {
+  const { data: { session } } = await sb.auth.getSession()
+  if (!session) return
+
+  if (sessions.length === 0) {
+    // No sessions left for this project — delete all from DB
+    const { error } = await sb.from('sessions').delete().eq('project_id', projectId).eq('user_id', userId)
+    if (error) console.error('[supabaseSync] clearSessions error:', error.message)
+    return
+  }
+
+  const rows = sessions.map(s => ({
+    id:                   s.id,
+    user_id:              userId,
+    project_id:           projectId,
+    name:                 s.name,
+    alias:                s.alias,
+    cmd:                  s.cmd,
+    args:                 s.args,
+    // Never persist 'active' — it's a runtime state; store as idle
+    status:               s.status === 'active' ? 'idle' : s.status,
+    perm_mode:            s.permMode,
+    kind:                 s.kind ?? 'single',
+    or_model:             s.orModel ?? '',
+    provider_settings_json: s.providerSettingsJson ?? '',
+    started_at:           new Date(s.startedAt).toISOString(),
+  }))
+
+  const { error } = await sb.from('sessions').upsert(rows, { onConflict: 'id' })
+  if (error) console.error('[supabaseSync] saveSessions error:', error.message)
+}
+
+export async function deleteSessionFromSupabase(
+  sb: SupabaseClient,
+  userId: string,
+  sessionId: string,
+): Promise<void> {
+  const { error } = await sb.from('sessions').delete().eq('id', sessionId).eq('user_id', userId)
+  if (error) console.error('[supabaseSync] deleteSession error:', error.message)
 }
 
 // ─── Global config sync (admin only) — keeps global_config in sync with admin's infra settings ──
@@ -472,8 +639,11 @@ export async function saveProjectBrainToSupabase(
     recent_work:     brain.recentWork,
     open_tasks:      brain.openTasks,
     key_files:       brain.keyFiles,
-    brain_tokens:    brain.brainTokens,
-    last_updated_at: brain.lastUpdatedAt,
+    brain_tokens:              brain.brainTokens,
+    last_updated_at:           brain.lastUpdatedAt,
+    generation_model:          brain.generationModel          ?? '',
+    generation_input_tokens:   brain.generationInputTokens    ?? 0,
+    generation_output_tokens:  brain.generationOutputTokens   ?? 0,
   }, { onConflict: 'project_id, user_id' })
   if (error) console.error('[supabaseSync] saveProjectBrain error:', error.message)
 }
@@ -498,8 +668,11 @@ export async function loadProjectBrainFromSupabase(
     recentWork:     (data.recent_work as ProjectBrainEntry['recentWork']) ?? [],
     openTasks:      (data.open_tasks as string[]) ?? [],
     keyFiles:       (data.key_files as ProjectBrainEntry['keyFiles']) ?? [],
-    brainTokens:    (data.brain_tokens as number) ?? 0,
-    lastUpdatedAt:  (data.last_updated_at as string) ?? new Date().toISOString(),
+    brainTokens:            (data.brain_tokens as number) ?? 0,
+    lastUpdatedAt:          (data.last_updated_at as string) ?? new Date().toISOString(),
+    generationModel:        (data.generation_model as string) || undefined,
+    generationInputTokens:  (data.generation_input_tokens as number) || undefined,
+    generationOutputTokens: (data.generation_output_tokens as number) || undefined,
   }
 }
 
@@ -590,8 +763,74 @@ export async function deleteProjectFromSupabase(
   userId: string,
   projectId: string,
 ): Promise<void> {
+  // 1. Get session IDs so we can clean up session_notes
+  const { data: sessRows } = await sb
+    .from('sessions')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+  const sessionIds = (sessRows ?? []).map(r => r.id as string)
+
+  // 2. Delete session_notes for those sessions (user_id guard)
+  if (sessionIds.length > 0) {
+    await sb.from('session_notes').delete().in('session_id', sessionIds).eq('user_id', userId)
+  }
+
+  // 3. Delete sessions
+  await sb.from('sessions').delete().eq('project_id', projectId).eq('user_id', userId)
+
+  // 4. Delete orbit_chats → CASCADE removes orbit_messages + orbit_favorites
+  await sb.from('orbit_chats').delete().eq('project_id', projectId).eq('user_id', userId)
+
+  // 5. Delete agent messages
+  await sb.from('agent_messages').delete().eq('project_id', projectId).eq('user_id', userId)
+
+  // 6. Delete kanban tickets (no user_id column → project_id is sufficient, owned via RLS)
+  await sb.from('kanban_tickets').delete().eq('project_id', projectId)
+
+  // 7. Delete project brain
+  await sb.from('project_brain').delete().eq('project_id', projectId).eq('user_id', userId)
+
+  // 8. Delete agent context summaries
+  await sb.from('agent_context_summaries').delete().eq('project_id', projectId).eq('user_id', userId)
+
+  // 9. Finally delete the project itself
   const { error } = await sb.from('projects').delete().eq('id', projectId).eq('user_id', userId)
   if (error) console.error('[supabaseSync] deleteProject error:', error.message)
+  else console.info(`[supabaseSync] ✅ Project ${projectId} + all related data deleted`)
+}
+
+// ─── Orbit favorites ─────────────────────────────────────────────────────────
+
+export async function upsertOrbitFavoriteToSupabase(
+  sb: SupabaseClient,
+  userId: string,
+  fav: OrbitFavorite,
+): Promise<void> {
+  const { error } = await sb.from('orbit_favorites').upsert({
+    id:              fav.id,
+    user_id:         userId,
+    kind:            fav.kind,
+    project_id:      fav.projectId,
+    chat_id:         fav.chatId,
+    chat_title:      fav.chatTitle      ?? null,
+    message_id:      fav.messageId      ?? null,
+    message_content: fav.messageContent ?? null,
+    message_role:    fav.messageRole    ?? null,
+    message_model:   fav.messageModel   ?? null,
+    msg_ts:          fav.msgTs          ?? null,
+    ts:              fav.ts,
+  }, { onConflict: 'id' })
+  if (error) console.error('[supabaseSync] upsertOrbitFavorite error:', error.message)
+}
+
+export async function deleteOrbitFavoriteFromSupabase(
+  sb: SupabaseClient,
+  userId: string,
+  favId: string,
+): Promise<void> {
+  const { error } = await sb.from('orbit_favorites').delete().eq('id', favId).eq('user_id', userId)
+  if (error) console.error('[supabaseSync] deleteOrbitFavorite error:', error.message)
 }
 
 // ─── Debounce helper ──────────────────────────────────────────────────────────

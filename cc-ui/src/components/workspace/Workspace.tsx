@@ -205,7 +205,7 @@ export function Workspace() {
     >
       {/* Window chrome */}
       {(showTitleBar ?? true) && (
-        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: isElectron ? '30px 12px 30px 88px' : '30px 12px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: isElectron ? '20px 12px 20px 88px' : '20px 12px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
           {/* Logo — links, kein Drag */}
           <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: 10, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>

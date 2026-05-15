@@ -680,15 +680,18 @@ router.post('/api/ai-refine', async (req, res) => {
     const sysMsg = systemPrompt ?? 'Verbessere den folgenden Text sprachlich und inhaltlich. Mache ihn klarer, präziser und professioneller. Gib nur den verbesserten Text zurück, ohne Erklärungen oder zusätzliche Kommentare.'
     console.log('\n[ai-refine] ▶ provider:', provider, '| model:', model)
 
+    type RefineUsage = { input_tokens?: number; output_tokens?: number; prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+
     if (provider === 'anthropic') {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({ model, max_tokens: 2048, system: sysMsg, messages: [{ role: 'user', content: text }] }),
       })
-      const d = await r.json() as { content?: { text: string }[]; error?: { message: string } }
+      const d = await r.json() as { content?: { text: string }[]; error?: { message: string }; usage?: RefineUsage }
       if (!r.ok) { res.json({ ok: false, error: d?.error?.message ?? 'API error' }); return }
-      res.json({ ok: true, text: d.content?.[0]?.text ?? text })
+      const u = d.usage ?? {}
+      res.json({ ok: true, text: d.content?.[0]?.text ?? text, inputTokens: u.input_tokens ?? 0, outputTokens: u.output_tokens ?? 0 })
     } else {
       const baseUrl = provider === 'deepseek'   ? 'https://api.deepseek.com/v1'
               : provider === 'openrouter' ? 'https://openrouter.ai/api/v1'
@@ -701,7 +704,7 @@ router.post('/api/ai-refine', async (req, res) => {
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...(provider === 'openrouter' ? { 'HTTP-Referer': 'https://codera.ai', 'X-Title': 'Codera AI' } : {}) },
         body: JSON.stringify({ model, messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: text }] }),
       })
-      const d = await r.json() as { choices?: { message: { content: string } }[]; error?: { message: string } }
+      const d = await r.json() as { choices?: { message: { content: string } }[]; error?: { message: string }; usage?: RefineUsage }
       if (!r.ok) {
         const rawErr = d?.error?.message ?? 'API error'
         console.error(`[ai-refine] ✗ ${provider} HTTP ${r.status}: ${rawErr}`)
@@ -714,7 +717,10 @@ router.post('/api/ai-refine', async (req, res) => {
           : rawErr
         res.json({ ok: false, error: userErr }); return
       }
-      res.json({ ok: true, text: d.choices?.[0]?.message?.content ?? text })
+      const u = d.usage ?? {}
+      const inputTokens  = u.input_tokens  ?? u.prompt_tokens  ?? 0
+      const outputTokens = u.output_tokens ?? u.completion_tokens ?? (u.total_tokens ? u.total_tokens - inputTokens : 0)
+      res.json({ ok: true, text: d.choices?.[0]?.message?.content ?? text, inputTokens, outputTokens })
     }
   } catch (e) { res.json({ ok: false, error: String(e) }) }
 })

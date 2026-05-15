@@ -973,6 +973,9 @@ function SessionWrapper({ isActive, isOrbit, isAgent, hasMounted, s, project, se
 function InputAreaWrapper() {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(9999)
+  const { activeProjectId, activeSessionId, projects } = useAppStore()
+  const hasSession = !!projects.find(p => p.id === activeProjectId)?.sessions.find(s => s.id === activeSessionId)
+
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
@@ -983,6 +986,9 @@ function InputAreaWrapper() {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  if (!hasSession) return null
+
   return (
     <div ref={wrapRef} style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
       <InputArea containerWidth={width} />
@@ -1412,6 +1418,17 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       return
     }
 
+    // Check server-side key availability first
+    if (!groqApiKey) {
+      try {
+        const check = await fetch('/api/config').then(r => r.json() as Promise<{ hasGroqKey?: boolean }>)
+        if (!check.hasGroqKey) {
+          setInputValue('⚠️ Kein Groq-API-Key konfiguriert. Bitte unter Einstellungen → Stimme eintragen.')
+          return
+        }
+      } catch { /* server might not have /api/config — proceed anyway */ }
+    }
+
     // Whisper via Groq (server-side key) or user-provided key
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -1420,29 +1437,48 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       const recorder = new MediaRecorder(stream, { mimeType })
       chunksRef.current = []
       recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop())
-        setTranscribing(true)
-        try {
-          const blob = new Blob(chunksRef.current, { type: mimeType })
-          const headers: Record<string, string> = {
-            'x-provider': groqApiKey ? voiceProvider : 'groq',
-            'x-language': 'de',
-            'Content-Type': mimeType,
+      recorder.onstop = () => {
+        // Defer off MediaRecorder stack; stop tracks AFTER React state settles
+        setTimeout(() => {
+          try { stream.getTracks().forEach(t => t.stop()) } catch { /* ignore */ }
+        }, 300)
+
+        setTimeout(async () => {
+          try {
+            setTranscribing(true)
+            const blob = new Blob(chunksRef.current, { type: mimeType })
+            const headers: Record<string, string> = {
+              'x-provider': groqApiKey ? voiceProvider : 'groq',
+              'x-language': 'de',
+              'Content-Type': mimeType,
+            }
+            if (groqApiKey) headers['x-api-key'] = groqApiKey
+            const r = await fetch('/api/transcribe', { method: 'POST', body: blob, headers })
+            const d = await r.json() as { ok: boolean; text?: string; error?: string }
+            if (d.ok && d.text) {
+              const current = useAppStore.getState().inputValue
+              setInputValue(current ? current + ' ' + d.text : d.text!)
+            } else if (!d.ok) {
+              const msg = d.error === 'no api key'
+                ? '⚠️ Kein Groq-API-Key. Bitte unter Einstellungen → Stimme eintragen.'
+                : `⚠️ Transkription fehlgeschlagen: ${d.error ?? 'Unbekannter Fehler'}`
+              setInputValue(msg)
+            }
+          } catch (err) {
+            try { setInputValue(`⚠️ Mikrofon-Fehler: ${String(err)}`) } catch { /* ignore */ }
+          } finally {
+            try { setTranscribing(false) } catch { /* ignore */ }
           }
-          if (groqApiKey) headers['x-api-key'] = groqApiKey
-          const r = await fetch('/api/transcribe', { method: 'POST', body: blob, headers })
-          const d = await r.json() as { ok: boolean; text?: string }
-          if (d.ok && d.text) setInputValue(prev => prev ? prev + ' ' + d.text : d.text!)
-        } catch {}
-        setTranscribing(false)
-        setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
+        }, 50)
       }
       recorder.start()
       mediaRef.current = recorder
       setRecording(true)
       setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 100)
-    } catch { setRecording(false) }
+    } catch (err) {
+      setRecording(false)
+      setInputValue(`⚠️ Mikrofon nicht verfügbar: ${String(err)}`)
+    }
     return
 
     // Fallback: Web Speech API

@@ -14,9 +14,10 @@ import { NewSessionModal } from './components/modals/NewSessionModal'
 import { GettingStartedModal } from './components/modals/GettingStartedModal'
 import { DESIGN_PRESETS, applyPreset } from './theme/presets'
 import { useSupabaseSync } from './lib/useSupabaseSync'
+import { ISpinner } from './components/primitives/Icons'
 
 export default function App() {
-  const { screen: rawScreen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone, currentUser, setScreen } = useAppStore()
+  const { screen: rawScreen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone, currentUser, dataLoaded, setScreen } = useAppStore()
   // Guarantee screen is always a valid value — null/undefined causes a total black screen
   const screen = rawScreen || (currentUser ? 'workspace' : 'login')
 
@@ -86,7 +87,13 @@ export default function App() {
       {/* Keep Workspace alive at all times (except login/register) so terminals never restart */}
       {screen !== 'login' && screen !== 'register' && (
         <div style={{ position: 'absolute', inset: 0, display: workspaceActive ? 'flex' : 'none', flexDirection: 'column' }}>
-          <Workspace />
+          {currentUser && !dataLoaded ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-0)' }}>
+              <ISpinner size={24} style={{ color: 'var(--fg-3)' }} />
+            </div>
+          ) : (
+            <Workspace />
+          )}
         </div>
       )}
 

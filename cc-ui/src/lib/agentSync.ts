@@ -20,6 +20,9 @@ export interface AgentContextSummary {
   source_count: number
   last_ts: number | null
   created_at: string
+  model?: string | null
+  input_tokens?: number | null
+  output_tokens?: number | null
 }
 
 /** Upsert a single message (fire-and-forget safe) */
@@ -79,6 +82,9 @@ export async function saveContextSummary(
   summary: string,
   sourceCount: number,
   lastTs: number,
+  model?: string,
+  inputTokens?: number,
+  outputTokens?: number,
 ): Promise<void> {
   await sb.from('agent_context_summaries').insert({
     project_id: projectId,
@@ -86,7 +92,27 @@ export async function saveContextSummary(
     summary,
     source_count: sourceCount,
     last_ts: lastTs,
+    model: model ?? null,
+    input_tokens: inputTokens ?? 0,
+    output_tokens: outputTokens ?? 0,
   })
+}
+
+/** Load all context summaries for a project, newest first */
+export async function loadAllContextSummaries(
+  sb: SupabaseClient,
+  userId: string,
+  projectId: string,
+  limit = 20,
+): Promise<AgentContextSummary[]> {
+  const { data } = await sb
+    .from('agent_context_summaries')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return (data ?? []) as AgentContextSummary[]
 }
 
 /** Load the most recent context summary for a project */
@@ -105,16 +131,43 @@ export async function loadLatestContextSummary(
   return (data?.[0] ?? null) as AgentContextSummary | null
 }
 
+/** Load messages newer than sinceTs for a project (for tail injection).
+ *  Returns in chronological order (oldest first). */
+export async function loadMessagesSince(
+  sb: SupabaseClient,
+  userId: string,
+  projectId: string,
+  sinceTs: number,
+  limit = 3,
+): Promise<AgentMessage[]> {
+  const { data } = await sb
+    .from('agent_messages')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .gt('ts', sinceTs)
+    .order('ts', { ascending: false })
+    .limit(limit)
+  return ((data ?? []) as AgentMessage[]).reverse()
+}
+
 /**
- * Compress messages via the server-side /api/ai-refine proxy.
- * Routing through the proxy avoids CORS issues when calling Anthropic's API from the browser.
+ * Compress messages via OpenRouter (default) or Anthropic.
+ * Routes through the server-side /api/ai-refine proxy to avoid CORS issues.
  */
+export interface CompressResult {
+  summary: string
+  inputTokens: number
+  outputTokens: number
+}
+
 export async function compressAgentHistory(
   messages: AgentMessage[],
   systemPrompt: string,
   apiKey: string,
-  model = 'claude-haiku-4-5-20251001',
-): Promise<string> {
+  model = 'deepseek/deepseek-v4-flash:free',
+  provider: 'openrouter' | 'anthropic' = 'openrouter',
+): Promise<CompressResult> {
   const history = messages
     .slice()
     .sort((a, b) => a.ts - b.ts)
@@ -125,13 +178,17 @@ export async function compressAgentHistory(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      provider: 'anthropic',
+      provider,
       apiKey,
       model,
       systemPrompt,
       text: `Fasse diese Coding-Session zusammen:\n\n${history}`,
     }),
   })
-  const data = await res.json() as { ok: boolean; text?: string }
-  return data.text ?? ''
+  const data = await res.json() as { ok: boolean; text?: string; inputTokens?: number; outputTokens?: number }
+  return {
+    summary: data.text ?? '',
+    inputTokens: data.inputTokens ?? 0,
+    outputTokens: data.outputTokens ?? 0,
+  }
 }

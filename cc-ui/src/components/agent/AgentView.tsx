@@ -4,7 +4,7 @@ import { useAppStore } from '../../store/useAppStore'
 import type { SessionKind } from '../../store/useAppStore'
 import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
-import { saveAgentMessage, loadLastProjectMessages, loadLatestContextSummary, saveContextSummary, compressAgentHistory, loadAgentMessageById, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
+import { saveAgentMessage, loadLastProjectMessages, loadLatestContextSummary, saveContextSummary, compressAgentHistory, loadAgentMessageById, loadMessagesSince, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { resolveRefs } from '../../lib/resolveRefs'
 import { newAgentMsgId } from '../../lib/ids'
 import { PermissionDialog } from './PermissionDialog'
@@ -709,17 +709,19 @@ function WorkingGroupCard({ events, isActive = false }: { events: AgentEvent[]; 
   let wi = 0
   while (wi < workEvs.length) {
     const ev = workEvs[wi]
+    // Use ts-based key so React preserves component state when the list grows
+    const wKey = `w-${ev.ts}-${ev.type}`
     if (ev.type === 'thinking') {
-      workInner.push(<div key={wi} style={{ paddingBottom: 5 }}><ThinkingCard ev={ev} /></div>)
+      workInner.push(<div key={wKey} style={{ paddingBottom: 5 }}><ThinkingCard ev={ev} /></div>)
     } else if (ev.type === 'tool_use') {
       const resultIdx = workEvs.findIndex((e, j) => j > wi && e.type === 'tool_result' && (e as Extract<AgentEvent, { type: 'tool_result' }>).id === ev.id)
       const result = resultIdx >= 0 ? workEvs[resultIdx] as Extract<AgentEvent, { type: 'tool_result' }> : undefined
-      workInner.push(<div key={wi} style={{ paddingBottom: 5 }}><ToolCard ev={ev} result={result} /></div>)
+      workInner.push(<div key={wKey} style={{ paddingBottom: 5 }}><ToolCard ev={ev} result={result} /></div>)
     } else if (ev.type === 'tool_result') {
       const alreadyShown = workEvs.some((e, j) => j < wi && e.type === 'tool_use' && (e as Extract<AgentEvent, { type: 'tool_use' }>).id === ev.id)
       if (!alreadyShown) {
         workInner.push(
-          <div key={wi} style={{ paddingBottom: 5, ...MONO, fontSize: 11, color: ev.ok ? 'var(--fg-2)' : '#ef7a7a' }}>
+          <div key={wKey} style={{ paddingBottom: 5, ...MONO, fontSize: 11, color: ev.ok ? 'var(--fg-2)' : '#ef7a7a' }}>
             {!ev.ok && <span style={{ color: '#ef7a7a', marginRight: 6 }}>fehlgeschlagen</span>}{ev.output}
           </div>
         )
@@ -765,7 +767,7 @@ function WorkingGroupCard({ events, isActive = false }: { events: AgentEvent[]; 
       )}
       {/* Text response — always visible, no footer here (run_end owns the footer row) */}
       {textEvs.map((t, idx) => (
-        <TextBlock key={idx} text={t.text} style={{ color: 'var(--fg-0)', fontSize: 14.5, lineHeight: 1.8, fontWeight: 430, marginBottom: idx < textEvs.length - 1 ? 8 : 0 }} />
+        <TextBlock key={`txt-${t.ts}`} text={t.text} style={{ color: 'var(--fg-0)', fontSize: 14.5, lineHeight: 1.8, fontWeight: 430, marginBottom: idx < textEvs.length - 1 ? 8 : 0 }} />
       ))}
       </div>
     </div>
@@ -823,13 +825,17 @@ function EventList({ events, kind, activeModel, cwd }: { events: AgentEvent[]; k
 
     // Group consecutive working events (thinking + tool calls) for Claude sessions
     if (WORKING_TYPES.has(ev.type)) {
+      const groupStart = i
       const group: AgentEvent[] = []
       while (i < events.length && WORKING_TYPES.has(events[i].type)) {
         group.push(events[i++])
       }
       // Active only if no run_end follows this group yet (agent still working)
       const isActive = !events.slice(i).some(e => e.type === 'run_end' || e.type === 'result' || e.type === 'error')
-      rendered.push(<div key={`wg-${i}`} style={{ paddingBottom: 10 }}><WorkingGroupCard events={group} isActive={isActive} /></div>)
+      // Use first event's ts as stable key — key must NOT change as the group grows,
+      // otherwise React unmounts/remounts WorkingGroupCard and the open state resets.
+      const groupKey = group[0]?.ts ?? groupStart
+      rendered.push(<div key={`wg-${groupKey}`} style={{ paddingBottom: 10 }}><WorkingGroupCard events={group} isActive={isActive} /></div>)
       continue
     }
 
@@ -848,8 +854,9 @@ function EventList({ events, kind, activeModel, cwd }: { events: AgentEvent[]; k
       return undefined
     }
 
+    // Stable key: use event's own ts (events are append-only, ts never changes)
     const wrap = (node: React.ReactNode) => (
-      <div key={i} style={{ paddingBottom: 5 }}>{node}</div>
+      <div key={`ev-${ev.ts}-${ev.type}`} style={{ paddingBottom: 5 }}>{node}</div>
     )
     if (ev.type === 'tool_use') {
       const resultIdx = events.findIndex((e, j) => j > i && e.type === 'tool_result' && (e as Extract<AgentEvent, { type: 'tool_result' }>).id === ev.id)
@@ -1393,7 +1400,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
     }
     return orModel ?? ''
   })
-  const { openrouterKey, projects, supabaseUrl, supabaseAnonKey, currentUser, agentContextMsgCount, agentCompressPrompt } = useAppStore()
+  const { openrouterKey, projects, supabaseUrl, supabaseAnonKey, currentUser, agentContextMsgCount, agentCompressPrompt, agentCompressModel, agentAutoCompressOnStart, agentTailMessageCount, updateSession } = useAppStore()
   const projectId = projects.find(p => p.sessions.some(s => s.id === sessionId))?.id ?? 'unknown'
   // ── older messages (scroll-up pagination) ────────────────────────────────
   const [olderMessages, setOlderMessages] = useState<DbAgentMessage[]>([])
@@ -1405,10 +1412,15 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
   const hasMoreOlderRef                   = useRef(false)   // sync mirror — used by scroll listener
   // Context summary — loaded silently, injected into first message of session
   const [contextSummary, setContextSummary] = useState<string | null>(null)
-  const contextInjectedRef = useRef(false)
-  // Sync mirror so WS onopen can read the count without stale-closure issues
+  const [tailMessages, setTailMessages]      = useState<DbAgentMessage[]>([])
+  const contextSummaryRef    = useRef<string | null>(null)   // sync mirror for WS onopen closure
+  const tailMessagesRef      = useRef<DbAgentMessage[]>([])  // sync mirror for WS onopen closure
+  const contextInjectedRef   = useRef(false)
+  // Sync mirrors so WS onopen closures can read fresh values without going stale
   const olderMsgCountRef = useRef(0)
   useEffect(() => { olderMsgCountRef.current = olderMessages.length }, [olderMessages.length])
+  useEffect(() => { contextSummaryRef.current = contextSummary }, [contextSummary])
+  useEffect(() => { tailMessagesRef.current = tailMessages }, [tailMessages])
   const prevScrollHeightRef = useRef(0)
   const seenPermissionsRef  = useRef(new Set<string>())   // dedup permission requestIds
   const PAGE = 20
@@ -1445,7 +1457,8 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
     }
   }, [currentUser?.id, projectId, supabaseUrl, supabaseAnonKey])
 
-  // Initial load — 20 most recent messages + context summary for this project
+  // Initial load — only context summary + tail (no older messages rendered upfront)
+  // Older messages only load when the user scrolls up → no flicker on session start
   useEffect(() => {
     setOlderMessages([])
     setOlderOffset(0)
@@ -1454,20 +1467,24 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
     hasMoreOlderRef.current = false
     setHasMoreOlder(false)
     setContextSummary(null)
+    setTailMessages([])
+    contextSummaryRef.current = null
+    tailMessagesRef.current = []
     contextInjectedRef.current = false
     if (!currentUser?.id || !projectId || projectId === 'unknown') return
     const sb = getSupabase(supabaseUrl, supabaseAnonKey)
     if (!sb) return
-    Promise.all([
-      loadLastProjectMessages(sb, currentUser.id, projectId, PAGE, 0),
-      loadLatestContextSummary(sb, currentUser.id, projectId),
-    ]).then(([msgs, ctx]) => {
-      setOlderMessages(msgs.slice().reverse())
-      olderOffsetRef.current = msgs.length
-      setOlderOffset(msgs.length)
-      hasMoreOlderRef.current = msgs.length === PAGE
-      setHasMoreOlder(msgs.length === PAGE)
+    loadLatestContextSummary(sb, currentUser.id, projectId).then(ctx => {
       if (ctx?.summary) setContextSummary(ctx.summary)
+      // Load tail messages (since last compression) for verbatim injection
+      if (agentTailMessageCount > 0 && ctx?.last_ts != null) {
+        loadMessagesSince(sb, currentUser.id!, projectId, ctx.last_ts as number, agentTailMessageCount)
+          .then(tail => setTailMessages(tail))
+          .catch(() => {})
+      }
+      // Enable scroll-up history for this project (load on demand)
+      hasMoreOlderRef.current = true
+      setHasMoreOlder(true)
     }).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, projectId, currentUser?.id, supabaseUrl, supabaseAnonKey])
@@ -1541,20 +1558,87 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
     if (!currentUser?.id || !projectId || projectId === 'unknown') return
     const sb = getSupabase(supabaseUrl, supabaseAnonKey)
     if (!sb) return
-    // Get the Anthropic API key from providers
+    // Use OpenRouter key + configurable model for compression
     const state = useAppStore.getState()
-    const apiKey = state.claudeProviders.find(p => p.authToken)?.authToken ?? ''
-    if (!apiKey) return
+    const orKey = state.openrouterKey
+    if (!orKey) return
 
     const msgs = await loadLastProjectMessages(sb, currentUser.id, projectId, agentContextMsgCount)
     if (msgs.length < 3) return
 
-    const summary = await compressAgentHistory(msgs, agentCompressPrompt, apiKey).catch(() => '')
-    if (!summary) return
+    const model = agentCompressModel || 'deepseek/deepseek-v4-flash:free'
+    const result = await compressAgentHistory(msgs, agentCompressPrompt, orKey, model, 'openrouter').catch(() => null)
+    if (!result?.summary) return
 
-    await saveContextSummary(sb, currentUser.id, projectId, summary, msgs.length, msgs[0]?.ts ?? Date.now()).catch(() => {})
-    setContextSummary(summary)
-  }, [currentUser?.id, projectId, supabaseUrl, supabaseAnonKey, agentContextMsgCount, agentCompressPrompt])
+    await saveContextSummary(sb, currentUser.id, projectId, result.summary, msgs.length, msgs[0]?.ts ?? Date.now(), model, result.inputTokens, result.outputTokens).catch(() => {})
+    setContextSummary(result.summary)
+  }, [currentUser?.id, projectId, supabaseUrl, supabaseAnonKey, agentContextMsgCount, agentCompressPrompt, agentCompressModel])
+
+  /**
+   * Triggered on every session START:
+   * — Finds all messages since the last context summary (or all-time if none).
+   * — Compresses them → writes a new agent_context_summaries row (→ Context Log entry).
+   * — Updates contextSummaryRef so the first outgoing message gets the fresh context injected.
+   */
+  const triggerStartCompression = useCallback(async () => {
+    if (!agentAutoCompressOnStart) return
+    if (!currentUser?.id || !projectId || projectId === 'unknown') return
+    const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+    if (!sb) return
+    const orKey = useAppStore.getState().openrouterKey
+    if (!orKey) return
+
+    const state      = useAppStore.getState()
+    const compCount  = state.agentContextMsgCount   || 20
+    const tailCount  = state.agentTailMessageCount  ?? 3
+
+    const allMsgs = await loadLastProjectMessages(
+      sb, currentUser.id, projectId, compCount + tailCount,
+    ).catch(() => [])
+    if (allMsgs.length < 1) return
+
+    // Split (allMsgs is newest-first)
+    const tailNewestFirst = tailCount > 0 ? allMsgs.slice(0, tailCount) : []
+    const toCompress      = allMsgs.slice(tailCount)   // the older compCount messages
+
+    // Convert tail to chronological order for injection
+    const tailChron = tailNewestFirst.slice().reverse()
+
+    let summaryText   = ''
+    let lastTs        = allMsgs[allMsgs.length - 1]?.ts ?? Date.now()  // oldest overall
+    let compressedLen = 0
+
+    if (toCompress.length > 0) {
+      const model  = agentCompressModel  || 'deepseek/deepseek-v4-flash:free'
+      const result = await compressAgentHistory(toCompress, agentCompressPrompt, orKey, model, 'openrouter').catch(() => null)
+      if (result?.summary) {
+        summaryText   = result.summary
+        compressedLen = toCompress.length
+        // last_ts = newest msg in the compressed batch (toCompress[0] is newest)
+        lastTs = toCompress[0]?.ts ?? Date.now()
+        await saveContextSummary(
+          sb, currentUser.id, projectId,
+          summaryText, compressedLen, lastTs,
+          model, result.inputTokens, result.outputTokens,
+        ).catch(() => {})
+      }
+    }
+
+    // Only update injection state if the user hasn't sent anything yet
+    if (!contextInjectedRef.current) {
+      if (summaryText) {
+        setContextSummary(summaryText)
+        contextSummaryRef.current = summaryText
+      }
+      // Always update tail so it reflects the freshly computed split
+      setTailMessages(tailChron)
+      tailMessagesRef.current = tailChron
+    }
+  }, [agentAutoCompressOnStart, currentUser?.id, projectId, supabaseUrl, supabaseAnonKey, agentCompressModel, agentCompressPrompt])
+
+  // Keep a stable ref so the WS onopen closure always calls the latest version
+  const triggerStartCompressionRef = useRef(triggerStartCompression)
+  useEffect(() => { triggerStartCompressionRef.current = triggerStartCompression }, [triggerStartCompression])
 
   const addEvents = useCallback((evs: AgentEvent[]) => {
     // Intercept rate_limit events → toast instead of stream entry
@@ -1612,6 +1696,10 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
           }).catch(() => {})
         }
       }
+      // OpenRouter sessions emit 'result' instead of 'run_end' — also trigger compression there
+      if (ev.type === 'result' && kind === 'openrouter-claude' && currentUser?.id && projectId !== 'unknown') {
+        triggerContextCompression().catch(() => {})
+      }
       if (ev.type === 'run_end' && currentUser?.id && projectId !== 'unknown') {
         // Generate the ID once outside the state updater. React Strict Mode
         // double-invokes state updaters in dev; using the same ID means both
@@ -1650,7 +1738,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
         triggerContextCompression().catch(() => {})
       }
     }
-  }, [showRateToast, currentUser?.id, projectId, supabaseUrl, supabaseAnonKey, activeModel, sessionId, triggerContextCompression])
+  }, [showRateToast, currentUser?.id, projectId, supabaseUrl, supabaseAnonKey, activeModel, sessionId, kind, triggerContextCompression])
 
   const dispatch = useCallback((ev: AgentEvent) => {
     window.dispatchEvent(new CustomEvent('cc:agent-event', { detail: { sessionId, event: ev } }))
@@ -1692,10 +1780,31 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
         seenPermissionsRef.current.clear()
         retryMs = 1000
         setConnected(true)
+        updateSession(sessionId, { status: 'active' })
         // Session-start separator — fires immediately on connect
         if (!greeted.current) {
           greeted.current = true
           addEvents([{ type: 'session_start', model: activeModel, ts: Date.now(), contextMsgCount: olderMsgCountRef.current }])
+            // Show context summary + tail messages immediately so the user can see them
+          const summary = contextSummaryRef.current
+          const tail    = tailMessagesRef.current
+          if (summary || tail.length > 0) {
+            let display = ''
+            if (summary) display += `**Kontext aus vorheriger Session** ✓\n\n${summary}`
+            if (tail.length > 0) {
+              display += `\n\n**Letzte ${tail.length} Nachrichten (ungekürzt):**\n\n`
+              display += tail.map(m =>
+                `**[${m.role === 'user' ? 'User' : 'Agent'}]:** ${m.content.slice(0, 800)}`
+              ).join('\n\n')
+            }
+            addEvents([{ type: 'text', text: display, ts: Date.now() }])
+          }
+          // Background: compress all messages since last summary → creates Context Log entry
+          // Always fires on session start (not just when tail exists) so the
+          // user sees a new entry every time they open a fresh session.
+          if (agentAutoCompressOnStart) {
+            triggerStartCompressionRef.current().catch(() => {})
+          }
         }
         // Flush any message that was queued while WS was still connecting
         if (pendingMsg.current !== null) {
@@ -1798,6 +1907,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
         if (wsRef.current === ws) wsRef.current = null
         setConnected(false)
         setRunning(false)
+        updateSession(sessionId, { status: 'idle' })
         if (alive) {
           setTimeout(connect, retryMs)
           retryMs = Math.min(retryMs * 2, 8000)
@@ -1850,10 +1960,19 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
       // Resolve any #msg: / #chat: references in the text (orbit JSONL)
       let resolved = await resolveRefs(data2).catch(() => data2)
 
-      // Inject context summary into the first message of this session
-      if (contextSummary && !contextInjectedRef.current) {
+      // Inject context (summary + tail) into the first message of this session
+      if ((contextSummary || tailMessages.length > 0) && !contextInjectedRef.current) {
         contextInjectedRef.current = true
-        resolved = `[KONTEXT AUS VORHERIGER SESSION]:\n${contextSummary}\n\n[NEUE ANFRAGE]:\n${resolved}`
+        let ctx = ''
+        if (contextSummary) ctx += `[KONTEXT AUS VORHERIGER SESSION]:\n${contextSummary}\n\n`
+        if (tailMessages.length > 0) {
+          ctx += `[LETZTE ${tailMessages.length} NACHRICHTEN — UNGEKÜRZT]:\n`
+          ctx += tailMessages.map(m =>
+            `[${m.role === 'user' ? 'User' : 'Claude'}]: ${m.content.slice(0, 800)}`
+          ).join('\n\n')
+          ctx += '\n\n'
+        }
+        resolved = `${ctx}[NEUE ANFRAGE]:\n${resolved}`
       }
       const payload = JSON.stringify({ type: 'message', text: resolved, cwd, ...(orModel ? { orModel, orKey: openrouterKey } : {}), ...(providerSettingsJson ? { providerSettingsJson } : {}), ...(providerAlias ? { providerAlias } : {}) })
 
@@ -1984,16 +2103,6 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events])
 
-  // Scroll to bottom on initial load (olderMessages first populate from DB)
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el || olderMessages.length === 0) return
-    // Only on first load (offset just set), not on pagination prepend
-    if (olderOffsetRef.current === olderMessages.length) {
-      el.scrollTop = el.scrollHeight
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [olderMessages.length === 0 ? 0 : 1])
 
   // Load older messages when user scrolls to top + show scroll-to-bottom button.
   // Uses refs for loadingOlder + hasMoreOlder to avoid stale-closure misses when

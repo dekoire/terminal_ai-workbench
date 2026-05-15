@@ -57,14 +57,12 @@ export function UIWorkshop() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '89vw', height: '89vh', background: 'var(--bg-0)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line-strong)', boxShadow: '0 8px 28px rgba(0,0,0,0.35)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
 
-      {/* ── Header — inverted chrome (light in dark mode, dark in light mode) ── */}
+      {/* ── Header ── */}
       {(() => {
-        const hdr = theme === 'dark'
-          ? { bg: '#f0f0f0', border: '#d0d0d0', color: '#1a1a1a' }
-          : { bg: '#1e1e1e', border: '#3a3a3a', color: '#e0e0e0' }
+        const hdr = { bg: '#ffffff', border: '#e0e0e0', color: 'var(--bg-1)' }
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: hdr.bg, flexShrink: 0 }}>
-            <div style={{ flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: hdr.color, fontFamily: 'var(--font-ui)', letterSpacing: 0.3 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: hdr.bg, borderBottom: `1px solid ${hdr.border}`, flexShrink: 0 }}>
+            <div style={{ flex: 1, textAlign: 'left', fontSize: 13, fontWeight: 600, color: hdr.color, fontFamily: 'var(--font-ui)', letterSpacing: 0.3 }}>
               Live Browser / Selektor
             </div>
 

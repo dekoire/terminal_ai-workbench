@@ -6,6 +6,7 @@ import { SingleCombobox } from '../primitives/SingleCombobox'
 import { IOrbit, IClose, ICopy, ITrash, IPlus, IStar, IBookmark } from '../primitives/Icons'
 import type { SingleOption } from '../primitives/SingleCombobox'
 import { renderBrain, updateBrainWithAI } from '../../lib/projectBrain'
+import { sanitizeKey } from '../../utils/orProvider'
 import { getSupabase } from '../../lib/supabase'
 import { saveProjectBrainToSupabase } from '../../lib/supabaseSync'
 import { resolveRefs } from '../../lib/resolveRefs'
@@ -386,7 +387,7 @@ function AiAvatar({ pulsing = false }: { pulsing?: boolean; dark?: boolean }) {
     <div style={{ width: 28, height: 28, flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
       <svg
         viewBox="0 0 3508 3508"
-        style={{ width: 22, height: 22, display: 'block', animation: 'orbit-spin 8s linear infinite', ...(pulsing ? { animation: 'orbit-pulse 1.8s ease-in-out infinite' } : {}) }}
+        style={{ width: 22, height: 22, display: 'block', ...(pulsing ? { animation: 'orbit-pulse 1.8s ease-in-out infinite' } : {}) }}
       >
         {paths.map((p, i) => (
           <g key={i} transform={p.t}>
@@ -648,6 +649,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
     orbitCtxBefore, orbitCtxAfter,
     orbitFavorites, addOrbitFavorite, removeOrbitFavorite,
     orbitCompressPrompt, orbitCompressModel,
+    brainUpdatePrompt,
     projectBrains, setProjectBrain,
     supabaseUrl, supabaseAnonKey, currentUser,
   } = useAppStore()
@@ -790,7 +792,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
       try {
         const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${openrouterKey}`, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'google/gemini-2.0-flash-001',
             messages: [
@@ -941,7 +943,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
         signal: ctrl.signal,
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openrouterKey}`,
+          'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': window.location.origin,
           'X-Title': 'Codera AI · Orbit',
@@ -1075,6 +1077,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
           projectName: projName,
           projectId,
           compressModel: orbitCompressModel,
+          customPrompt: brainUpdatePrompt || undefined,
         }).then(updatedBrain => {
           setProjectBrain(projectId, updatedBrain)
           const sb = getSupabase(supabaseUrl, supabaseAnonKey)

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { getOrModel } from '../../utils/orProvider'
+import { getOrModel, sanitizeKey } from '../../utils/orProvider'
 import type { OrbitMessage, QuickLink } from '../../store/useAppStore'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
-import { loadLastProjectMessages } from '../../lib/agentSync'
-import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine } from '../primitives/Icons'
+import { loadLastProjectMessages, loadAllContextSummaries, type AgentContextSummary, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
+import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
@@ -1133,9 +1133,6 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                   <div style={{ color: 'var(--fg-3)', fontSize: 10, marginTop: 1, fontFamily: 'var(--font-mono)' }}>{data.log[0].hash.slice(0, 7)}</div>
                 </div>
               )}
-              <div style={{ textAlign: 'center', marginTop: 0 }}>
-                <span onClick={onOpenGitTab} style={{ fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer' }}>Alle Details →</span>
-              </div>
             </div>
           )}
 
@@ -1153,8 +1150,8 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                     </div>
                   ))}
                   {data.files.length > 4 && (
-                    <div onClick={onOpenGitTab} style={{ padding: '4px 8px', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', textAlign: 'center' }}>
-                      + {data.files.length - 4} weitere →
+                    <div onClick={onOpenGitTab} style={{ padding: '4px 8px', fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer', textAlign: 'center' }}>
+                      + {data.files.length - 4} weitere
                     </div>
                   )}
                 </div>
@@ -1168,9 +1165,6 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                 <button onClick={handlePull} disabled={!!busy} title="Updates holen" style={{ background: compactTheme === 'light' ? '#333333' : 'var(--fg-0)', color: 'var(--bg-0)', border: `1px solid ${compactTheme === 'light' ? '#333333' : 'var(--fg-0)'}`, padding: '7px 9px', borderRadius: 6, cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
                   {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <IArrowDownLine style={{ width: 13, height: 13, strokeWidth: 2.5 }} />}
                 </button>
-              </div>
-              <div style={{ textAlign: 'center', marginTop: 7 }}>
-                <span onClick={onOpenGitTab} style={{ fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer' }}>Alle Details →</span>
               </div>
             </div>
           )}
@@ -1372,7 +1366,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
       const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openrouterKey}`,
+          'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://codera.ai',
           'X-Title': 'Codera AI Code Review',
@@ -2614,7 +2608,423 @@ function CopyButton({ text }: { text: string }) {
 
 type SearchResult = { humanSummary: string; detailed: string; agentContext: string; inputTokens: number; outputTokens: number }
 
-function AiSearchTab({ projectId }: { projectId: string }) {
+// ── Standalone CtxLogButton ───────────────────────────────────────────────────
+
+function CtxLogButton({ projectId }: { projectId: string }) {
+  const { supabaseUrl, supabaseAnonKey, currentUser, agentTailMessageCount, projects } = useAppStore()
+  const [open, setOpen]         = useState(false)
+  const [items, setItems]       = useState<AgentContextSummary[]>([])
+  const [msgs, setMsgs]         = useState<DbAgentMessage[]>([])
+  const [loading, setLoading]   = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const projName = projects.find(p => p.id === projectId)?.name ?? projectId
+
+  const openLog = async () => {
+    setOpen(true)
+    setExpanded(new Set())
+    setLoading(true)
+    try {
+      const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+      if (sb && currentUser?.id) {
+        const [sumItems, rawMsgs] = await Promise.all([
+          loadAllContextSummaries(sb, currentUser.id, projectId, 50),
+          loadLastProjectMessages(sb, currentUser.id, projectId, 200, 0),
+        ])
+        setItems(sumItems)
+        setMsgs(rawMsgs.slice().sort((a, b) => a.ts - b.ts))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const deleteItem = async (itemId: string) => {
+    const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+    if (!sb || !currentUser?.id) return
+    await sb.from('agent_context_summaries').delete().eq('id', itemId).eq('user_id', currentUser.id)
+    setItems(prev => prev.filter(i => i.id !== itemId))
+    setExpanded(prev => { const n = new Set(prev); n.delete(`e-sum-${itemId}`); return n })
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => void openLog()}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--bg-2)', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+        title="Kontext-Komprimierungen dieses Projekts"
+      >
+        <ILayers style={{ width: 15, height: 15, color: 'var(--accent)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Kontext-Log</div>
+          <div style={{ fontSize: 10, color: 'var(--fg-3)', lineHeight: 1.3 }}>Alle Chats · chronologische Timeline</div>
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>›</span>
+      </button>
+
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, width: '100%', maxWidth: 660, maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ILayers style={{ width: 16, height: 16, color: 'var(--accent)', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-0)' }}>Kontext-Log</div>
+                  <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>{projName} · was wann an den Agenten übergeben wurde</div>
+                </div>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>×</button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+              {loading ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+                  <ISpinner size={20} style={{ color: 'var(--fg-3)' }} />
+                </div>
+              ) : items.length === 0 ? (
+                <div style={{ color: 'var(--fg-3)', fontSize: 12, textAlign: 'center', padding: '40px 20px', lineHeight: 1.9 }}>
+                  Noch keine Kontext-Komprimierungen für dieses Projekt.<br />
+                  <span style={{ fontSize: 11 }}>Wird automatisch beim Start einer neuen Session erstellt,<br />sobald ein OpenRouter-Key gesetzt ist.</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', padding: '8px 0 16px' }}>
+                  {[...items].sort((a, b) => (b.last_ts ?? 0) - (a.last_ts ?? 0)).map((item, ti) => {
+                    const key        = `sum-${item.id ?? ti}`
+                    const eKey       = `e-${key}`
+                    const isExpanded = expanded.has(eKey)
+                    const date       = new Date(item.created_at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
+                    const modelShort = item.model ? item.model.split('/').pop() : null
+                    const inTok      = item.input_tokens  ?? 0
+                    const outTok     = item.output_tokens ?? 0
+                    const firstLine  = (item.summary ?? '').split('\n').find(l => l.trim()) ?? ''
+                    const preview    = firstLine.length > 120 ? firstLine.slice(0, 120) + '…' : firstLine
+                    const toggle     = () => setExpanded(prev => { const n = new Set(prev); n.has(eKey) ? n.delete(eKey) : n.add(eKey); return n })
+                    const sortedOldFirst = [...items].sort((a2, b2) => (a2.last_ts ?? 0) - (b2.last_ts ?? 0))
+                    const idxOldFirst    = sortedOldFirst.findIndex(s => s.id === item.id)
+                    const prevLastTs     = idxOldFirst > 0 ? (sortedOldFirst[idxOldFirst - 1]?.last_ts ?? 0) : 0
+                    const entryLastTs    = item.last_ts ?? 0
+                    const compressedMsgs = msgs.filter(m => m.ts > prevLastTs && m.ts <= entryLastTs)
+                    const tailMsgs       = msgs.filter(m => m.ts > entryLastTs).slice(0, agentTailMessageCount)
+
+                    return (
+                      <div key={key} style={{ margin: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-1))', border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)', overflow: 'hidden' }}>
+                        <div onClick={toggle} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 12px', cursor: 'pointer' }}>
+                          <span style={{ fontSize: 11, color: 'var(--fg-4)', flexShrink: 0 }}>{isExpanded ? '▼' : '▶'}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', flexShrink: 0 }}>⚡ Komprimierung</span>
+                          <span style={{ fontSize: 10, color: 'var(--fg-3)', flexShrink: 0 }}>{date}</span>
+                          {modelShort && (
+                            <span style={{ fontSize: 9.5, padding: '1px 6px', borderRadius: 99, background: 'var(--bg-3)', border: '1px solid var(--line)', color: 'var(--fg-3)', flexShrink: 0 }}>
+                              {modelShort}
+                            </span>
+                          )}
+                          <span style={{ fontSize: 9.5, color: 'var(--fg-4)', flexShrink: 0 }}>
+                            {item.source_count}msg · {inTok > 0 ? `↑${inTok.toLocaleString('de-DE')}` : '—'} · {outTok > 0 ? `↓${outTok.toLocaleString('de-DE')}` : '—'} tok
+                          </span>
+                          {preview && (
+                            <span style={{ fontSize: 10.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                              {preview}
+                            </span>
+                          )}
+                          <button
+                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.summary ?? '').catch(() => {}) }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            title="Summary kopieren"
+                          >
+                            <ICopy style={{ width: 10, height: 10 }} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); if (item.id) deleteItem(item.id).catch(() => {}) }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-4)', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            title="Eintrag löschen"
+                          >
+                            <ITrash style={{ width: 10, height: 10 }} />
+                          </button>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={{ borderTop: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px 10px', background: 'var(--bg-2)', borderRadius: 6, padding: '8px 10px', fontSize: 10 }}>
+                              {[
+                                ['Komprimiert', String(item.source_count)],
+                                ['Input Tokens', inTok > 0 ? inTok.toLocaleString('de-DE') : '—'],
+                                ['Output Tokens', outTok > 0 ? outTok.toLocaleString('de-DE') : '—'],
+                                ['Summary-Größe', `~${Math.round((item.summary?.length ?? 0) / 4)} Tok`],
+                              ].map(([label, value]) => (
+                                <div key={label}>
+                                  <div style={{ fontSize: 9, color: 'var(--fg-4)', marginBottom: 1 }}>{label}</div>
+                                  <div style={{ fontWeight: 700, color: 'var(--fg-0)' }}>{value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                📤 Übergabe-Kontext (was die neue Session bekommt)
+                              </div>
+                              <div style={{ fontSize: 11.5, color: 'var(--fg-1)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'var(--bg-2)', borderRadius: 6, padding: '10px 12px' }}>
+                                {item.summary || <span style={{ color: 'var(--fg-3)', fontStyle: 'italic' }}>— kein Inhalt —</span>}
+                              </div>
+                            </div>
+
+                            {compressedMsgs.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                  🗜 Verarbeitet &amp; komprimiert ({compressedMsgs.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {compressedMsgs.map(m => {
+                                    const isUser   = m.role === 'user'
+                                    const preview2 = m.content.slice(0, 140).replace(/\n/g, ' ')
+                                    const time2    = new Date(m.ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+                                    return (
+                                      <div key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                                        <span style={{ fontSize: 9.5, fontWeight: 700, color: isUser ? 'var(--fg-3)' : 'var(--accent)', flexShrink: 0, width: 30 }}>{isUser ? 'Du' : 'AI'}</span>
+                                        <span style={{ fontSize: 9.5, color: 'var(--fg-4)', flexShrink: 0 }}>{time2}</span>
+                                        <span style={{ fontSize: 10.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                                          {preview2}{m.content.length > 140 ? '…' : ''}
+                                        </span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {tailMsgs.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                  📋 Verbatim mitgeschickt — Tail ({tailMsgs.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {tailMsgs.map(m => {
+                                    const isUser   = m.role === 'user'
+                                    const preview2 = m.content.slice(0, 300).replace(/\n/g, ' ')
+                                    const time2    = new Date(m.ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+                                    return (
+                                      <div key={m.id} style={{ background: 'var(--bg-2)', borderRadius: 5, padding: '6px 9px' }}>
+                                        <div style={{ display: 'flex', gap: 5, marginBottom: 3 }}>
+                                          <span style={{ fontSize: 9.5, fontWeight: 700, color: isUser ? 'var(--fg-3)' : 'var(--accent)' }}>{isUser ? 'Du' : 'AI'}</span>
+                                          <span style={{ fontSize: 9, color: 'var(--fg-4)' }}>{time2}</span>
+                                        </div>
+                                        <div style={{ fontSize: 10.5, color: 'var(--fg-1)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                                          {preview2}{m.content.length > 300 ? '…' : ''}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {tailMsgs.length === 0 && agentTailMessageCount > 0 && (
+                              <div style={{ fontSize: 10, color: 'var(--fg-4)', fontStyle: 'italic' }}>
+                                Kein Verbatim-Tail — alle Nachrichten bis zu diesem Zeitpunkt waren komprimiert.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Standalone ProjectBrainButton ─────────────────────────────────────────────
+
+function ProjectBrainButton({ projectId }: { projectId: string }) {
+  const { projectBrains, setProjectBrain, openrouterKey, orbitCompressModel, brainUpdatePrompt,
+    supabaseUrl, supabaseAnonKey, currentUser, projects } = useAppStore()
+  const [open, setOpen]           = useState(false)
+  const [updating, setUpdating]   = useState(false)
+
+  const brain    = projectBrains[projectId]
+  const projName = projects.find(p => p.id === projectId)?.name ?? projectId
+
+  const handleUpdate = async () => {
+    if (!openrouterKey || !brain) return
+    setUpdating(true)
+    try {
+      const { updateBrainWithAI } = await import('../../lib/projectBrain')
+      const updated = await updateBrainWithAI({
+        openrouterKey,
+        currentBrain: brain,
+        recentMessages: [],
+        projectName: projName,
+        projectId,
+        compressModel: orbitCompressModel,
+        customPrompt: brainUpdatePrompt || undefined,
+      })
+      setProjectBrain(projectId, updated)
+      const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+      if (sb && currentUser?.id) {
+        const { saveProjectBrainToSupabase } = await import('../../lib/supabaseSync')
+        await saveProjectBrainToSupabase(sb, currentUser.id, updated)
+      }
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title={brain ? `Project Brain — zuletzt: ${new Date(brain.lastUpdatedAt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : 'Project Brain — noch kein Brain generiert'}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--bg-2)', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+      >
+        <IBrain style={{ width: 15, height: 15, color: 'var(--accent)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Project Brain</div>
+          <div style={{ fontSize: 10, color: 'var(--fg-3)', lineHeight: 1.3 }}>
+            {brain
+              ? `${brain.brainTokens} Tokens · ${brain.generationModel ? brain.generationModel.split('/').pop() : '?'} · ${new Date(brain.lastUpdatedAt).toLocaleDateString('de-DE')}`
+              : 'Noch kein Brain — wird automatisch generiert'}
+          </div>
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>›</span>
+      </button>
+
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, width: '100%', maxWidth: 580, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <IBrain style={{ width: 16, height: 16, color: 'var(--accent)', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-0)' }}>Project Brain</div>
+                  <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>{projName}</div>
+                </div>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>×</button>
+            </div>
+
+            <div style={{ overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {!brain ? (
+                <div style={{ color: 'var(--fg-3)', fontSize: 12, textAlign: 'center', padding: '24px 0' }}>
+                  Noch kein Brain für dieses Projekt.<br />
+                  <span style={{ fontSize: 11 }}>Wird automatisch nach je 5 Orbit-Antworten generiert.</span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ background: 'var(--bg-2)', borderRadius: 7, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Stats</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+                      {[
+                        ['Letzte Aktualisierung', new Date(brain.lastUpdatedAt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })],
+                        ['Brain-Größe (im Context)', `${brain.brainTokens} Tokens`],
+                        ['Modell', brain.generationModel ? brain.generationModel.split('/').pop() : '—'],
+                        ['Input Tokens (gelesen)', brain.generationInputTokens ? brain.generationInputTokens.toLocaleString('de-DE') : '—'],
+                        ['Output Tokens (generiert)', brain.generationOutputTokens ? brain.generationOutputTokens.toLocaleString('de-DE') : '—'],
+                        ['Auto-Update', 'alle 5 Orbit-Antworten'],
+                      ].map(([label, value]) => (
+                        <div key={label}>
+                          <div style={{ fontSize: 9.5, color: 'var(--fg-3)', marginBottom: 1 }}>{label}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--fg-0)', fontWeight: 600, wordBreak: 'break-all' }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {brain.generationModel && (
+                      <div style={{ marginTop: 4, paddingTop: 8, borderTop: '1px solid var(--line)', fontSize: 10, color: 'var(--fg-3)' }}>
+                        Vollständiges Modell: <span style={{ color: 'var(--fg-2)', fontFamily: 'monospace' }}>{brain.generationModel}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {brain.summary && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Summary</div>
+                        <div style={{ fontSize: 12, color: 'var(--fg-1)', lineHeight: 1.6 }}>{brain.summary}</div>
+                      </div>
+                    )}
+                    {brain.architecture && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Architektur</div>
+                        <div style={{ fontSize: 12, color: 'var(--fg-1)', lineHeight: 1.6 }}>{brain.architecture}</div>
+                      </div>
+                    )}
+                    {brain.recentWork.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Zuletzt gearbeitet</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {brain.recentWork.map((w, i) => (
+                            <div key={i} style={{ fontSize: 11.5, color: 'var(--fg-1)', display: 'flex', gap: 8 }}>
+                              <span style={{ color: 'var(--fg-3)', flexShrink: 0 }}>{w.date}</span>
+                              <span>{w.item}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {brain.openTasks.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Offene Tasks</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {brain.openTasks.map((t, i) => (
+                            <div key={i} style={{ fontSize: 11.5, color: 'var(--fg-1)', display: 'flex', gap: 6 }}>
+                              <span style={{ color: 'var(--accent)', flexShrink: 0 }}>•</span>
+                              <span>{t}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {brain.keyFiles.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Key Files</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {brain.keyFiles.map((f, i) => (
+                            <div key={i} style={{ fontSize: 11, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                              <span style={{ color: 'var(--fg-3)', fontFamily: 'monospace', fontSize: 10.5, flexShrink: 0, paddingTop: 1 }}>{f.path}</span>
+                              <span style={{ color: 'var(--fg-2)' }}>— {f.purpose}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={{ padding: '12px 18px', borderTop: '1px solid var(--line)', flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => void handleUpdate()}
+                disabled={updating || !openrouterKey || !brain}
+                title={!openrouterKey ? 'OpenRouter Key fehlt' : !brain ? 'Kein Brain vorhanden' : 'Brain jetzt mit KI aktualisieren'}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 6, border: '1px solid var(--line-strong)', background: updating ? 'var(--bg-2)' : 'var(--accent)', color: updating ? 'var(--fg-3)' : 'var(--accent-fg)', cursor: updating || !openrouterKey || !brain ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: !openrouterKey || !brain ? 0.5 : 1 }}
+              >
+                <ISpinner size={12} spin={updating} />
+                {updating ? 'Aktualisiere…' : 'Jetzt aktualisieren'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function AiSearchTab({ projectId, isOrbitSession }: { projectId: string; isOrbitSession: boolean }) {
   const { aiFunctionMap, supabaseUrl, supabaseAnonKey, currentUser, setInputValue, docTemplates } = useAppStore()
   const [query, setQuery]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -2726,6 +3136,12 @@ function AiSearchTab({ projectId }: { projectId: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 12, gap: 10, minHeight: 0 }}>
+
+      {/* Brain button — orbit only */}
+      {isOrbitSession && <ProjectBrainButton projectId={projectId} />}
+
+      {/* Context Log button — agent/terminal only */}
+      {!isOrbitSession && <CtxLogButton projectId={projectId} />}
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 6 }}>
@@ -3126,7 +3542,7 @@ export function UtilityPanel() {
         {/* ── Tab Session ── */}
         {tab === (isOrbitSession ? 1 : 0) && (
           <>
-            <div style={{ marginBottom: 20, paddingTop: 14 }}>
+            <div style={{ marginBottom: 8, paddingTop: 14 }}>
               {/* ── Session-Header card ── */}
               <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 {/* Name row */}
@@ -3165,6 +3581,18 @@ export function UtilityPanel() {
                 )}
               </div>
             </div>
+
+            {/* ── Kontext-Log & Project Brain ── */}
+            {project && !isOrbitSession && (
+              <div style={{ marginBottom: 12 }}>
+                <CtxLogButton projectId={project.id} />
+              </div>
+            )}
+            {project && isOrbitSession && (
+              <div style={{ marginBottom: 12 }}>
+                <ProjectBrainButton projectId={project.id} />
+              </div>
+            )}
 
             {/* ── GitHub Kompakt-Kachel ── */}
             {project?.path && (
@@ -3209,7 +3637,7 @@ export function UtilityPanel() {
         )}
 
         {/* ── Tab AI Search ── */}
-        {tab === researchIdx && project && <AiSearchTab projectId={project.id} />}
+        {tab === researchIdx && project && <AiSearchTab projectId={project.id} isOrbitSession={isOrbitSession} />}
         {tab === researchIdx && !project && (
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
         )}

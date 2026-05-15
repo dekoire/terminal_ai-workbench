@@ -63,7 +63,7 @@ export function ProfileSettings() {
           {/* Ausloggen */}
           <div style={{ margin: '0 16px 4px', height: 1, background: 'var(--line)' }} />
           <div
-            onClick={() => { setActiveStorageUser(''); setCurrentUser(null); setScreen('login') }}
+            onClick={() => { setActiveStorageUser(''); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
             style={{
               padding: '6px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
               color: 'var(--err)', fontSize: 11.5,

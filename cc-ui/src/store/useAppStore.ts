@@ -78,8 +78,11 @@ export interface ProjectBrainEntry {
   recentWork: Array<{ date: string; item: string }>
   openTasks: string[]
   keyFiles: Array<{ path: string; purpose: string }>
-  brainTokens: number
+  brainTokens: number        // estimated tokens when injected as system prompt
   lastUpdatedAt: string
+  generationModel?: string   // model used for last AI update
+  generationInputTokens?: number   // tokens consumed reading messages
+  generationOutputTokens?: number  // tokens produced by the model
 }
 
 export type Theme = 'dark' | 'light'
@@ -607,10 +610,15 @@ export interface AppState {
   orbitCompressModel: string                       // OR model used for compression
   agentContextMsgCount: number                     // how many messages to compress (default 20)
   agentCompressPrompt: string                      // compression prompt for agent sessions
+  agentCompressModel: string                       // OR model for agent compression (default deepseek v4 flash)
+  agentAutoCompressOnStart: boolean                // trigger background compression when session starts and tail exists
+  agentTailMessageCount: number                    // how many raw tail messages to pass verbatim (0 = off)
+  brainUpdatePrompt: string                        // template prompt for updateBrainWithAI ({brain},{messages},{date},{n},{projectName})
   orbitFavorites: Record<string, OrbitFavorite[]>  // projectId → favorites
   quickLinks:     QuickLink[]
   projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
   orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
+  dataLoaded: boolean                                // true once initial loadFromSupabase completes
   claudeProviders: ClaudeProvider[]
   setupWizardDone: boolean
   preferredOrModels: string[]
@@ -733,6 +741,10 @@ export interface AppState {
   setOrbitCompressModel: (s: string) => void
   setAgentContextMsgCount: (agentContextMsgCount: number) => void
   setAgentCompressPrompt: (agentCompressPrompt: string) => void
+  setAgentCompressModel: (agentCompressModel: string) => void
+  setAgentAutoCompressOnStart: (v: boolean) => void
+  setAgentTailMessageCount: (n: number) => void
+  setBrainUpdatePrompt: (brainUpdatePrompt: string) => void
   addOrbitFavorite:  (fav: OrbitFavorite) => void
   setQuickLinks:     (links: QuickLink[]) => void
   removeOrbitFavorite: (projectId: string, favId: string) => void
@@ -746,6 +758,7 @@ export interface AppState {
   removeOrbitChat: (projectId: string, chatId: string) => void
   setProjectBrain: (projectId: string, brain: ProjectBrainEntry) => void
   setOrbitChatLoaded: (chatId: string) => void
+  setDataLoaded: (v: boolean) => void
   setSetupWizardDone: (v: boolean) => void
   setPreferredOrModels: (ids: string[]) => void
 }
@@ -947,10 +960,15 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   orbitCompressModel: 'deepseek/deepseek-chat-v3-0324',
   agentContextMsgCount: 20,
   agentCompressPrompt: 'Du bist ein Kontext-Kompressor für Coding-Sessions. Fasse die folgende Session kurz und präzise zusammen — nur was technisch relevant ist: was gebaut/gefixt wurde, aktuelle Stand, offene Probleme, wichtige Dateien und Entscheidungen. Kein Smalltalk. Bullet-Points. Max 15 Punkte.',
+  agentCompressModel: 'deepseek/deepseek-v4-flash:free',
+  agentAutoCompressOnStart: true,
+  agentTailMessageCount: 3,
+  brainUpdatePrompt: '',
   orbitFavorites: {},
   quickLinks: [],
   projectBrains: {},
   orbitChatsLoaded: {},
+  dataLoaded: false,
   claudeProviders: [],
   setupWizardDone: false,
   preferredOrModels: [],
@@ -974,22 +992,39 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   removeAdminEmail: (email) => set(s => ({ adminEmails: s.adminEmails.filter(e => e !== email.toLowerCase()) })),
 
   resetUserData: () => set({
-    // Clear all user-specific data so a new user starts with a blank slate
-    projects:          [],
-    activeProjectId:   undefined,
-    activeSessionId:   undefined,
-    orbitMessages:     {},
-    orbitMeta:         {},
-    orbitChats:        {},
-    orbitChatsLoaded:  {},
-    activeOrbitChatId: {},
-    orbitFavorites:    {},
-    kanban:            {},
-    notes:             {},
-    projectBrains:     {},
-    tokens:            [],
-    aliases:           [],
-    templates:         [],
+    // Clear ALL user-specific data so the next user starts with a blank slate
+    projects:               [],
+    activeProjectId:        undefined,
+    activeSessionId:        undefined,
+    orbitMessages:          {},
+    orbitMeta:              {},
+    orbitChats:             {},
+    orbitChatsLoaded:       {},
+    dataLoaded:             false,
+    activeOrbitChatId:      {},
+    orbitFavorites:         {},
+    kanban:                 {},
+    notes:                  {},
+    projectBrains:          {},
+    tokens:                 [],
+    aliases:                [],
+    templates:              [],
+    docTemplates:           DEFAULT_DOC_TEMPLATES,
+    claudeProviders:        [],
+    quickLinks:             [],
+    deletedProjectIds:      [],
+    // Credentials — must never bleed to another user
+    openrouterKey:          '',
+    groqApiKey:             '',
+    supabaseServiceRoleKey: '',
+    cloudflareAccountId:    '',
+    cloudflareR2AccessKeyId: '',
+    cloudflareR2SecretAccessKey: '',
+    cloudflareR2BucketName: '',
+    cloudflareR2Endpoint:   '',
+    cloudflareR2PublicUrl:  '',
+    aiFunctionMap:          { terminal: 'deepseek/deepseek-chat-v3-0324', kanban: 'deepseek/deepseek-chat-v3-0324', devDetect: 'deepseek/deepseek-chat-v3-0324', docUpdate: 'deepseek/deepseek-r1-0528', contextSearch: 'deepseek/deepseek-chat-v3-0324' },
+    codeReviewModel:        'deepseek/deepseek-chat-v3-0324',
   }),
 
   setSupabaseUrl: (v) => set({ supabaseUrl: v }),
@@ -1230,6 +1265,10 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setOrbitCompressModel: (orbitCompressModel) => set({ orbitCompressModel }),
   setAgentContextMsgCount: (agentContextMsgCount) => set({ agentContextMsgCount }),
   setAgentCompressPrompt: (agentCompressPrompt) => set({ agentCompressPrompt }),
+  setAgentCompressModel: (agentCompressModel) => set({ agentCompressModel }),
+  setAgentAutoCompressOnStart: (agentAutoCompressOnStart) => set({ agentAutoCompressOnStart }),
+  setAgentTailMessageCount: (agentTailMessageCount) => set({ agentTailMessageCount }),
+  setBrainUpdatePrompt: (brainUpdatePrompt) => set({ brainUpdatePrompt }),
   setQuickLinks: (links) => set({ quickLinks: links }),
   addOrbitFavorite: (fav) => set(s => ({
     orbitFavorites: { ...s.orbitFavorites, [fav.projectId]: [...(s.orbitFavorites[fav.projectId] ?? []), fav] },
@@ -1266,6 +1305,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   }),
   setProjectBrain: (projectId, brain) => set(s => ({ projectBrains: { ...s.projectBrains, [projectId]: brain } })),
   setOrbitChatLoaded: (chatId) => set(s => ({ orbitChatsLoaded: { ...s.orbitChatsLoaded, [chatId]: true } })),
+  setDataLoaded: (dataLoaded) => set({ dataLoaded }),
 }), {
   name: 'cc-app-state',
   storage: createJSONStorage(() => fileStorage),
@@ -1326,6 +1366,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (!state.orbitCompressModel) state.orbitCompressModel = 'deepseek/deepseek-chat-v3-0324'
     if (!state.agentContextMsgCount) state.agentContextMsgCount = 20
     if (!state.agentCompressPrompt) state.agentCompressPrompt = 'Du bist ein Kontext-Kompressor für Coding-Sessions. Fasse die folgende Session kurz und präzise zusammen — nur was technisch relevant ist: was gebaut/gefixt wurde, aktuelle Stand, offene Probleme, wichtige Dateien und Entscheidungen. Kein Smalltalk. Bullet-Points. Max 15 Punkte.'
+    if (!state.agentCompressModel) state.agentCompressModel = 'deepseek/deepseek-v4-flash:free'
+    if (state.agentAutoCompressOnStart === undefined) state.agentAutoCompressOnStart = true
+    if (state.agentTailMessageCount === undefined) state.agentTailMessageCount = 3
     if (state.projectBrains === undefined) state.projectBrains = {}
     if (state.orbitChatsLoaded === undefined) state.orbitChatsLoaded = {}
     if (!state.supabaseUrl) state.supabaseUrl = 'https://fpphqkuizptypeawclsx.supabase.co'

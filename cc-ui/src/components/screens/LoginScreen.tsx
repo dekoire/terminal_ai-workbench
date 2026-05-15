@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useAppStore, setActiveStorageUser } from '../../store/useAppStore'
-import { IShield, IGit, ITerminal, ISpark, IChev } from '../primitives/Icons'
+import { IShield, IGit, ITerminal, ISpark, IChev, ISpinner } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
-import logoWhite from '../../assets/codera_logo_white.png'
-import logoBlack from '../../assets/codera_logo_black.png'
 
 export function LoginScreen() {
   const [email, setEmail]       = useState('')
@@ -14,7 +12,7 @@ export function LoginScreen() {
 
   const setScreen      = useAppStore(s => s.setScreen)
   const setCurrentUser = useAppStore(s => s.setCurrentUser)
-  const theme          = useAppStore(s => s.theme)
+
   const supabaseUrl    = useAppStore(s => s.supabaseUrl)
   const supabaseKey    = useAppStore(s => s.supabaseAnonKey)
 
@@ -81,10 +79,11 @@ export function LoginScreen() {
         position: 'relative', zIndex: 1, borderRight: '1px solid var(--line)',
       }}>
         <div style={{ marginBottom: 0 }}>
-          <img src={theme === 'light' ? logoBlack : logoWhite} alt="Codera AI" style={{ height: 60, width: 'auto', display: 'block' }} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <ISpinner spin={false} size={34} style={{ color: 'var(--accent)' }} />
+            <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1 }}>Codera</span>
+          </span>
         </div>
-        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, letterSpacing: 0.3, margin: '-16px 0 0', paddingLeft: 47 }}>AI Development IDE</span>
-
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 380 }}>
           <h1 style={{ margin: '0 0 16px', fontSize: 32, fontWeight: 700, letterSpacing: -0.8, color: 'var(--fg-0)', lineHeight: 1.15 }}>
