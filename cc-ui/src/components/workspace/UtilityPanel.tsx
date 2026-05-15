@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { getOrModel, sanitizeKey } from '../../utils/orProvider'
-import type { OrbitMessage, QuickLink } from '../../store/useAppStore'
+import type { OrbitMessage, QuickLink, RepoToken } from '../../store/useAppStore'
+import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages, loadAllContextSummaries, type AgentContextSummary, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
@@ -636,6 +637,9 @@ function humanGitError(raw: string): string {
   if (raw.includes('permission denied') || raw.includes('Permission denied')) return 'Keine Berechtigung. Hast du Schreibzugriff auf das Projekt?'
   if (raw.includes('merge conflict') || raw.includes('CONFLICT')) return 'Es gibt einen Konflikt mit den Online-Updates. Bitte löse ihn manuell.'
   if (raw.includes('not a git repository')) return 'Dieser Ordner ist noch nicht eingerichtet.'
+  if (raw.includes('no tracking information') || raw.includes('specify which branch')) return 'Kein Remote-Branch verknüpft. Lade zuerst etwas hoch (Speichern & Hochladen).'
+  if (raw.includes('does not have any commits')) return 'Das Repository ist leer — committe zuerst Dateien.'
+  if (raw.includes('src refspec') || raw.includes('failed to push')) return 'Push fehlgeschlagen. Stelle sicher dass der Branch auf GitHub existiert.'
   return raw.slice(0, 140)
 }
 
@@ -948,10 +952,9 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
   const [diffOpen,  setDiffOpen]  = useState(false)
   const [diffFile,  setDiffFile]  = useState('')
   const [setupOpen, setSetupOpen] = useState(false)
-  const { githubToken: _legacyGhToken, tokens: repoTokens, projects, theme: compactTheme } = useAppStore()
-  // Use the first github.com entry from repoTokens; fall back to legacy store field for compat
-  const githubToken = repoTokens.find(t => t.host === 'github.com')?.token || _legacyGhToken
+  const { githubToken: _legacyGhToken, tokens: repoTokens, projects, theme: compactTheme, setProjectGithubToken, activeProjectId } = useAppStore()
   const projectName = projects.find(p => p.path === projectPath)?.name ?? ''
+  const activeProject = projects.find(p => p.path === projectPath)
 
   const load = useCallback(() => {
     const c = _gitCache.get(projectPath)
@@ -959,7 +962,7 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
     fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
       .then(r => r.json())
       .then((d: { hasGit?: boolean; status?: GhFileInfo[]; branches?: GhBranch[]; log?: GhCommit[]; remotes?: string[]; diffStat?: string }) => {
-        const files = (d.status ?? []).filter(f => f.flag !== '??')
+        const files = d.status ?? []
         const branch = (d.branches ?? []).find(b => b.current)?.name ?? 'main'
         const remote = (d.remotes ?? [])[0] ?? null
         const { added, removed } = parseDiffStat(d.diffStat ?? '')
@@ -984,23 +987,30 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  const resolvedToken = activeProject?.githubTokenId
+    ? repoTokens.find(t => t.id === activeProject.githubTokenId)?.token
+    : repoTokens.find(t => t.host === 'github.com')?.token ?? _legacyGhToken
+
   const gitAction = (action: string, extra?: Record<string, string>) =>
     fetch('/api/git-action', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, path: projectPath, ...extra }),
+      body: JSON.stringify({ action, path: projectPath, token: resolvedToken, ...extra }),
     }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
 
   const showToast = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000) }
 
   const handleSave = useCallback(async () => {
-    if (!data || status !== 'dirty' || busy) return
+    if (!data || busy) return
+    if (status !== 'dirty' && !data.remote) return
     setBusy('save')
     try {
-      const autoMsg = data.files.length > 0 ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''}` : 'Update'
-      const r1 = await gitAction('stage')
-      if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
-      const r2 = await gitAction('commit', { message: note.trim() || autoMsg })
-      if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      if (status === 'dirty') {
+        const autoMsg = data.files.length > 0 ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''}` : 'Update'
+        const r1 = await gitAction('stage')
+        if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
+        const r2 = await gitAction('commit', { message: note.trim() || autoMsg })
+        if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      }
       if (data.remote) {
         const r3 = await gitAction('push')
         if (!r3.ok) { showToast(humanGitError(r3.out), false); return }
@@ -1034,6 +1044,11 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
   const hasDiff = added > 0 || removed > 0
   const statusColor = status === 'synced' ? 'var(--ok)' : status === 'dirty' ? 'var(--warn)' : 'var(--err)'
   const borderColor = 'var(--line-strong)'
+  const compactGhUrl = (() => {
+    if (!data?.remote) return null
+    const m = data.remote.match(/github\.com[:/](.+?)(?:\.git)?$/)
+    return m ? { slug: m[1], url: `https://github.com/${m[1]}` } : null
+  })()
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -1044,9 +1059,19 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
       >
         <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
           GitHub
-          {/* status dot — right next to label */}
           {status !== 'loading' && (
             <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+          )}
+          {compactGhUrl && (
+            <a
+              href={compactGhUrl.url} target="_blank" rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              style={{ fontSize: 10, color: 'var(--accent)', textDecoration: 'none', fontFamily: 'var(--font-mono)', textTransform: 'none', letterSpacing: 0, opacity: 0.8 }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.8')}
+            >
+              {compactGhUrl.slug}
+            </a>
           )}
         </span>
 
@@ -1113,7 +1138,9 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
             <GitSetupModal
               projectPath={projectPath}
               projectName={projectName}
-              githubToken={githubToken}
+              tokens={repoTokens}
+              preselectedTokenId={activeProject?.githubTokenId}
+              onTokenSelected={(tokenId) => { if (activeProject) setProjectGithubToken(activeProject.id, tokenId) }}
               onClose={() => setSetupOpen(false)}
               onDone={() => { setSetupOpen(false); _gitInvalidate(projectPath); load() }}
             />
@@ -1179,12 +1206,17 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
 type SetupMode = 'init' | 'clone' | 'connect' | null
 
 function GitSetupModal({
-  projectPath, projectName, githubToken, onClose, onDone,
-}: { projectPath: string; projectName: string; githubToken: string; onClose: () => void; onDone: () => void }) {
-  const [mode,       setMode]       = useState<SetupMode>(null)
-  const [remoteUrl,  setRemoteUrl]  = useState('')
-  const [busy,       setBusy]       = useState(false)
-  const [result,     setResult]     = useState<{ ok: boolean; msg: string } | null>(null)
+  projectPath, projectName, tokens, preselectedTokenId, onTokenSelected, onClose, onDone,
+}: { projectPath: string; projectName: string; tokens: RepoToken[]; preselectedTokenId?: string; onTokenSelected: (tokenId: string) => void; onClose: () => void; onDone: () => void }) {
+  const [mode,        setMode]        = useState<SetupMode>(null)
+  const [remoteUrl,   setRemoteUrl]   = useState('')
+  const [busy,        setBusy]        = useState(false)
+  const [result,      setResult]      = useState<{ ok: boolean; msg: string } | null>(null)
+  const [showPicker,  setShowPicker]  = useState(false)
+  const [offerGh,     setOfferGh]     = useState(false)   // after init success
+
+  const ghTokens = tokens.filter(t => t.host === 'github.com')
+  const hasGhTokens = ghTokens.length > 0
 
   const gitAction = (action: string, extra?: Record<string, string>) =>
     fetch('/api/git-action', {
@@ -1193,33 +1225,52 @@ function GitSetupModal({
       body: JSON.stringify({ action, path: projectPath, ...extra }),
     }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
 
-  const withToken = (url: string) =>
-    githubToken && url.includes('github.com')
-      ? url.replace('https://github.com/', `https://${githubToken}@github.com/`)
-      : url
-
   const run = async () => {
     setBusy(true)
     setResult(null)
     try {
       if (mode === 'init') {
         const r = await gitAction('init')
-        setResult(r.ok ? { ok: true, msg: 'Projekt eingerichtet ✓' } : { ok: false, msg: 'Fehler beim Einrichten.' })
-        if (r.ok) setTimeout(onDone, 1200)
+        if (r.ok) {
+          setResult({ ok: true, msg: 'Projekt eingerichtet ✓' })
+          // Offer GitHub connection if tokens available
+          if (hasGhTokens) { setOfferGh(true) } else { setTimeout(onDone, 1200) }
+        } else {
+          setResult({ ok: false, msg: 'Fehler beim Einrichten.' })
+        }
       } else if (mode === 'clone') {
-        const r = await gitAction('clone', { remote: withToken(remoteUrl) })
+        // remoteUrl already has token injected by picker (or is manual)
+        const r = await gitAction('clone', { remote: remoteUrl })
         setResult(r.ok ? { ok: true, msg: 'Erfolgreich geklont ✓' } : { ok: false, msg: r.out.slice(0, 120) })
         if (r.ok) setTimeout(onDone, 1200)
       } else if (mode === 'connect') {
         const r1 = await gitAction('init')
         if (!r1.ok) { setResult({ ok: false, msg: 'Fehler beim Einrichten.' }); return }
         if (remoteUrl.trim()) {
-          const r2 = await gitAction('add-remote', { remote: withToken(remoteUrl) })
+          const r2 = await gitAction('add-remote', { remote: remoteUrl })
           if (!r2.ok) { setResult({ ok: false, msg: 'Remote konnte nicht verbunden werden.' }); return }
         }
         setResult({ ok: true, msg: 'Ordner verbunden ✓' })
         setTimeout(onDone, 1200)
       }
+    } finally { setBusy(false) }
+  }
+
+  const connectRemote = async (url: string) => {
+    setBusy(true)
+    try {
+      const r = await gitAction('add-remote', { remote: url })
+      if (!r.ok) { setResult({ ok: false, msg: 'Remote konnte nicht verbunden werden.' }); return }
+      // Auto-push existing commits to set up upstream tracking
+      const push = await gitAction('push')
+      if (push.ok) {
+        setResult({ ok: true, msg: 'Verbunden & hochgeladen ✓' })
+      } else {
+        // Push failed (e.g. empty local repo) — still connected, just no upstream yet
+        setResult({ ok: true, msg: 'Verbunden ✓ — Lade Dateien hoch sobald du Änderungen hast.' })
+      }
+      setOfferGh(false)
+      setTimeout(onDone, 1800)
     } finally { setBusy(false) }
   }
 
@@ -1231,6 +1282,7 @@ function GitSetupModal({
   const btnSec: React.CSSProperties = { background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--line-strong)', padding: '8px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 
   return (
+    <>
     <div style={modalBg} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={modalBox}>
         {/* Header */}
@@ -1281,15 +1333,19 @@ function GitSetupModal({
         )}
 
         {/* Form: clone */}
-        {mode === 'clone' && !result && (
+        {mode === 'clone' && !result && !showPicker && (
           <div>
-            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>GitHub URL</label>
-            <input style={inp} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus />
-            {githubToken
-              ? <div style={{ fontSize: 10.5, color: 'var(--ok)', marginBottom: 14 }}>✓ GitHub Token hinterlegt — authentifizierter Zugriff</div>
-              : <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 14 }}>Kein GitHub Token — nur öffentliche Repos klonbar</div>
-            }
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            {hasGhTokens && (
+              <button onClick={() => setShowPicker(true)} style={{ ...btnPri, width: '100%', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                Aus GitHub wählen →
+              </button>
+            )}
+            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>
+              {hasGhTokens ? 'Oder URL manuell eingeben' : 'GitHub URL'}
+            </label>
+            <input style={inp} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus={!hasGhTokens} />
+            {!hasGhTokens && <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 14 }}>Kein GitHub Token — nur öffentliche Repos klonbar</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
               <button onClick={() => setMode(null)} style={btnSec}>Zurück</button>
               <button onClick={run} disabled={busy || !remoteUrl.trim()} style={{ ...btnPri, opacity: (busy || !remoteUrl.trim()) ? 0.5 : 1 }}>
                 {busy ? 'Wird geklont…' : 'Klonen'}
@@ -1299,13 +1355,20 @@ function GitSetupModal({
         )}
 
         {/* Form: connect */}
-        {mode === 'connect' && !result && (
+        {mode === 'connect' && !result && !showPicker && (
           <div>
             <div style={{ fontSize: 12, color: 'var(--fg-2)', marginBottom: 14, lineHeight: 1.6 }}>
               Git wird in diesem Ordner eingerichtet und optional mit einem GitHub-Repo verbunden.
             </div>
-            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>GitHub URL (optional)</label>
-            <input style={{ ...inp, marginBottom: 16 }} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus />
+            {hasGhTokens && (
+              <button onClick={() => setShowPicker(true)} style={{ ...btnPri, width: '100%', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                Aus GitHub wählen →
+              </button>
+            )}
+            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>
+              {hasGhTokens ? 'Oder URL manuell eingeben (optional)' : 'GitHub URL (optional)'}
+            </label>
+            <input style={{ ...inp, marginBottom: 16 }} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setMode(null)} style={btnSec}>Zurück</button>
               <button onClick={run} disabled={busy} style={{ ...btnPri, opacity: busy ? 0.6 : 1 }}>
@@ -1315,23 +1378,65 @@ function GitSetupModal({
           </div>
         )}
 
-        {/* Result */}
+        {/* Result — success + offerGh */}
         {result && (
-          <div style={{ padding: '14px 16px', borderRadius: 8, background: result.ok ? 'rgba(125,201,125,0.1)' : 'rgba(226,75,74,0.1)', border: `1px solid ${result.ok ? 'rgba(125,201,125,0.3)' : 'rgba(226,75,74,0.3)'}`, color: result.ok ? 'var(--ok)' : 'var(--err)', fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
-            {result.msg}
-            {!result.ok && (
-              <button onClick={() => { setResult(null) }} style={{ display: 'block', margin: '10px auto 0', ...btnSec, fontSize: 11 }}>Nochmal versuchen</button>
+          <div>
+            <div style={{ padding: '14px 16px', borderRadius: 8, background: result.ok ? 'rgba(125,201,125,0.1)' : 'rgba(226,75,74,0.1)', border: `1px solid ${result.ok ? 'rgba(125,201,125,0.3)' : 'rgba(226,75,74,0.3)'}`, color: result.ok ? 'var(--ok)' : 'var(--err)', fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
+              {result.msg}
+              {!result.ok && (
+                <button onClick={() => { setResult(null) }} style={{ display: 'block', margin: '10px auto 0', ...btnSec, fontSize: 11 }}>Nochmal versuchen</button>
+              )}
+            </div>
+            {/* After init success: offer GitHub connection */}
+            {result.ok && offerGh && !showPicker && (
+              <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--fg-1)', marginBottom: 10, fontWeight: 500 }}>Möchtest du dieses Projekt mit GitHub verbinden?</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setShowPicker(true)} style={btnPri}>Ja, Repo wählen</button>
+                  <button onClick={onDone} style={btnSec}>Nein, später</button>
+                </div>
+              </div>
             )}
           </div>
         )}
       </div>
     </div>
+
+    {/* GitHubRepoPicker overlay */}
+    {showPicker && (
+      <GitHubRepoPicker
+        tokens={tokens}
+        preselectedTokenId={preselectedTokenId}
+        onSelect={(url, tokenId) => {
+          onTokenSelected(tokenId)
+          setShowPicker(false)
+          if (mode === 'clone') {
+            setRemoteUrl(url)
+            setBusy(true)
+            fetch('/api/git-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'clone', path: projectPath, remote: url, token: tokens.find(t => t.id === tokenId)?.token }) })
+              .then(r => r.json())
+              .then((d: { ok: boolean; out: string }) => {
+                setResult(d.ok ? { ok: true, msg: 'Erfolgreich geklont ✓' } : { ok: false, msg: d.out.slice(0, 120) })
+                if (d.ok) setTimeout(onDone, 1200)
+              })
+              .finally(() => setBusy(false))
+          } else {
+            // connect mode or after-init offer — add remote + auto-push
+            connectRemote(url)
+          }
+        }}
+        onCancel={() => setShowPicker(false)}
+      />
+    )}
+    </>
   )
 }
 
 function GitHubTab({ projectPath, projectName }: { projectPath: string; projectName: string }) {
-  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken: _legacyGhToken2, setGithubToken, tokens: repoTokens2, addToken: addRepoToken, updateToken: updateRepoToken, theme } = useAppStore()
+  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken: _legacyGhToken2, setGithubToken, tokens: repoTokens2, addToken: addRepoToken, updateToken: updateRepoToken, theme, projects, activeProjectId, setProjectGithubToken } = useAppStore()
   const githubToken = repoTokens2.find(t => t.host === 'github.com')?.token || _legacyGhToken2
+  const activeProject = projects.find(p => p.path === projectPath)
+  const ghTokens = repoTokens2.filter(t => t.host === 'github.com')
   const [data,            setData]          = useState<GhData | null>(null)
   const [showSetupModal,  setShowSetupModal] = useState(false)
   const [status,   setStatus]   = useState<GhStatus>('loading')
@@ -1404,7 +1509,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
     fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
       .then(r => r.json())
       .then((d: { hasGit?: boolean; status?: GhFileInfo[]; branches?: GhBranch[]; log?: GhCommit[]; remotes?: string[]; diffStat?: string }) => {
-        const files = (d.status ?? []).filter(f => f.flag !== '??')
+        const files = d.status ?? []
         const currentBranch = (d.branches ?? []).find(b => b.current)?.name ?? 'main'
         const remote = (d.remotes ?? [])[0] ?? null
         const { added, removed } = parseDiffStat(d.diffStat ?? '')
@@ -1423,25 +1528,32 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
   useEffect(() => { load() }, [load])
   useEffect(() => _gitSubscribe(projectPath, load), [projectPath, load])
 
+  const resolvedToken2 = activeProject?.githubTokenId
+    ? repoTokens2.find(t => t.id === activeProject.githubTokenId)?.token
+    : repoTokens2.find(t => t.host === 'github.com')?.token ?? _legacyGhToken2
+
   const gitAction = (action: string, extra?: Record<string, string>) =>
     fetch('/api/git-action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, path: projectPath, ...extra }),
+      body: JSON.stringify({ action, path: projectPath, token: resolvedToken2, ...extra }),
     }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
 
   const handleSave = async () => {
     if (!data) return
+    if (status !== 'dirty' && !data.remote) return
     setBusy('save')
     try {
-      const autoMsg = data.files.length > 0
-        ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''} (${data.files.slice(0, 3).map(f => f.file.split('/').pop()).join(', ')}${data.files.length > 3 ? ` +${data.files.length - 3}` : ''})`
-        : 'Update'
-      const msg = note.trim() || autoMsg
-      const r1 = await gitAction('stage')
-      if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
-      const r2 = await gitAction('commit', { message: msg })
-      if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      if (status === 'dirty') {
+        const autoMsg = data.files.length > 0
+          ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''} (${data.files.slice(0, 3).map(f => f.file.split('/').pop()).join(', ')}${data.files.length > 3 ? ` +${data.files.length - 3}` : ''})`
+          : 'Update'
+        const msg = note.trim() || autoMsg
+        const r1 = await gitAction('stage')
+        if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
+        const r2 = await gitAction('commit', { message: msg })
+        if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      }
       if (data.remote) {
         const r3 = await gitAction('push')
         if (!r3.ok) { showToast(humanGitError(r3.out), false); return }
@@ -1507,7 +1619,9 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
         <GitSetupModal
           projectPath={projectPath}
           projectName={projectName}
-          githubToken={githubToken}
+          tokens={repoTokens2}
+          preselectedTokenId={activeProject?.githubTokenId}
+          onTokenSelected={(tokenId) => { if (activeProject) setProjectGithubToken(activeProject.id, tokenId) }}
           onClose={() => setShowSetupModal(false)}
           onDone={() => { setShowSetupModal(false); load() }}
         />
@@ -1557,13 +1671,25 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
 
       {/* 1 — Status card */}
       <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: ghUrl ? 3 : 5 }}>
           <span style={{ fontSize: 12.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
             <IFolder style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
             {projectName}
           </span>
           <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{data?.branch ?? '—'}</span>
         </div>
+        {ghUrl && (
+          <a
+            href={ghUrl} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--accent)', textDecoration: 'none', fontFamily: 'var(--font-mono)', marginBottom: 6, opacity: 0.85 }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '0.85')}
+          >
+            <IGitFork style={{ width: 11, height: 11, flexShrink: 0 }} />
+            {ghUrl.replace('https://github.com/', '')}
+          </a>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, marginBottom: 3 }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
           <span style={{ color: statusColor }}>{statusText}</span>
@@ -1764,6 +1890,23 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
         {collRow('Einstellungen', <ISettings style={{ width: 12, height: 12, flexShrink: 0 }} />, 'settings')}
         {sections.settings && (
           <div style={{ paddingBottom: 8, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* Per-project token selector */}
+            {ghTokens.length > 0 && (
+              <div>
+                <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--fg-3)', marginBottom: 5 }}>Token für dieses Projekt</div>
+                <select
+                  value={activeProject?.githubTokenId ?? ''}
+                  onChange={e => { if (activeProject) setProjectGithubToken(activeProject.id, e.target.value || undefined) }}
+                  style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="">— Erster verfügbarer Token</option>
+                  {ghTokens.map(t => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* GitHub Token inline */}
             <div>

@@ -163,63 +163,124 @@ router.get('/api/git', (req, res) => {
   )
   run('git rev-parse --is-inside-work-tree').then(async check => {
     if (check !== 'true') { res.json({ hasGit: false, status: [], log: [], branches: [], remotes: [], diffStat: '', lastCommit: '' }); return }
-    const [status, log, branches, diffStat, remotes, lastCommit] = await Promise.all([
+    // Check if repo has any commits — empty repos need safe defaults
+    const hasCommits = await run('git rev-parse HEAD').then(r => !r.startsWith('fatal') && r.length > 0).catch(() => false)
+    const [status, remoteUrl] = await Promise.all([
       run('git status --short'),
+      run('git remote get-url origin 2>/dev/null || echo ""'),
+    ])
+    // Strip embedded token before sending to client
+    const remotes = remoteUrl ? [remoteUrl.replace(/https?:\/\/[^@]+@/, 'https://')] : []
+    const [log, branches, diffStat, lastCommit] = hasCommits ? await Promise.all([
       run('git log --oneline -20 --pretty=format:"%h|%s|%an|%ar|%ai"'),
       run('git branch -v --format="%(refname:short)|%(objectname:short)|%(subject)|%(HEAD)"'),
       run('git diff --stat HEAD 2>/dev/null | tail -1'),
-      run('git remote -v | head -2'),
       run('git log -1 --format="%ar"'),
-    ])
+    ]) : ['', 'main||||*', '', '']
+    const isFatal = (s: string) => s.startsWith('fatal') || s.startsWith('error')
     res.json({
       hasGit: true,
       status:   status.split('\n').filter(Boolean).map(l => ({ flag: l.slice(0,2).trim(), file: l.slice(3) })),
-      log:      log.split('\n').filter(Boolean).map(l => { const p = l.split('|'); return { hash: p[0], msg: p[1], author: p[2], when: p[3], date: p[4] } }),
-      branches: branches.split('\n').filter(Boolean).map(l => { const p = l.split('|'); return { name: p[0], hash: p[1], msg: p[2], current: p[3] === '*' } }),
-      diffStat, remotes: [...new Set(remotes.split('\n').filter(Boolean).map(l => l.split('\t')[0]))], lastCommit,
+      log:      log.split('\n').filter(l => Boolean(l) && !isFatal(l)).map(l => { const p = l.split('|'); return { hash: p[0], msg: p[1] ?? '', author: p[2] ?? '', when: p[3] ?? '', date: p[4] ?? '' } }).filter(e => e.hash && e.hash.length < 50),
+      branches: branches.split('\n').filter(l => Boolean(l) && !isFatal(l)).map(l => { const p = l.split('|'); return { name: p[0], hash: p[1] ?? '', msg: p[2] ?? '', current: p[3] === '*' } }).filter(b => b.name),
+      diffStat: isFatal(diffStat) ? '' : diffStat,
+      remotes,
+      lastCommit: isFatal(lastCommit) ? '' : lastCommit,
     })
   }).catch(e => res.json({ hasGit: false, error: String(e), status: [], log: [], branches: [], remotes: [], diffStat: '', lastCommit: '' }))
 })
 
 router.post('/api/git-action', async (req, res) => {
   try {
-    const { action, path: cwd, message, remote, branch } = JSON.parse(await readBody(req)) as { action: string; path: string; message?: string; remote?: string; branch?: string }
-    const resolved = tilde(cwd)
-    const run = (cmd: string) => new Promise<string>(ok =>
-      exec(cmd, { cwd: resolved }, (err, out, errOut) => ok(err ? errOut || err.message : out.trim()))
-    )
-    let result = { ok: false, out: 'unknown action' }
-    if (action === 'stage')      result = { ok: true, out: await run('git add -A') }
-    if (action === 'commit')     result = { ok: true, out: await run(`git commit -m ${JSON.stringify(message ?? 'Update')}`) }
-    if (action === 'push')       result = { ok: true, out: await run(`git push ${remote ?? 'origin'} ${branch ?? 'HEAD'}`) }
-    if (action === 'push-u')     result = { ok: true, out: await run(`git push -u origin ${JSON.stringify(branch ?? 'main')}`) }
-    if (action === 'pull')       result = { ok: true, out: await run('git pull') }
-    if (action === 'checkout')   result = { ok: true, out: await run(`git checkout ${JSON.stringify(branch ?? '')}`) }
-    if (action === 'new-branch') result = { ok: true, out: await run(`git checkout -b ${JSON.stringify(branch ?? '')}`) }
-    if (action === 'init') {
-      const o1 = await run('git init')
-      const o2 = await run(`git checkout -b ${JSON.stringify(branch ?? 'main')}`)
-      result = { ok: true, out: o1 + '\n' + o2 }
+    const { action, path: cwd, message, remote, branch, token } = JSON.parse(await readBody(req)) as {
+      action: string; path: string; message?: string; remote?: string; branch?: string; token?: string
     }
-    if (action === 'add-remote' && remote) result = { ok: true, out: await run(`git remote add origin ${JSON.stringify(remote)}`) }
-    if (action === 'clone' && remote) {
-      // clone into the path itself — use parent dir + folder name
-      const parentDir = path.dirname(resolved)
-      const folderName = path.basename(resolved)
-      const cloneRun = (cmd: string) => new Promise<string>(ok =>
-        exec(cmd, { cwd: parentDir }, (err, out, errOut) => ok(err ? errOut || err.message : out.trim()))
+    const resolved = tilde(cwd)
+
+    const run = (cmd: string, runCwd?: string) => new Promise<{ ok: boolean; out: string }>(resolve =>
+      exec(cmd, { cwd: runCwd ?? resolved }, (err, stdout, stderr) =>
+        resolve({ ok: !err, out: (err ? stderr || err.message : stdout).trim() })
       )
-      result = { ok: true, out: await cloneRun(`git clone ${JSON.stringify(remote)} ${JSON.stringify(folderName)}`) }
+    )
+
+    // Temporarily inject token into remote URL so pull/push can authenticate
+    const withToken = async (fn: () => Promise<{ ok: boolean; out: string }>) => {
+      if (!token) return fn()
+      const urlResult = await run('git remote get-url origin')
+      if (!urlResult.ok || !urlResult.out.includes('github.com') || urlResult.out.includes('@github.com')) return fn()
+      const authedUrl = urlResult.out.replace('https://github.com/', `https://${token}@github.com/`)
+      await run(`git remote set-url origin ${JSON.stringify(authedUrl)}`)
+      try { return await fn() } finally { await run(`git remote set-url origin ${JSON.stringify(urlResult.out)}`) }
+    }
+
+    let result = { ok: false, out: 'unknown action' }
+    if (action === 'stage')      result = await run('git add -A')
+    if (action === 'commit')     result = await run(`git commit -m ${JSON.stringify(message ?? 'Update')}`)
+    if (action === 'push')       result = await withToken(() => run(`git push -u ${remote ?? 'origin'} ${branch ?? 'HEAD'}`))
+    if (action === 'push-u')     result = await withToken(() => run(`git push -u origin ${JSON.stringify(branch ?? 'main')}`))
+    if (action === 'pull') {
+      let r = await withToken(() => run('git pull'))
+      if (!r.ok && r.out.includes('no tracking information')) {
+        const branchResult = await run('git rev-parse --abbrev-ref HEAD')
+        if (branchResult.ok) {
+          await run(`git branch --set-upstream-to=origin/${branchResult.out.trim()} ${branchResult.out.trim()}`)
+          r = await withToken(() => run(`git pull origin ${branchResult.out.trim()}`))
+        }
+      }
+      result = r
+    }
+    if (action === 'checkout')   result = await run(`git checkout ${JSON.stringify(branch ?? '')}`)
+    if (action === 'new-branch') result = await run(`git checkout -b ${JSON.stringify(branch ?? '')}`)
+    if (action === 'init') {
+      const r1 = await run('git init')
+      const r2 = await run(`git checkout -b ${JSON.stringify(branch ?? 'main')}`)
+      result = { ok: r1.ok && r2.ok, out: [r1.out, r2.out].filter(Boolean).join('\n') }
+    }
+    if (action === 'add-remote' && remote) {
+      // Always store clean URL — token injected at runtime by withToken
+      const cleanUrl = remote.replace(/https?:\/\/[^@]+@/, 'https://')
+      result = await run(`git remote add origin ${JSON.stringify(cleanUrl)}`)
+    }
+    if (action === 'clone' && remote) {
+      result = await (async () => {
+        const cleanUrl = remote.replace(/https?:\/\/[^@]+@/, 'https://')
+        const folderName = path.basename(resolved)
+        const parentDir  = path.dirname(resolved)
+        if (fs.existsSync(resolved)) {
+          // Folder already exists — init + fetch + reset (git clone refuses non-empty dirs)
+          await run('git init')
+          await run(`git remote add origin ${JSON.stringify(remote)}`)
+          const fetchR = await run('git fetch origin')
+          if (!fetchR.ok) {
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+            return fetchR
+          }
+          // Detect default branch via remote HEAD symref (no extra network call needed)
+          await run('git remote set-head origin --auto')
+          const headR = await run('git symbolic-ref refs/remotes/origin/HEAD')
+          const defBranch = headR.ok ? headR.out.replace('refs/remotes/origin/', '').trim() : 'main'
+          // -B creates or resets branch (handles case where git init already made 'main')
+          const checkR = await run(`git checkout -B ${defBranch} origin/${defBranch}`)
+          await run(`git branch --set-upstream-to=origin/${defBranch} ${defBranch}`)
+          // Always strip token regardless of outcome
+          await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+          return checkR.ok ? { ok: true, out: `Geklont auf ${defBranch}` } : checkR
+        } else {
+          const cloneR = await run(`git clone ${JSON.stringify(remote)} ${JSON.stringify(folderName)}`, parentDir)
+          if (cloneR.ok && cleanUrl !== remote) await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+          return cloneR
+        }
+      })()
     }
     if (action === 'discard-file' && message) {
-      const statusOut = await run(`git status --porcelain -- ${JSON.stringify(message)}`)
-      const flag = statusOut.trim().slice(0, 2)
+      const statusResult = await run(`git status --porcelain -- ${JSON.stringify(message)}`)
+      const flag = statusResult.out.slice(0, 2)
       if (flag === '??' || flag.startsWith('A')) {
         const fullPath = path.resolve(resolved, message)
         try { fs.unlinkSync(fullPath); result = { ok: true, out: '' } } catch (e) { result = { ok: false, out: String(e) } }
       } else {
-        const out = await run(`git checkout HEAD -- ${JSON.stringify(message)}`)
-        result = { ok: !out.includes('error:'), out }
+        const r = await run(`git checkout HEAD -- ${JSON.stringify(message)}`)
+        result = { ok: !r.out.includes('error:'), out: r.out }
       }
     }
     res.json(result)
@@ -243,6 +304,61 @@ router.get('/api/git-remote', (req, res) => {
   exec('git remote get-url origin', { cwd }, (err, out) => {
     if (err) res.json({ ok: false, url: null }); else res.json({ ok: true, url: out.trim() })
   })
+})
+
+// ── GitHub API — list repos ───────────────────────────────────────────────────
+router.get('/api/github/repos', async (req, res) => {
+  const { token } = req.query as { token?: string }
+  if (!token) return res.json({ ok: false, repos: [] })
+  try {
+    const headers: Record<string, string> = { Authorization: `token ${token}`, Accept: 'application/vnd.github+json' }
+    const [userRepos, orgs]: [unknown, { login: string }[]] = await Promise.all([
+      fetch('https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all', { headers }).then(r => r.json()),
+      fetch('https://api.github.com/user/orgs', { headers }).then(r => r.json()),
+    ])
+    const orgRepoArrays = await Promise.all(
+      orgs.map((o) =>
+        fetch(`https://api.github.com/orgs/${o.login}/repos?per_page=100&sort=updated`, { headers }).then(r => r.json())
+      )
+    )
+    const all = [...(userRepos as unknown[]), ...(orgRepoArrays as unknown[][]).flat()]
+      .filter((r: unknown) => r && typeof r === 'object' && 'clone_url' in r)
+      .map((r: unknown) => {
+        const repo = r as Record<string, unknown>
+        const owner = repo.owner as Record<string, unknown> | undefined
+        return {
+          fullName:    repo.full_name as string,
+          cloneUrl:    repo.clone_url as string,
+          private:     repo.private as boolean,
+          description: (repo.description as string) ?? '',
+          org:         owner?.type === 'Organization' ? owner.login as string : null,
+        }
+      })
+    res.json({ ok: true, repos: all })
+  } catch (e) {
+    res.json({ ok: false, repos: [], error: String(e) })
+  }
+})
+
+// ── GitHub API — create repo ──────────────────────────────────────────────────
+router.post('/api/github/create-repo', async (req, res) => {
+  const { token, name, private: isPrivate, org } = JSON.parse(await readBody(req)) as { token: string; name: string; private: boolean; org?: string }
+  if (!token || !name) return res.json({ ok: false, error: 'token and name required' })
+  try {
+    const url = org
+      ? `https://api.github.com/orgs/${org}/repos`
+      : 'https://api.github.com/user/repos'
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, private: isPrivate ?? true, auto_init: false }),
+    })
+    const data = await r.json() as Record<string, unknown>
+    if (!r.ok) return res.json({ ok: false, error: data.message as string })
+    res.json({ ok: true, cloneUrl: data.clone_url as string, htmlUrl: data.html_url as string })
+  } catch (e) {
+    res.json({ ok: false, error: String(e) })
+  }
 })
 
 // ── GET /api/scan-project ──────────────────────────────────────────────────────

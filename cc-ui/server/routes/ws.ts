@@ -192,8 +192,11 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         if (ap) {
           try { ap.kill() } catch {}
           activePtys.delete(sessionId)
+          // onExit handler will send the exit message — don't send twice
+        } else {
+          // No active PTY → send exit immediately so client knows it's done
+          ws.send(JSON.stringify({ type: 'exit', exitCode: -1 }))
         }
-        ws.send(JSON.stringify({ type: 'exit', exitCode: -1 }))
         return
       }
 

@@ -1872,7 +1872,6 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, padding: '10px 14px', alignItems: 'center' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                  <ISpark style={{ color: 'var(--accent)', width: 13, height: 13, flexShrink: 0 }} />
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>OpenRouter API-Key</span>
                   {openrouterKey && !editingOrKey && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

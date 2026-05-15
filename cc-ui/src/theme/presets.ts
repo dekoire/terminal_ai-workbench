@@ -64,7 +64,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
 
   {
     id: 'midnight', name: 'Midnight', dark: true,
-    accent: '#9d6fff', accentFg: '#ffffff',
+    accent: '#9d6fff', accentFg: '#0a0a14',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
     line: '#333333', lineStrong: '#444444',
     fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',

@@ -1333,9 +1333,11 @@ function EventRow({ ev, activeModel, inputTokens }: { ev: AgentEvent; activeMode
     case 'error':
       if (ev.message === '__cancelled__') {
         return (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 8, padding: '4px 10px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 99, color: 'var(--fg-3)', fontSize: 11, ...MONO }}>
-            <span style={{ fontSize: 10 }}>◼</span>
-            <span>Anfrage manuell abgebrochen</span>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 99, color: 'var(--fg-3)', fontSize: 11, ...MONO }}>
+              <span style={{ fontSize: 10 }}>◼</span>
+              <span>Anfrage manuell abgebrochen</span>
+            </div>
           </div>
         )
       }
@@ -1653,7 +1655,16 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
         (ev as Extract<AgentEvent, { type: 'result' }>)._msgId = msgId(sessionId, runIdRef.current, 'assistant')
       }
     }
-    setEvents(prev => [...prev, ...streamEvs])
+    setEvents(prev => {
+      // Deduplicate consecutive __cancelled__ events (server can send exit twice)
+      const filtered = streamEvs.filter((ev, idx) => {
+        const isCancelled = ev.type === 'error' && (ev as Extract<AgentEvent, { type: 'error' }>).message === '__cancelled__'
+        if (!isCancelled) return true
+        const prevLast = idx === 0 ? prev[prev.length - 1] : streamEvs[idx - 1]
+        return !(prevLast?.type === 'error' && (prevLast as Extract<AgentEvent, { type: 'error' }>).message === '__cancelled__')
+      })
+      return [...prev, ...filtered]
+    })
     for (const ev of streamEvs) {
       if (ev.type === 'run_start') { setRunning(true); setRunStartTs(Date.now()) }
       if (ev.type === 'run_end' || ev.type === 'result' || ev.type === 'error') {
@@ -2111,7 +2122,9 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
     const el = scrollRef.current
     if (!el) return
     const onScroll = () => {
-      if (el.scrollTop < 100 && !loadingOlderRef.current && hasMoreOlderRef.current) {
+      // Only trigger auto-load when truly at the very top (scrollTop === 0)
+      // so the user has to scroll all the way up first
+      if (el.scrollTop === 0 && !loadingOlderRef.current && hasMoreOlderRef.current) {
         void loadMoreOlder()
       }
       setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 120)
@@ -2205,6 +2218,15 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
           0%, 100% { transform: translateY(0px); opacity: 0.8; }
           50%       { transform: translateY(6px); opacity: 1; }
         }
+        @keyframes load-dot {
+          0%, 80%, 100% { opacity: 0.2; transform: scale(0.75); }
+          40%            { opacity: 1;   transform: scale(1); }
+        }
+        @keyframes load-bar {
+          0%   { transform: scaleX(0);    opacity: 0.6; }
+          50%  { transform: scaleX(0.65); opacity: 1; }
+          100% { transform: scaleX(1);    opacity: 0.6; }
+        }
       `}</style>
       {/* Session ID copy badge — top-right corner */}
       <div
@@ -2243,16 +2265,30 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
 
         {/* ── Load-more sentinel (scroll-up pagination) ── */}
         {hasMoreOlder && (
-          <div style={{ textAlign: 'center', paddingBottom: 12 }}>
-            {loadingOlder
-              ? <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>Lädt…</span>
-              : <button
-                  onClick={loadMoreOlder}
-                  style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)', padding: '2px 8px' }}
-                >
-                  ↑ Ältere laden
-                </button>
-            }
+          <div style={{ textAlign: 'center', padding: '15px 0 12px' }}>
+            {loadingOlder ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                {[0, 1, 2].map(i => (
+                  <span
+                    key={i}
+                    style={{
+                      display: 'inline-block', width: 5, height: 5,
+                      borderRadius: '50%', background: 'var(--fg-3)',
+                      animation: `load-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <button
+                onClick={loadMoreOlder}
+                style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)', padding: '2px 8px', opacity: 0.7, transition: 'opacity 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+              >
+                ↑ Alte Nachrichten laden
+              </button>
+            )}
           </div>
         )}
 

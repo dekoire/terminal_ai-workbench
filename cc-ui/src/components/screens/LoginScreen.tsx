@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAppStore, setActiveStorageUser } from '../../store/useAppStore'
-import { IShield, IGit, ITerminal, ISpark, IChev, ISpinner } from '../primitives/Icons'
+import { IShield, IGit, ITerminal, ISpark, IChev, ISpinner, IEye, IEyeOff } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
 
 export function LoginScreen() {
@@ -9,6 +9,7 @@ export function LoginScreen() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [showLogin, setShowLogin] = useState(true)
+  const [showPw, setShowPw]     = useState(false)
 
   const setScreen      = useAppStore(s => s.setScreen)
   const setCurrentUser = useAppStore(s => s.setCurrentUser)
@@ -135,7 +136,24 @@ export function LoginScreen() {
               </div>
               <div>
                 <label style={fieldLabel}>Passwort</label>
-                <input style={fieldInput} type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={handleKeyDown} />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...fieldInput, paddingRight: 36 }}
+                    type={showPw ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(v => !v)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', alignItems: 'center' }}
+                    tabIndex={-1}
+                  >
+                    {showPw ? <IEyeOff style={{ width: 15, height: 15 }} /> : <IEye style={{ width: 15, height: 15 }} />}
+                  </button>
+                </div>
               </div>
               {error && (
                 <div style={{ fontSize: 11.5, color: 'var(--err)', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, padding: '8px 10px' }}>

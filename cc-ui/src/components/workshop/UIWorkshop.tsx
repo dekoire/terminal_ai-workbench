@@ -61,7 +61,7 @@ export function UIWorkshop() {
       {(() => {
         const hdr = { bg: '#ffffff', border: '#e0e0e0', color: 'var(--bg-1)' }
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: hdr.bg, borderBottom: `1px solid ${hdr.border}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: hdr.bg, flexShrink: 0 }}>
             <div style={{ flex: 1, textAlign: 'left', fontSize: 13, fontWeight: 600, color: hdr.color, fontFamily: 'var(--font-ui)', letterSpacing: 0.3 }}>
               Live Browser / Selektor
             </div>

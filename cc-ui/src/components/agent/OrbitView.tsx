@@ -656,11 +656,18 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
   // Ensure there's always an active chat for this session.
-  // Each session gets its own new chat on first mount — never reuse another session's chat.
   const chatId: string = activeOrbitChatId[sessionId] ?? ''
+  const chatCreatingRef = useRef(false)
   useEffect(() => {
     if (!activeProjectId) return
-    if (!chatId) {
+    if (chatId) { chatCreatingRef.current = false; return }
+    if (chatCreatingRef.current) return
+    chatCreatingRef.current = true
+    // Reuse the most recent existing chat for this project instead of always creating a new empty one
+    const existing = orbitChats[activeProjectId] ?? []
+    if (existing.length > 0) {
+      setActiveOrbitChat(sessionId, existing[existing.length - 1])
+    } else {
       createOrbitChat(activeProjectId, sessionId)
     }
   }, [sessionId, chatId, activeProjectId])

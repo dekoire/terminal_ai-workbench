@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { DocTemplate } from '../../store/useAppStore'
 import { IClose, IFolderOpen, IDrive, ISpark } from '../primitives/Icons'
+import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { aiDetectStartCmd } from '../../utils/aiDetect'
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ export function NewProjectModal() {
   const {
     setNewProjectOpen, addProject, setScreen, setActiveProject, setNewSessionOpen,
     openrouterKey, docTemplates, updateDocTemplate, lastProjectPath, setLastProjectPath,
-    tokens, addToken,
+    tokens, addToken, setProjectGithubToken, projects,
   } = useAppStore()
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -97,7 +98,9 @@ export function NewProjectModal() {
   // selectedAiId removed — doc refresh now uses OpenRouter directly
 
   // Step 3
-  const [repoUrl, setRepoUrl]       = useState('')
+  const [repoUrl, setRepoUrl]             = useState('')
+  const [showRepoPicker, setShowRepoPicker] = useState(false)
+  const [pickedTokenId, setPickedTokenId]   = useState<string | undefined>(undefined)
   const [hasGit, setHasGit]         = useState(false)
   const [selectedTokenId, setSelectedTokenId] = useState('')
   const [newTokenLabel, setNewTokenLabel] = useState('')
@@ -208,6 +211,7 @@ export function NewProjectModal() {
       const id = newProjectId()
       const port = await findFreePort()
       addProject({ id, name: name.trim(), path: path.trim(), branch: '', sessions: [], appPort: port, appStartCmd: startCmd.trim() || undefined })
+      if (pickedTokenId) setProjectGithubToken(id, pickedTokenId)
       setLastProjectPath(path.trim())
       setActiveProject(id)
       await applyDocTemplates(id, path.trim(), port, startCmd.trim())
@@ -221,6 +225,7 @@ export function NewProjectModal() {
   const docOnly = docTemplates.filter(t => (t.category ?? 'doc') === 'doc')
 
   return (
+    <>
     <Backdrop onClick={() => setNewProjectOpen(false)}>
       <div
         onClick={e => e.stopPropagation()}
@@ -402,9 +407,20 @@ export function NewProjectModal() {
                 <>
                   {/* Repo URL */}
                   <div>
-                    <label style={fl}>Repository-URL <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--fg-3)' }}>(optional)</span></label>
+                    {tokens.some(t => t.host === 'github.com') && (
+                      <button
+                        onClick={() => setShowRepoPicker(true)}
+                        style={{ ...btnPrimary, width: '100%', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                      >
+                        Aus GitHub wählen →
+                      </button>
+                    )}
+                    <label style={fl}>
+                      {tokens.some(t => t.host === 'github.com') ? 'Oder URL manuell eingeben' : 'Repository-URL'}{' '}
+                      <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--fg-3)' }}>(optional)</span>
+                    </label>
                     <input
-                      autoFocus
+                      autoFocus={!tokens.some(t => t.host === 'github.com')}
                       style={fi}
                       value={repoUrl}
                       onChange={e => setRepoUrl(e.target.value)}
@@ -556,6 +572,20 @@ export function NewProjectModal() {
         </div>
       </div>
     </Backdrop>
+
+    {showRepoPicker && (
+      <GitHubRepoPicker
+        tokens={tokens}
+        preselectedTokenId={pickedTokenId ?? tokens.find(t => t.host === 'github.com')?.id}
+        onSelect={(url, tokenId) => {
+          setRepoUrl(url)
+          setPickedTokenId(tokenId)
+          setShowRepoPicker(false)
+        }}
+        onCancel={() => setShowRepoPicker(false)}
+      />
+    )}
+    </>
   )
 }
 

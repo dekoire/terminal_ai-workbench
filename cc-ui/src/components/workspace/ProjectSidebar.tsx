@@ -222,7 +222,8 @@ export function ProjectSidebar() {
 
   return (
     <aside style={{
-      width: '100%', flexShrink: 0, background: 'var(--bg-1)',
+      width: '100%', flexShrink: 0, background: 'var(--sidebar-bg)',
+      color: 'var(--sidebar-fg)',
       display: 'flex', flexDirection: 'column',
     }}>
       <style>{`

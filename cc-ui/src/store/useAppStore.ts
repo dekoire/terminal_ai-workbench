@@ -112,6 +112,7 @@ export interface Project {
   sessions: Session[]
   appPort?: number
   appStartCmd?: string
+  githubTokenId?: string   // ID eines RepoToken aus tokens[] — per-Projekt-Token
 }
 
 export interface Alias {
@@ -757,10 +758,13 @@ export interface AppState {
   registerOrbitChats: (projectId: string, chatIds: string[]) => void
   removeOrbitChat: (projectId: string, chatId: string) => void
   setProjectBrain: (projectId: string, brain: ProjectBrainEntry) => void
+  setProjectGithubToken: (projectId: string, tokenId: string | undefined) => void
   setOrbitChatLoaded: (chatId: string) => void
   setDataLoaded: (v: boolean) => void
   setSetupWizardDone: (v: boolean) => void
   setPreferredOrModels: (ids: string[]) => void
+  isOnline: boolean
+  setIsOnline: (v: boolean) => void
 }
 
 const DEMO_TURNS: TurnMessage[] = [
@@ -973,6 +977,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setupWizardDone: false,
   preferredOrModels: [],
   deletedProjectIds: [],
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
 
   currentUser: null,
   adminEmails: ['admin@codera.com'],
@@ -1304,6 +1309,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     return { orbitChats: { ...s.orbitChats, [projectId]: chats }, orbitMessages: msgs, orbitMeta: meta, orbitChatsLoaded: loaded }
   }),
   setProjectBrain: (projectId, brain) => set(s => ({ projectBrains: { ...s.projectBrains, [projectId]: brain } })),
+  setProjectGithubToken: (projectId, tokenId) => set(s => ({
+    projects: s.projects.map(p => p.id === projectId ? { ...p, githubTokenId: tokenId } : p)
+  })),
   setOrbitChatLoaded: (chatId) => set(s => ({ orbitChatsLoaded: { ...s.orbitChatsLoaded, [chatId]: true } })),
   setDataLoaded: (dataLoaded) => set({ dataLoaded }),
 }), {
