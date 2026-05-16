@@ -866,6 +866,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     orbitCtxBefore, orbitCtxAfter,
     supabaseUrl, supabaseAnonKey,
     pendingWorkshopTransfer, clearWorkshopTransfer,
+    addToast: addToastInput,
   } = useAppStore()
   const [attachments, setAttachments]   = useState<string[]>([])
   const [picking, setPicking]           = useState(false)
@@ -875,9 +876,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
   const chunksRef = useRef<Blob[]>([])
   const [editTemplate, setEditTemplate] = useState<Template | null>(null)
   const [tplMenu, setTplMenu]           = useState<{ x: number; y: number; tpl: Template } | null>(null)
-  const [aiRefining, setAiRefining]     = useState(false)
-  const [aiAnalysing, setAiAnalysing]   = useState(false)
-  const [aiError, setAiError]           = useState('')
+  const [aiRefining, setAiRefining]   = useState(false)
+  const [aiAnalysing, setAiAnalysing] = useState(false)
   const [pathInput, setPathInput]       = useState<'file' | 'image' | null>(null)
   const [pathInputVal, setPathInputVal] = useState('')
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -1220,9 +1220,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
   const refineWithAI = async () => {
     if (!inputValue.trim()) return
     const orP = getOrModel('terminal')
-    if (!orP) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
+    if (!orP) { addToastInput({ type: 'error', title: 'OpenRouter API-Key fehlt', body: 'Bitte unter Einstellungen → API Credentials konfigurieren.' }); return }
     setAiRefining(true)
-    setAiError('')
     const textRefinePrompt = docTemplates.find(t => t.id === 'ai-prompt-text-refine')?.content
     try {
       const r = await fetch('/api/ai-refine', {
@@ -1232,17 +1231,16 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       })
       const d = await r.json() as { ok: boolean; text?: string; error?: string }
       if (d.ok && d.text) setInputValue(d.text)
-      else setAiError(d.error ?? 'Fehler beim Überarbeiten')
-    } catch (e) { setAiError(String(e)) }
+      else addToastInput({ type: 'error', title: 'Fehler beim Überarbeiten', body: d.error })
+    } catch (e) { addToastInput({ type: 'error', title: 'Fehler beim Überarbeiten', body: String(e) }) }
     setAiRefining(false)
   }
 
   const analyseWithAI = async () => {
     if (!inputValue.trim()) return
     const orP = getOrModel('terminal')
-    if (!orP) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
+    if (!orP) { addToastInput({ type: 'error', title: 'OpenRouter API-Key fehlt', body: 'Bitte unter Einstellungen → API Credentials konfigurieren.' }); return }
     setAiAnalysing(true)
-    setAiError('')
     const analysePrompt = docTemplates.find(t => t.id === 'prompt-support')?.content
     try {
       let userMsg = inputValue
@@ -1263,8 +1261,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       })
       const d = await r.json() as { ok: boolean; text?: string; error?: string }
       if (d.ok && d.text) setInputValue(d.text)
-      else setAiError(d.error ?? 'Fehler bei der Analyse')
-    } catch (e) { setAiError(String(e)) }
+      else addToastInput({ type: 'error', title: 'Fehler bei der Analyse', body: d.error })
+    } catch (e) { addToastInput({ type: 'error', title: 'Fehler bei der Analyse', body: String(e) }) }
     setAiAnalysing(false)
   }
 
@@ -1281,7 +1279,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       try {
         const check = await fetch('/api/config').then(r => r.json() as Promise<{ hasGroqKey?: boolean }>)
         if (!check.hasGroqKey) {
-          setInputValue('⚠️ Kein Groq-API-Key konfiguriert. Bitte unter Einstellungen → Stimme eintragen.')
+          addToastInput({ type: 'error', title: 'Kein Groq-API-Key', body: 'Bitte unter Einstellungen → Stimme konfigurieren.' })
           return
         }
       } catch { /* server might not have /api/config — proceed anyway */ }
@@ -1317,13 +1315,13 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
               const current = useAppStore.getState().inputValue
               setInputValue(current ? current + ' ' + d.text : d.text!)
             } else if (!d.ok) {
-              const msg = d.error === 'no api key'
-                ? '⚠️ Kein Groq-API-Key. Bitte unter Einstellungen → Stimme eintragen.'
-                : `⚠️ Transkription fehlgeschlagen: ${d.error ?? 'Unbekannter Fehler'}`
-              setInputValue(msg)
+              const body = d.error === 'no api key'
+                ? 'Bitte unter Einstellungen → Stimme konfigurieren.'
+                : (d.error ?? 'Unbekannter Fehler')
+              addToastInput({ type: 'error', title: 'Transkription fehlgeschlagen', body })
             }
           } catch (err) {
-            try { setInputValue(`⚠️ Mikrofon-Fehler: ${String(err)}`) } catch { /* ignore */ }
+            try { addToastInput({ type: 'error', title: 'Mikrofon-Fehler', body: String(err) }) } catch { /* ignore */ }
           } finally {
             try { setTranscribing(false) } catch { /* ignore */ }
           }
@@ -1335,7 +1333,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 100)
     } catch (err) {
       setRecording(false)
-      setInputValue(`⚠️ Mikrofon nicht verfügbar: ${String(err)}`)
+      addToastInput({ type: 'error', title: 'Mikrofon nicht verfügbar', body: String(err) })
     }
     return
 
@@ -1589,7 +1587,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
           placeholder={isTerminal ? 'Befehl eingeben oder Text tippen…' : isOrbit ? 'Schreib etwas an Orbit… · ⏎ Senden · ⇧⏎ Neue Zeile' : 'Nachricht an den Agenten… · ⏎ Senden · ⇧⏎ Neue Zeile'}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'vertical', width: '100%', minHeight: 68, maxHeight: 600 }}
+          style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--fg-0)', background: 'transparent', border: 'none', outline: 'none', resize: 'vertical', width: '100%', minHeight: 68, maxHeight: 600 }}
         />
 
 
@@ -1748,12 +1746,6 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
             )
           })()}
         </div>
-        {aiError && (
-          <div style={{ padding: '4px 10px 6px', fontSize: 10.5, color: 'var(--err)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span>✗</span> {aiError}
-            <span onClick={() => setAiError('')} style={{ marginLeft: 'auto', cursor: 'pointer', opacity: 0.6 }}>×</span>
-          </div>
-        )}
         </div>{/* end inner content */}
       </div>{/* end animated border wrapper */}
 

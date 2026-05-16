@@ -791,6 +791,7 @@ export interface AppState {
   addProject: (p: Project) => void
   updateProject: (id: string, patch: Partial<Omit<Project, 'id'>>) => void
   removeProject: (id: string) => void
+  reorderProjects: (ids: string[]) => void
   addSession: (projectId: string, s: Session) => void
   removeSession: (projectId: string, sessionId: string) => void
   clearAllSessions: () => void
@@ -1118,6 +1119,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     claudeProviders:        [],
     quickLinks:             [],
     sidebarSections:        DEFAULT_SIDEBAR_SECTIONS,
+    utilitySections:        DEFAULT_UTILITY_SECTIONS,
+    layoutSections:         DEFAULT_LAYOUT_SECTIONS,
     deletedProjectIds:      [],
     // Credentials — must never bleed to another user
     openrouterKey:          '',
@@ -1197,6 +1200,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
 
   addProject: (p) => set((s) => ({ projects: [...s.projects, p] })),
   updateProject: (id, patch) => set((s) => ({ projects: s.projects.map(p => p.id === id ? { ...p, ...patch } : p) })),
+  reorderProjects: (ids) => set((s) => ({ projects: ids.map(id => s.projects.find(p => p.id === id)!).filter(Boolean) })),
   removeProject: (id) => set((s) => {
     const remaining = s.projects.filter((p) => p.id !== id)
     const project   = s.projects.find(p => p.id === id)

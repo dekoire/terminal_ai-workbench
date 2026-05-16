@@ -144,9 +144,9 @@ export function GettingStartedModal({ onClose }: Props) {
         />
         {/* Overlay gradient + logo/slogan */}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: 24, right: 24, display: 'flex', alignItems: 'center', gap: 9 }}>
-          <ISpinner size={22} spin={false} style={{ color: '#ffffff', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.5))' }} />
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1, textShadow: '0 1px 6px rgba(0,0,0,0.5)' }}>Codera</span>
+        <div style={{ position: 'absolute', bottom: 24, right: 24, display: 'flex', alignItems: 'center', gap: 11 }}>
+          <ISpinner size={31} spin={false} style={{ color: '#ffffff' }} />
+          <span style={{ fontSize: 22, fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1 }}>Codera</span>
         </div>
       </div>
     </div>

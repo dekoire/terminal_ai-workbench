@@ -7,7 +7,7 @@ import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages, loadAllContextSummaries, type AgentContextSummary, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
-import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGit, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain, ITag } from '../primitives/Icons'
+import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGit, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain, ITag, IDrag } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
@@ -950,11 +950,10 @@ export function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: str
   const [open,      setOpen]      = useState(true)
   const [note,      setNote]      = useState('')
   const [busy,      setBusy]      = useState<'save' | 'pull' | null>(null)
-  const [toast,     setToast]     = useState<{ msg: string; ok: boolean } | null>(null)
   const [diffOpen,  setDiffOpen]  = useState(false)
   const [diffFile,  setDiffFile]  = useState('')
   const [setupOpen, setSetupOpen] = useState(false)
-  const { githubToken: _legacyGhToken, tokens: repoTokens, projects, theme: compactTheme, setProjectGithubToken, activeProjectId } = useAppStore()
+  const { githubToken: _legacyGhToken, tokens: repoTokens, projects, theme: compactTheme, setProjectGithubToken, activeProjectId, addToast: addToastGit } = useAppStore()
   const projectName = projects.find(p => p.path === projectPath)?.name ?? ''
   const activeProject = projects.find(p => p.path === projectPath)
 
@@ -999,8 +998,6 @@ export function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: str
       body: JSON.stringify({ action, path: projectPath, token: resolvedToken, ...extra }),
     }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
 
-  const showToast = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000) }
-
   const handleSave = useCallback(async () => {
     if (!data || busy) return
     if (status !== 'dirty' && !data.remote) return
@@ -1009,15 +1006,16 @@ export function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: str
       if (status === 'dirty') {
         const autoMsg = data.files.length > 0 ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''}` : 'Update'
         const r1 = await gitAction('stage')
-        if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
+        if (!r1.ok) { addToastGit({ type: 'error', title: 'Stage fehlgeschlagen', body: humanGitError(r1.out) }); return }
         const r2 = await gitAction('commit', { message: note.trim() || autoMsg })
-        if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+        if (!r2.ok && !r2.out.includes('nothing to commit')) { addToastGit({ type: 'error', title: 'Commit fehlgeschlagen', body: humanGitError(r2.out) }); return }
       }
       if (data.remote) {
         const r3 = await gitAction('push')
-        if (!r3.ok) { showToast(humanGitError(r3.out), false); return }
+        if (!r3.ok) { addToastGit({ type: 'error', title: 'Push fehlgeschlagen', body: humanGitError(r3.out) }); return }
       }
-      setNote(''); showToast('Gespeichert ✓', true)
+      setNote('')
+      addToastGit({ type: 'success', title: 'Gespeichert & hochgeladen' })
       _gitInvalidate(projectPath); load()
     } finally { setBusy(null) }
   }, [data, status, busy, note, projectPath])
@@ -1028,7 +1026,9 @@ export function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: str
     setBusy('pull')
     try {
       const r = await gitAction('pull')
-      showToast(r.ok ? 'Updates geholt ✓' : humanGitError(r.out), r.ok)
+      addToastGit(r.ok
+        ? { type: 'success', title: 'Updates geholt' }
+        : { type: 'error', title: 'Pull fehlgeschlagen', body: humanGitError(r.out) })
       if (r.ok) { _gitInvalidate(projectPath); load() }
     } finally { setBusy(null) }
   }
@@ -1122,12 +1122,6 @@ export function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: str
             />
           )}
 
-          {/* Toast */}
-          {toast && (
-            <div style={{ padding: '6px 12px', background: toast.ok ? 'rgba(125,201,125,0.12)' : 'rgba(226,75,74,0.12)', color: toast.ok ? 'var(--ok)' : 'var(--err)', fontSize: 11, borderBottom: `0.5px solid ${toast.ok ? 'rgba(125,201,125,0.2)' : 'rgba(226,75,74,0.2)'}` }}>
-              {toast.msg}
-            </div>
-          )}
 
           {/* Loading */}
           {status === 'loading' && (
@@ -1442,7 +1436,7 @@ function GitSetupModal({
 }
 
 function GitHubTab({ projectPath, projectName }: { projectPath: string; projectName: string }) {
-  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken: _legacyGhToken2, setGithubToken, tokens: repoTokens2, addToken: addRepoToken, updateToken: updateRepoToken, theme, projects, activeProjectId, setProjectGithubToken } = useAppStore()
+  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken: _legacyGhToken2, setGithubToken, tokens: repoTokens2, addToken: addRepoToken, updateToken: updateRepoToken, theme, projects, activeProjectId, setProjectGithubToken, addToast: addToastGitTab } = useAppStore()
   const githubToken = repoTokens2.find(t => t.host === 'github.com')?.token || _legacyGhToken2
   const activeProject = projects.find(p => p.path === projectPath)
   const ghTokens = repoTokens2.filter(t => t.host === 'github.com')
@@ -1451,7 +1445,6 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
   const [status,   setStatus]   = useState<GhStatus>('loading')
   const [note,     setNote]     = useState('')
   const [busy,     setBusy]     = useState<'save' | 'pull' | null>(null)
-  const [toast,    setToast]    = useState<{ msg: string; ok: boolean } | null>(null)
   const [sections, setSections] = useState({ versions: false, history: false, settings: false })
   const [showAllFiles,  setShowAllFiles]  = useState(false)
   const [editingToken,  setEditingToken]  = useState(false)
@@ -1465,17 +1458,15 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
   const [reviewType,     setReviewType]     = useState<ReviewType>('general')
   const [reviewBusy,     setReviewBusy]     = useState(false)
   const [reviewFindings, setReviewFindings] = useState<ReviewFinding[] | null>(null)
-  const [reviewError,    setReviewError]    = useState<string | null>(null)
 
   const runReview = useCallback(async () => {
     if (!reviewFile || !openrouterKey) return
     setReviewBusy(true)
     setReviewFindings(null)
-    setReviewError(null)
     try {
       const fileRes = await fetch(`/api/file-content?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(reviewFile)}`)
       const fileData = await fileRes.json() as { ok: boolean; content?: string; error?: string }
-      if (!fileData.ok || !fileData.content) { setReviewError('Dateiinhalt konnte nicht gelesen werden.'); return }
+      if (!fileData.ok || !fileData.content) { addToastGitTab({ type: 'error', title: 'Code Review fehlgeschlagen', body: 'Dateiinhalt konnte nicht gelesen werden.' }); return }
 
       const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -1494,24 +1485,19 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
           max_tokens: 2048,
         }),
       })
-      if (resp.status === 401) { setReviewError('OpenRouter API-Key ungültig. Bitte in den Einstellungen prüfen.'); return }
-      if (resp.status === 429) { setReviewError('Zu viele Anfragen — kurz warten und nochmal probieren.'); return }
-      if (!resp.ok) { setReviewError(`Fehler vom Modell (${resp.status}). Versuche ein anderes Modell.`); return }
+      if (resp.status === 401) { addToastGitTab({ type: 'error', title: 'Code Review fehlgeschlagen', body: 'OpenRouter API-Key ungültig. Bitte in den Einstellungen prüfen.' }); return }
+      if (resp.status === 429) { addToastGitTab({ type: 'error', title: 'Code Review fehlgeschlagen', body: 'Zu viele Anfragen — kurz warten und nochmal probieren.' }); return }
+      if (!resp.ok) { addToastGitTab({ type: 'error', title: 'Code Review fehlgeschlagen', body: `Fehler vom Modell (${resp.status}). Versuche ein anderes Modell.` }); return }
 
       const json = await resp.json() as { choices?: { message?: { content?: string } }[] }
       const raw = json.choices?.[0]?.message?.content ?? ''
       const match = raw.match(/\{[\s\S]*\}/)
-      if (!match) { setReviewError('Antwort konnte nicht gelesen werden. Versuche es nochmal.'); return }
+      if (!match) { addToastGitTab({ type: 'error', title: 'Code Review fehlgeschlagen', body: 'Antwort konnte nicht gelesen werden. Versuche es nochmal.' }); return }
       const parsed = JSON.parse(match[0]) as { findings: ReviewFinding[] }
       setReviewFindings(parsed.findings ?? [])
-    } catch { setReviewError('Verbindungsfehler. Ist eine Internetverbindung vorhanden?') }
+    } catch { addToastGitTab({ type: 'error', title: 'Code Review fehlgeschlagen', body: 'Verbindungsfehler. Ist eine Internetverbindung vorhanden?' }) }
     finally { setReviewBusy(false) }
-  }, [reviewFile, reviewType, openrouterKey, codeReviewModel, projectPath])
-
-  const showToast = (msg: string, ok: boolean) => {
-    setToast({ msg, ok })
-    setTimeout(() => setToast(null), 3500)
-  }
+  }, [reviewFile, reviewType, openrouterKey, codeReviewModel, projectPath, addToastGitTab])
 
   const load = useCallback(() => {
     setStatus('loading')
@@ -1559,16 +1545,16 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
           : 'Update'
         const msg = note.trim() || autoMsg
         const r1 = await gitAction('stage')
-        if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
+        if (!r1.ok) { addToastGitTab({ type: 'error', title: 'Stage fehlgeschlagen', body: humanGitError(r1.out) }); return }
         const r2 = await gitAction('commit', { message: msg })
-        if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+        if (!r2.ok && !r2.out.includes('nothing to commit')) { addToastGitTab({ type: 'error', title: 'Commit fehlgeschlagen', body: humanGitError(r2.out) }); return }
       }
       if (data.remote) {
         const r3 = await gitAction('push')
-        if (!r3.ok) { showToast(humanGitError(r3.out), false); return }
+        if (!r3.ok) { addToastGitTab({ type: 'error', title: 'Push fehlgeschlagen', body: humanGitError(r3.out) }); return }
       }
       setNote('')
-      showToast('Gespeichert & hochgeladen ✓', true)
+      addToastGitTab({ type: 'success', title: 'Gespeichert & hochgeladen' })
       _gitInvalidate(projectPath)
       load()
     } finally { setBusy(null) }
@@ -1578,7 +1564,9 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
     setBusy('pull')
     try {
       const r = await gitAction('pull')
-      showToast(r.ok ? 'Updates geholt ✓' : humanGitError(r.out), r.ok)
+      addToastGitTab(r.ok
+        ? { type: 'success', title: 'Updates geholt' }
+        : { type: 'error', title: 'Pull fehlgeschlagen', body: humanGitError(r.out) })
       if (r.ok) { _gitInvalidate(projectPath); load() }
     } finally { setBusy(null) }
   }
@@ -1645,14 +1633,8 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
           onDiscard={handleDiscardFile}
         />
       )}
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingTop: 2, flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingTop: 2 }}>
 
-      {/* Toast */}
-      {toast && (
-        <div style={{ margin: '0 0 10px', padding: '6px 10px', borderRadius: 6, background: toast.ok ? 'rgba(125,201,125,0.12)' : 'rgba(226,75,74,0.12)', border: `0.5px solid ${toast.ok ? 'rgba(125,201,125,0.35)' : 'rgba(226,75,74,0.35)'}`, color: toast.ok ? 'var(--ok)' : 'var(--err)', fontSize: 11, fontFamily: 'var(--font-ui)' }}>
-          {toast.msg}
-        </div>
-      )}
 
       {/* No git repo detected */}
       {data !== null && !data.hasGit && (
@@ -1768,7 +1750,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
       <div style={{ background: 'rgba(var(--accent-rgb,255,138,76),0.07)', border: '0.5px solid rgba(var(--accent-rgb,255,138,76),0.25)', borderRadius: 8, marginBottom: 12, overflow: 'hidden' }}>
         {/* Header row */}
         <div
-          onClick={() => { setReviewOpen(o => !o); setReviewFindings(null); setReviewError(null) }}
+          onClick={() => { setReviewOpen(o => !o); setReviewFindings(null);  }}
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', cursor: 'pointer' }}
         >
           <ISpark style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
@@ -1793,7 +1775,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
                 {/* File picker */}
                 <select
                   value={reviewFile}
-                  onChange={e => { setReviewFile(e.target.value); setReviewFindings(null); setReviewError(null) }}
+                  onChange={e => { setReviewFile(e.target.value); setReviewFindings(null);  }}
                   style={{ width: '100%', background: 'var(--bg-2)', border: 'var(--line-strong)', borderRadius: 5, color: 'var(--fg-0)', fontSize: 11, padding: '5px 7px', fontFamily: 'var(--font-mono)', marginBottom: 8, cursor: 'pointer' }}
                 >
                   <option value="">Datei wählen…</option>
@@ -1803,7 +1785,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
                 {/* Review type tabs */}
                 <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
                   {(['general','security','performance','style'] as ReviewType[]).map(t => (
-                    <button key={t} onClick={() => { setReviewType(t); setReviewFindings(null); setReviewError(null) }} style={{ flex: 1, padding: '4px 0', fontSize: 10, borderRadius: 5, border: 'none', cursor: 'pointer', background: reviewType === t ? 'var(--accent)' : 'var(--bg-3)', color: reviewType === t ? 'var(--accent-fg)' : 'var(--fg-2)', fontWeight: reviewType === t ? 600 : 400, fontFamily: 'var(--font-ui)' }}>
+                    <button key={t} onClick={() => { setReviewType(t); setReviewFindings(null);  }} style={{ flex: 1, padding: '4px 0', fontSize: 10, borderRadius: 5, border: 'none', cursor: 'pointer', background: reviewType === t ? 'var(--accent)' : 'var(--bg-3)', color: reviewType === t ? 'var(--accent-fg)' : 'var(--fg-2)', fontWeight: reviewType === t ? 600 : 400, fontFamily: 'var(--font-ui)' }}>
                       {t === 'general' ? 'Allgemein' : t === 'security' ? 'Sicherheit' : t === 'performance' ? 'Speed' : 'Stil'}
                     </button>
                   ))}
@@ -1817,11 +1799,6 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
                 >
                   {reviewBusy ? <><ISpinner size={12} />Wird analysiert…</> : 'Review starten'}
                 </button>
-
-                {/* Error */}
-                {reviewError && (
-                  <div style={{ fontSize: 11, color: 'var(--err)', padding: '6px 8px', background: 'rgba(226,75,74,0.08)', borderRadius: 5, marginBottom: 6 }}>{reviewError}</div>
-                )}
 
                 {/* Results */}
                 {reviewFindings !== null && (
@@ -2057,7 +2034,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowX: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, overflowX: 'hidden' }}>
 
       {/* Header */}
       <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, borderBottom: '1px solid var(--line)' }}>
@@ -2077,7 +2054,7 @@ function GitTab({ projectPath }: { projectPath: string }) {
         )}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ overflowX: 'hidden', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
         {/* Branches */}
         <div style={card}>
@@ -3006,7 +2983,7 @@ export function CtxLogButton({ projectId }: { projectId: string }) {
 
 function ProjectBrainButton({ projectId }: { projectId: string }) {
   const { projectBrains, setProjectBrain, openrouterKey, orbitCompressModel, brainUpdatePrompt,
-    supabaseUrl, supabaseAnonKey, currentUser, projects } = useAppStore()
+    supabaseUrl, supabaseAnonKey, currentUser, projects, addToast: addToastBrain } = useAppStore()
   const [open, setOpen]           = useState(false)
   const [updating, setUpdating]   = useState(false)
 
@@ -3033,6 +3010,9 @@ function ProjectBrainButton({ projectId }: { projectId: string }) {
         const { saveProjectBrainToSupabase } = await import('../../lib/supabaseSync')
         await saveProjectBrainToSupabase(sb, currentUser.id, updated)
       }
+      addToastBrain({ type: 'success', title: 'Project Brain aktualisiert' })
+    } catch (e) {
+      addToastBrain({ type: 'error', title: 'Brain-Update fehlgeschlagen', body: String(e) })
     } finally {
       setUpdating(false)
     }
@@ -3185,11 +3165,10 @@ function ProjectBrainButton({ projectId }: { projectId: string }) {
 }
 
 function AiSearchTab({ projectId, isOrbitSession }: { projectId: string; isOrbitSession: boolean }) {
-  const { aiFunctionMap, supabaseUrl, supabaseAnonKey, currentUser, setInputValue, docTemplates } = useAppStore()
+  const { aiFunctionMap, supabaseUrl, supabaseAnonKey, currentUser, setInputValue, docTemplates, addToast: addToastSearch } = useAppStore()
   const [query, setQuery]       = useState('')
   const [loading, setLoading]   = useState(false)
   const [result, setResult]     = useState<SearchResult | null>(null)
-  const [error, setError]       = useState('')
   const [msgCount, setMsgCount] = useState(0)
   const taRef    = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -3218,12 +3197,12 @@ function AiSearchTab({ projectId, isOrbitSession }: { projectId: string; isOrbit
   const search = async () => {
     if (!query.trim() || loading) return
     const orP = getOrModel('contextSearch')
-    if (!orP) { setError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
+    if (!orP) { addToastSearch({ type: 'error', title: 'OpenRouter API-Key fehlt', body: 'Bitte unter Einstellungen → API Credentials konfigurieren.' }); return }
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
-    setLoading(true); setError(''); setResult(null)
+    setLoading(true); setResult(null)
     try {
       // 1. Load agent messages from Supabase
       type Msg = { role: string; content: string; ts: number; model?: string; source: 'agent' | 'orbit' }
@@ -3269,10 +3248,10 @@ function AiSearchTab({ projectId, isOrbitSession }: { projectId: string; isOrbit
         signal: ctrl.signal,
       })
       const d = await r.json() as SearchResult & { ok: boolean; error?: string }
-      if (!d.ok) { setError(d.error ?? 'Unbekannter Fehler'); return }
+      if (!d.ok) { addToastSearch({ type: 'error', title: 'Kontext Search fehlgeschlagen', body: d.error ?? 'Unbekannter Fehler' }); return }
       setResult(d)
     } catch (e) {
-      if ((e as { name?: string }).name !== 'AbortError') setError(String(e))
+      if ((e as { name?: string }).name !== 'AbortError') addToastSearch({ type: 'error', title: 'Kontext Search Fehler', body: String(e) })
     } finally {
       setLoading(false)
     }
@@ -3328,12 +3307,6 @@ function AiSearchTab({ projectId, isOrbitSession }: { projectId: string; isOrbit
           }
         </button>
       </div>
-
-      {error && (
-        <div style={{ padding: '7px 10px', background: 'rgba(239,122,122,0.07)', border: '1px solid rgba(239,122,122,0.25)', borderRadius: 6, fontSize: 11, color: 'var(--err)' }}>
-          {error}
-        </div>
-      )}
 
       {loading && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--fg-3)', fontSize: 11, padding: '4px 0' }}>
@@ -3617,10 +3590,10 @@ export function UtilityPanel() {
     return () => window.removeEventListener('cc:open-project-terminal', handler)
   }, [isOrbitSession])
 
-  // Tab order: Session | GitHub | Git Advanced | Dateien | Data | Research [| Terminal]
+  // Tab order: Session | GitHub | Git Pro | Dateien | Data | Research [| Terminal]
   const baseTabs = isOrbitSession
-    ? ['Chat', 'Session', 'GitHub', 'Git Advanced', 'Dateien', 'Data', 'Research']
-    : ['Session', 'GitHub', 'Git Advanced', 'Dateien', 'Data', 'Research']
+    ? ['Chat', 'Session', 'GitHub', 'Git Pro', 'Dateien', 'Data', 'Research']
+    : ['Session', 'GitHub', 'Git Pro', 'Dateien', 'Data', 'Research']
   const tabs = terminalOpen ? [...baseTabs, 'Terminal'] : baseTabs
 
   // Reset tab if it becomes hidden via config
@@ -3637,7 +3610,8 @@ export function UtilityPanel() {
   const noPaddingBase = isOrbitSession ? [0, gitAdvIdx, 4, 5] : [gitAdvIdx, 3, 4]
   const noPadding = terminalOpen ? [...noPaddingBase, terminalTabIdx] : noPaddingBase
   // tabs that use their own internal scroll — outer wrapper must be overflow:hidden
-  const noScrollBase = isOrbitSession ? [0, gitAdvIdx, 4, 5] : [gitAdvIdx, 3, 4]
+  // gitAdvIdx removed: Git Pro should scroll freely like a normal tab
+  const noScrollBase = isOrbitSession ? [0, 4, 5] : [3, 4]
   const noScroll = terminalOpen ? [...noScrollBase, terminalTabIdx] : noScrollBase
 
   return (
@@ -3646,7 +3620,7 @@ export function UtilityPanel() {
         {tabs.map((t, i) => {
           if (t === 'Data' && dataFiles.length === 0) return null
           if (t === 'GitHub'      && tabConfig.githubMode !== 'github')   return null
-          if (t === 'Git Advanced' && tabConfig.githubMode !== 'advanced') return null
+          if (t === 'Git Pro' && tabConfig.githubMode !== 'advanced') return null
           if (t === 'Dateien'     && !tabConfig.showFiles)                 return null
           if (t === 'Research'    && !tabConfig.showResearch)              return null
           const isTermTab = t === 'Terminal'
@@ -3719,7 +3693,7 @@ export function UtilityPanel() {
                 <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, padding: '0 4px 2px' }}>GitHub-Tab</div>
                 {(['github', 'advanced', 'none'] as const).map(mode => {
                   const on = tabConfig.githubMode === mode
-                  const label = mode === 'github' ? 'GitHub' : mode === 'advanced' ? 'Git Advanced' : 'Keines'
+                  const label = mode === 'github' ? 'GitHub' : mode === 'advanced' ? 'Git Pro' : 'Keines'
                   return (
                     <div key={mode} onClick={() => setTabConfig(c => ({ ...c, githubMode: mode }))}
                       style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: on ? 'var(--accent-soft)' : 'var(--bg-2)', border: `0.5px solid ${on ? 'var(--accent-line)' : 'var(--line)'}`, transition: 'all 0.1s' }}>
@@ -3813,7 +3787,7 @@ export function UtilityPanel() {
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
         )}
 
-        {/* ── Tab Git Advanced ── */}
+        {/* ── Tab Git Pro ── */}
         {tab === gitAdvIdx && project && <GitTab projectPath={project.path} />}
         {tab === gitAdvIdx && !project && (
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
@@ -4530,18 +4504,19 @@ function QuickLinksModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-const QL_LIMIT = 5
+const QL_LIMIT = 4
 
 export function QuickLinksWidget() {
   const quickLinks    = useAppStore(s => s.quickLinks)
+  const setQuickLinks = useAppStore(s => s.setQuickLinks)
   const [showModal, setShowModal] = useState(false)
   const [open, setOpen]           = useState(true)
   const [expanded, setExpanded]   = useState(false)
+  const dragQLIdx = useRef<number>(-1)
+  const [dragOverQL, setDragOverQL] = useState<number>(-1)
 
   const openLink = (url: string) => window.open(url, '_blank', 'noopener,noreferrer')
 
-  // ≤ 2 links → icon grid; > 2 links → compact list rows
-  const useGrid = quickLinks.length <= 2
   const visibleLinks = quickLinks.length > QL_LIMIT && !expanded
     ? quickLinks.slice(0, QL_LIMIT)
     : quickLinks
@@ -4578,35 +4553,45 @@ export function QuickLinksWidget() {
               <div style={{ fontSize: 11, color: 'var(--fg-3)', textAlign: 'center', padding: '4px 0' }}>
                 Noch keine Quick Links angelegt
               </div>
-            ) : useGrid ? (
-              /* ── Grid (1–2 links) ── */
-              <div style={{ display: 'flex', gap: 8 }}>
-                {visibleLinks.map(link => (
-                  <button key={link.id} onClick={() => openLink(link.url)} title={link.url}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '7px 6px', borderRadius: 8, background: 'var(--card-bg)', border: 'none', cursor: 'pointer', flex: 1, transition: 'background 0.15s' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-soft)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--card-bg)' }}>
-                    <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=32`}
-                      style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0 }}
-                      onError={e => { (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23888"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12">${encodeURIComponent(link.title.charAt(0).toUpperCase())}</text></svg>` }} />
-                    <span style={{ fontSize: 9.5, color: 'var(--fg-1)', fontWeight: 500, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{link.title}</span>
-                  </button>
-                ))}
-              </div>
             ) : (
-              /* ── Compact list (3+ links) ── */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {visibleLinks.map(link => (
-                  <button key={link.id} onClick={() => openLink(link.url)} title={link.url}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px', borderRadius: 6, background: 'var(--card-bg)', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', transition: 'background 0.12s' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-soft)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--card-bg)' }}>
-                    <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=32`}
-                      style={{ width: 14, height: 14, borderRadius: 3, flexShrink: 0 }}
-                      onError={e => { (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23888"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12">${encodeURIComponent(link.title.charAt(0).toUpperCase())}</text></svg>` }} />
-                    <span style={{ flex: 1, fontSize: 11.5, color: 'var(--fg-0)' }}>{link.title}</span>
-                    <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', maxWidth: 120, flexShrink: 0 }}>{link.url.replace(/^https?:\/\//, '').split('/')[0]}</span>
-                  </button>
+                {visibleLinks.map((link, idx) => (
+                  <div
+                    key={link.id}
+                    draggable
+                    onDragStart={() => { dragQLIdx.current = idx }}
+                    onDragOver={e => { e.preventDefault(); setDragOverQL(idx) }}
+                    onDragLeave={() => setDragOverQL(-1)}
+                    onDrop={e => {
+                      e.preventDefault()
+                      const from = dragQLIdx.current
+                      if (from === idx || from < 0) { setDragOverQL(-1); return }
+                      const reordered = [...quickLinks]
+                      const [moved] = reordered.splice(from, 1)
+                      reordered.splice(idx, 0, moved)
+                      setQuickLinks(reordered)
+                      dragQLIdx.current = -1
+                      setDragOverQL(-1)
+                    }}
+                    onDragEnd={() => { dragQLIdx.current = -1; setDragOverQL(-1) }}
+                    style={{
+                      borderTop: dragOverQL === idx && dragQLIdx.current > idx ? '2px solid var(--accent)' : '2px solid transparent',
+                      borderBottom: dragOverQL === idx && dragQLIdx.current < idx ? '2px solid var(--accent)' : '2px solid transparent',
+                      borderRadius: 6,
+                    }}
+                  >
+                    <button onClick={() => openLink(link.url)} title={link.url}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px', borderRadius: 6, background: 'var(--card-bg)', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', transition: 'background 0.12s' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-soft)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--card-bg)' }}>
+                      <IDrag style={{ width: 10, height: 10, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.5, cursor: 'grab' }} />
+                      <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=32`}
+                        style={{ width: 14, height: 14, borderRadius: 3, flexShrink: 0 }}
+                        onError={e => { (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23888"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12">${encodeURIComponent(link.title.charAt(0).toUpperCase())}</text></svg>` }} />
+                      <span style={{ flex: 1, fontSize: 11.5, color: 'var(--fg-0)' }}>{link.title}</span>
+                      <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', maxWidth: 120, flexShrink: 0 }}>{link.url.replace(/^https?:\/\//, '').split('/')[0]}</span>
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

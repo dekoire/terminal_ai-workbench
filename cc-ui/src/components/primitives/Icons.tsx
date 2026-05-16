@@ -10,7 +10,7 @@ import {
   PanelLeftOpen, PanelLeftClose, PanelRightOpen, PanelRightClose,
   Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown, Users,
   Link2, Cloud, CloudUpload, CloudDownload, Camera, Lock, Bell, Paperclip, ChevronLeft, ChevronUp,
-  History, Eye, EyeOff, AlertCircle,
+  History, Eye, EyeOff, AlertCircle, CheckCircle2, XCircle, Info,
   MousePointer2, MousePointerClick, MessageSquare, MessageSquareCode, MoveUpRight, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal, SlidersHorizontal, Bot, ArrowDownFromLine, ArrowUpFromLine, Tag, Layers, Brain, WifiOff, LayoutPanelLeft,
   type LucideProps,
 } from 'lucide-react'
@@ -111,6 +111,9 @@ export const IHistoryClock    = ic(History)
 export const IEye             = ic(Eye)
 export const IEyeOff          = ic(EyeOff)
 export const IAlertCircle     = ic(AlertCircle)
+export const ICheckCircle2    = ic(CheckCircle2)
+export const IXCircle         = ic(XCircle)
+export const IInfo            = ic(Info)
 export const ICamera          = ic(Camera)
 export const ILock            = ic(Lock)
 export const IBell            = ic(Bell)

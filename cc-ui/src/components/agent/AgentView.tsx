@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { useAppStore } from '../../store/useAppStore'
 import type { SessionKind } from '../../store/useAppStore'
-import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight } from '../primitives/Icons'
+import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight, IRefresh } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
 import { saveAgentMessage, loadLastProjectMessages, loadLatestContextSummary, saveContextSummary, compressAgentHistory, loadAgentMessageById, loadMessagesSince, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { resolveRefs } from '../../lib/resolveRefs'
@@ -1262,11 +1262,12 @@ function EventRow({ ev, activeModel, inputTokens }: { ev: AgentEvent; activeMode
       return null
     case 'session_start':
       return (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20, marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20, marginTop: 4, fontFamily: 'var(--font-ui)', fontSize: 10 }}>
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             width: '90%', padding: '5px 12px', borderRadius: 20,
-            background: 'var(--bg-2)', border: '1px solid var(--line)',
+            background: 'var(--bg-1)', border: '1px solid var(--line)',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
             color: 'var(--fg-3)',
           }}>
             {/* Green traffic-light dot */}
@@ -1517,6 +1518,36 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
   const sessionStartRef    = useRef<HTMLDivElement>(null)
   const sessionScrolledRef = useRef(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+
+  // ── Pull-to-refresh ────────────────────────────────────────────────────────
+  const PULL_THRESHOLD = 105
+  const PULL_MAX       = 190
+  const PULL_RESIST    = 0.18
+  const pullAccum      = useRef(0)
+  const pullTimer      = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [pullDist, setPullDist]       = useState(0)   // drives UI (0 = not pulling)
+  const [pullTriggered, setPullTriggered] = useState(false)
+
+  const onWheelPull = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current
+    if (!el || el.scrollTop > 2 || e.deltaY >= 0) {
+      if (pullAccum.current > 0) { pullAccum.current = 0; setPullDist(0) }
+      return
+    }
+    pullAccum.current = Math.min(pullAccum.current + Math.abs(e.deltaY) * PULL_RESIST, PULL_MAX)
+    setPullDist(pullAccum.current)
+    if (pullTimer.current) clearTimeout(pullTimer.current)
+    pullTimer.current = setTimeout(() => {
+      const dist = pullAccum.current
+      pullAccum.current = 0
+      if (dist >= PULL_THRESHOLD && !loadingOlderRef.current && hasMoreOlderRef.current) {
+        setPullTriggered(true)
+        void loadMoreOlder().finally(() => { setPullTriggered(false); setPullDist(0) })
+      } else {
+        setPullDist(0)
+      }
+    }, 160)
+  }, [loadMoreOlder]) // eslint-disable-line react-hooks/exhaustive-deps
   const chatWidth = containerWidth
 
   // ── Reset all per-session flags whenever the session changes ─────────────────
@@ -2122,18 +2153,11 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
     const el = scrollRef.current
     if (!el) return
     const onScroll = () => {
-      // Only trigger auto-load when truly at the very top (scrollTop === 0)
-      // so the user has to scroll all the way up first
-      if (el.scrollTop === 0 && !loadingOlderRef.current && hasMoreOlderRef.current) {
-        void loadMoreOlder()
-      }
       setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 120)
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  // Re-register only when loadMoreOlder identity changes (i.e. user/project changed)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadMoreOlder])
+  }, [])
 
   // ESC → Laufenden Run unterbrechen (Session bleibt offen)
   useEffect(() => {
@@ -2227,6 +2251,10 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
           50%  { transform: scaleX(0.65); opacity: 1; }
           100% { transform: scaleX(1);    opacity: 0.6; }
         }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
       `}</style>
       {/* Session ID copy badge — top-right corner */}
       <div
@@ -2250,6 +2278,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
 
       <div
         ref={scrollRef}
+        onWheel={onWheelPull}
         style={{
           flex: 1, minHeight: 0, overflowY: 'auto',
           padding: `15px ${chatWidth < 680 ? '16px' : '120px'} ${freshSessionStart ? '100vh' : '32px'} ${chatWidth < 680 ? '16px' : '100px'}`,
@@ -2260,6 +2289,32 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
           scrollbarGutter: 'stable',
         }}
       >
+        {/* ── Pull-to-refresh indicator ── */}
+        <div style={{
+          height: pullTriggered ? 48 : pullDist * 0.55,
+          flexShrink: 0, overflow: 'hidden',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: pullDist === 0 ? 'height 0.45s cubic-bezier(0.34,1.56,0.64,1)' : 'none',
+        }}>
+          {(pullDist > 8 || pullTriggered) && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              opacity: pullTriggered ? 1 : Math.min(pullDist / PULL_THRESHOLD, 1),
+              transition: 'opacity 0.15s',
+            }}>
+              <IRefresh style={{
+                width: 13, height: 13, color: 'var(--fg-3)',
+                transform: pullTriggered ? 'none' : `rotate(${pullDist * 2.8}deg)`,
+                animation: pullTriggered ? 'spin 0.7s linear infinite' : 'none',
+                transition: 'transform 0.05s',
+              }} />
+              <span style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-ui)' }}>
+                {pullTriggered ? 'Lädt…' : pullDist >= PULL_THRESHOLD ? 'Loslassen' : 'Nachrichten laden'}
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* ── Top spacer — pushes content to bottom; collapses when fresh session starts (pill sits at top) ── */}
         <div style={{ flex: onlySessionStart ? 0 : 1, minHeight: onlySessionStart ? 0 : 80 }} />
 
@@ -2282,7 +2337,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
             ) : (
               <button
                 onClick={loadMoreOlder}
-                style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)', padding: '2px 8px', opacity: 0.7, transition: 'opacity 0.15s' }}
+                style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: '2px 8px', opacity: 0.7, transition: 'opacity 0.15s' }}
                 onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                 onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
               >

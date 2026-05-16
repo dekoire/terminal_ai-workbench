@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore, setActiveStorageUser, DEFAULT_SIDEBAR_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
 import type { Project, Session, SidebarSection, SidebarSectionId, LayoutSection, AllSectionId } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
-import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag, IExternalLink, IBrain, ILayers } from '../primitives/Icons'
+import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag, IExternalLink, IBrain, ILayers, IDrag } from '../primitives/Icons'
 import { CtxLogButton, CompactGitCard, QuickLinksWidget, UserStoriesCard, SessionInfoCard } from './UtilityPanel'
 import { AdminPanel } from '../screens/AdminPanel'
 import avatarDefault from '../../assets/avatar.jpg'
@@ -227,10 +227,15 @@ export function ProjectSidebar() {
     currentUser, adminEmails,
     sidebarSections, setSidebarSections,
     layoutSections, setLayoutSections,
+    reorderProjects,
   } = useAppStore()
   const isAdmin = !!currentUser?.email && adminEmails.map(e => e.toLowerCase()).includes(currentUser.email.toLowerCase())
   const [projectsExpanded, setProjectsExpanded] = useState(false)
   const [openProjectId, setOpenProjectId] = useState<string | null>(activeProjectId)
+
+  // ── Project drag-and-drop ────────────────────────────────────────────────────
+  const dragProjectIdx = useRef<number>(-1)
+  const [dragOverProjectIdx, setDragOverProjectIdx] = useState<number>(-1)
   const toggleProject = (id: string) => setOpenProjectId(prev => prev === id ? null : id)
 
   // Left-panel sections from the unified layout system
@@ -257,20 +262,51 @@ export function ProjectSidebar() {
         <CollapsibleSection label="Workspaces" count={projects.length} defaultOpen action={
           <button onClick={() => setNewProjectOpen(true)} style={iconBtn}><IPlus /></button>
         }>
-          {(projectsExpanded ? projects : projects.slice(0, PROJECTS_COLLAPSED)).map((p) => (
-            <ProjectRow
+          {(projectsExpanded ? projects : projects.slice(0, PROJECTS_COLLAPSED)).map((p, idx) => (
+            <div
               key={p.id}
-              project={p}
-              active={p.id === activeProjectId}
-              open={openProjectId === p.id}
-              onToggleOpen={() => toggleProject(p.id)}
-              activeSessionId={activeSessionId}
-              onSelectProject={setActiveProject}
-              onSelectSession={(sid) => { setActiveProject(p.id); setActiveSession(sid) }}
-              onNewSession={() => { setActiveProject(p.id); setNewSessionOpen(true) }}
-              onDeleteProject={() => removeProject(p.id)}
-              onCloseSession={(sid) => removeSession(p.id, sid)}
-            />
+              draggable
+              onDragStart={() => { dragProjectIdx.current = idx }}
+              onDragOver={e => { e.preventDefault(); setDragOverProjectIdx(idx) }}
+              onDragLeave={() => setDragOverProjectIdx(-1)}
+              onDrop={e => {
+                e.preventDefault()
+                const from = dragProjectIdx.current
+                if (from === idx || from < 0) { setDragOverProjectIdx(-1); return }
+                const list = projectsExpanded ? [...projects] : [...projects.slice(0, PROJECTS_COLLAPSED), ...projects.slice(PROJECTS_COLLAPSED)]
+                const reordered = [...list]
+                const [moved] = reordered.splice(from, 1)
+                reordered.splice(idx, 0, moved)
+                reorderProjects(reordered.map(p => p.id))
+                dragProjectIdx.current = -1
+                setDragOverProjectIdx(-1)
+              }}
+              onDragEnd={() => { dragProjectIdx.current = -1; setDragOverProjectIdx(-1) }}
+              onMouseEnter={e => { const h = e.currentTarget.querySelector('.proj-drag-handle') as HTMLElement | null; if (h) h.style.opacity = '1' }}
+              onMouseLeave={e => { const h = e.currentTarget.querySelector('.proj-drag-handle') as HTMLElement | null; if (h) h.style.opacity = '0' }}
+              style={{
+                position: 'relative',
+                borderTop: dragOverProjectIdx === idx && dragProjectIdx.current > idx ? '2px solid var(--accent)' : '2px solid transparent',
+                borderBottom: dragOverProjectIdx === idx && dragProjectIdx.current < idx ? '2px solid var(--accent)' : '2px solid transparent',
+              }}
+            >
+              <div style={{ position: 'absolute', left: 2, top: 18, transform: 'translateY(-50%)', opacity: 0, transition: 'opacity 0.15s', zIndex: 1, cursor: 'grab', color: 'var(--fg-3)', pointerEvents: 'none' }}
+                className="proj-drag-handle">
+                <IDrag style={{ width: 10, height: 10 }} />
+              </div>
+              <ProjectRow
+                project={p}
+                active={p.id === activeProjectId}
+                open={openProjectId === p.id}
+                onToggleOpen={() => toggleProject(p.id)}
+                activeSessionId={activeSessionId}
+                onSelectProject={setActiveProject}
+                onSelectSession={(sid) => { setActiveProject(p.id); setActiveSession(sid) }}
+                onNewSession={() => { setActiveProject(p.id); setNewSessionOpen(true) }}
+                onDeleteProject={() => removeProject(p.id)}
+                onCloseSession={(sid) => removeSession(p.id, sid)}
+              />
+            </div>
           ))}
           {projects.length > PROJECTS_COLLAPSED && (
             <div

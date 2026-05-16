@@ -300,7 +300,9 @@ export function ImageAnnotator({ src, fileName, onDone, onCancel }: Props) {
       }}
     >
       {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%', maxWidth: 900, flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', flexShrink: 0 }}>
+      {/* Left: drawing controls — wraps on narrow viewports */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
 
         {/* Tool buttons */}
         <div style={{ display: 'flex', gap: 4 }}>
@@ -372,25 +374,25 @@ export function ImageAnnotator({ src, fileName, onDone, onCancel }: Props) {
           <ITrash style={{ width: 11, height: 11 }} /> Löschen
         </button>
 
-        <div style={{ flex: 1 }} />
+      </div>{/* end left tools */}
 
-        {/* Hint */}
+      {/* Right: action buttons — always on same row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         {tool === 'text' && (
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-ui)' }}>
-            Klicken → tippen → Enter · Ziehen zum Verschieben · Klick zum Bearbeiten
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap' }}>
+            Klicken → tippen → Enter
           </span>
         )}
-
-        {/* Cancel / Done */}
         <button
           onClick={onCancel}
-          style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: 'var(--font-ui)' }}
+          style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: 12, fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap' }}
         >Abbrechen</button>
         <button
           onClick={handleDone} disabled={!ready}
-          style={{ padding: '6px 16px', borderRadius: 7, border: 'none', cursor: ready ? 'pointer' : 'default', background: ready ? 'var(--accent)' : 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-ui)' }}
+          style={{ padding: '6px 16px', borderRadius: 7, border: 'none', cursor: ready ? 'pointer' : 'default', background: ready ? 'var(--accent)' : 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap' }}
         >Fertig ✓</button>
       </div>
+      </div>{/* end outer toolbar */}
 
       {/* ── Canvas + text overlay area ── */}
       <div

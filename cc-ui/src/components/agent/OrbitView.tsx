@@ -1192,17 +1192,17 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
             }}
             title={chatIdCopied ? 'Kopiert!' : `Chat-ID kopieren: ${chatId}`}
             style={{
-              display: 'flex', alignItems: 'center', gap: 3,
-              padding: '3px 7px', borderRadius: 5,
-              background: 'var(--bg-2)', border: '1px solid var(--line)',
-              fontSize: 9.5, fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace',
-              color: chatIdCopied ? 'var(--ok)' : 'var(--fg-3)',
-              cursor: 'pointer', userSelect: 'none', opacity: 0.8,
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '5px 9px', borderRadius: 6,
+              background: 'var(--bg-2)', border: '1px solid var(--line-strong)',
+              fontSize: 11, fontFamily: 'var(--font-ui)',
+              color: chatIdCopied ? 'var(--ok)' : 'var(--fg-0)',
+              cursor: 'pointer', userSelect: 'none',
               transition: 'color 0.15s',
             }}
           >
-            <ICopy style={{ width: 9, height: 9 }} />
-            <span style={{ opacity: 0.5 }}>#</span>
+            <ICopy style={{ width: 10, height: 10, color: chatIdCopied ? 'var(--ok)' : 'var(--fg-3)' }} />
+            <span style={{ color: 'var(--fg-3)', fontSize: 10 }}>#</span>
             <span>chat:{chatId.slice(-6)}</span>
           </div>
         )}
