@@ -529,31 +529,30 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
       {!isUser && <AiAvatar />}
       {isUser ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, maxWidth: '72%' }}>
-          {/* Image thumbnails — shown ABOVE the text bubble, clickable */}
-          {allImages.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, justifyContent: 'flex-end' }}>
-              {allImages.map((url, i) => (
-                <img
-                  key={i}
-                  src={url}
-                  onClick={() => onImageClick?.(url)}
-                  style={{
-                    width: 80, height: 80, objectFit: 'cover', borderRadius: 6,
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    cursor: onImageClick ? 'zoom-in' : 'default',
-                    transition: 'opacity 0.15s',
-                  }}
-                  alt=""
-                />
-              ))}
-            </div>
-          )}
           <div style={{
             padding: '10px 14px',
             borderRadius: '18px 18px 4px 18px',
             background: 'var(--orbit)', color: '#fff',
             fontWeight: 300, wordBreak: 'break-word', fontFamily: 'var(--font-ui)',
           }}>
+            {/* Image thumbnails inside the bubble */}
+            {allImages.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: cleanText ? 8 : 0 }}>
+                {allImages.map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    onClick={() => onImageClick?.(url)}
+                    style={{
+                      width: 120, height: 120, objectFit: 'cover', borderRadius: 8,
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      cursor: onImageClick ? 'zoom-in' : 'default',
+                    }}
+                    alt=""
+                  />
+                ))}
+              </div>
+            )}
             {/* Show clean text (image markdown stripped), file refs as chips */}
             {cleanText && (() => {
               const parts = parseOrbitText(cleanText)
@@ -587,6 +586,15 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
             {starBtn}
             {msg.id && <IdBadge id={msg.id} />}
           </div>
+        </div>
+      ) : msg.id?.endsWith('-err') ? (
+        <div style={{
+          flex: 1, minWidth: 0,
+          padding: '10px 14px', borderRadius: 8,
+          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+          color: 'var(--err)', fontSize: 12.5, fontFamily: 'var(--font-ui)', lineHeight: 1.6,
+        }}>
+          {msg.content.replace(/^⚠️\s*\*\*Fehler:\*\*\s*/, '')}
         </div>
       ) : (
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -986,6 +994,9 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
 
       if (!resp.ok) {
         const errBody = await resp.text().catch(() => '')
+        if (resp.status === 404 && errBody.includes('image input')) {
+          throw new Error('Das gewählte Modell unterstützt keine Bilder. Bitte wähle ein Vision-Modell wie GPT-4o, Claude 3, Gemini 1.5 oder ähnliches.')
+        }
         throw new Error(`${resp.status} ${resp.statusText}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`)
       }
 

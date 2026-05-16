@@ -658,6 +658,7 @@ export interface AppState {
   showTitleBar: boolean      // show/hide top window chrome bar
   customTerminalColors: Record<string, string>  // key → hex, overrides terminal theme
   customUiColors: Record<string, string>        // css-var name → hex, persisted overrides
+  logColors: { error: string; warn: string; info: string; debug: string }
   tokens: RepoToken[]    // repo/git tokens
   dangerMode: boolean
   activeProjectId: string
@@ -750,6 +751,8 @@ export interface AppState {
   setCustomUiColor: (key: string, value: string) => void
   setCustomUiColors: (map: Record<string, string>) => void
   resetCustomUiColors: () => void
+  setLogColor: (level: 'error' | 'warn' | 'info' | 'debug', color: string) => void
+  resetLogColors: () => void
 
   resetUserData: () => void   // clears all user-scoped state before loading a different user
   setScreen: (s: Screen) => void
@@ -1016,6 +1019,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   showTitleBar: true,
   customTerminalColors: {},
   customUiColors: {},
+  logColors: { error: '#ef4444', warn: '#f59e0b', info: '#8b5cf6', debug: '#6b7280' },
   tokens: [],
   dangerMode: false,
   activeProjectId: '',
@@ -1151,6 +1155,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setCustomUiColor: (key, value) => set(s => ({ customUiColors: { ...s.customUiColors, [key]: value } })),
   setCustomUiColors: (map) => set({ customUiColors: map }),
   resetCustomUiColors: () => set({ customUiColors: {} }),
+  setLogColor: (level, color) => set(s => ({ logColors: { ...s.logColors, [level]: color } })),
+  resetLogColors: () => set({ logColors: { error: '#ef4444', warn: '#f59e0b', info: '#8b5cf6', debug: '#6b7280' } }),
 
   setScreen: (screen) => set(s => ({ screen, prevScreen: s.screen })),
   openWorkshop: () => set(s => ({ screen: 'workshop', prevScreen: s.screen })),

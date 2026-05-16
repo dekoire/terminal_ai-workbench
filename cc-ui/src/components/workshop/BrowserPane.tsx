@@ -37,7 +37,70 @@ interface Props {
   initialUrl?: string
 }
 
-// ── Inject inspect script into iframe ────────────────────────────────────────
+// ── Webview element type (Electron-specific, works cross-origin) ─────────────
+interface WebviewEl extends HTMLElement {
+  src: string
+  getURL(): string
+  reload(): void
+  goBack(): void
+  goForward(): void
+  executeJavaScript(code: string): Promise<unknown>
+}
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        src?: string; allowpopups?: string
+      }
+    }
+  }
+}
+
+// ── Inspect script injected into webview via executeJavaScript ────────────────
+// Communicates back via console.log('__cc_capture:{json}') → caught by console-message event.
+const INSPECT_SCRIPT = `(function(){
+  if(typeof window.__ccCleanup==='function')window.__ccCleanup();
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;pointer-events:none;z-index:2147483646;background:rgba(139,92,246,0.45);border:2px solid rgba(139,92,246,0.9);border-radius:4px;transition:top .06s,left .06s,width .06s,height .06s;display:none';
+  document.body.appendChild(ov);
+  var bd=document.createElement('div');
+  bd.style.cssText='position:fixed;pointer-events:none;z-index:2147483647;background:rgba(15,15,15,0.88);color:#fff;font:600 11px/1.4 ui-monospace,monospace;padding:3px 7px;border-radius:4px;white-space:nowrap;display:none;backdrop-filter:blur(4px)';
+  document.body.appendChild(bd);
+  function pos(el){var r=el.getBoundingClientRect();ov.style.display='block';ov.style.left=r.left+'px';ov.style.top=r.top+'px';ov.style.width=r.width+'px';ov.style.height=r.height+'px';var tag=el.tagName.toLowerCase();var id=el.id?'#'+el.id:'';var cls=Array.from(el.classList).slice(0,3).map(function(c){return'.'+c;}).join('');var size=Math.round(r.width)+'×'+Math.round(r.height);bd.textContent=tag+id+cls+'  ·  '+size;bd.style.display='block';var br=bd.getBoundingClientRect();var bt=r.top-br.height-6;bd.style.top=(bt<4?r.bottom+4:bt)+'px';bd.style.left=Math.min(Math.max(r.left,4),window.innerWidth-br.width-4)+'px';}
+  function clr(){ov.style.display='none';bd.style.display='none';}
+  function onMove(e){var el=e.target;if(el===ov||el===bd)return;pos(el);}
+  function onClick(e){
+    if(!e.shiftKey)return;
+    e.preventDefault();e.stopPropagation();
+    var el=e.target;
+    var classes=Array.from(el.classList).slice(0,5);
+    var selector=el.id?'#'+el.id:classes.length?'.'+classes[0]:el.tagName.toLowerCase();
+    var rect=el.getBoundingClientRect();
+    var vw=window.innerWidth,vh=window.innerHeight;
+    var cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+    var hPos=cx<vw*0.33?'links':cx<vw*0.67?'mitte':'rechts';
+    var vPos=cy<vh*0.33?'oben':cy<vh*0.67?'mitte':'unten';
+    var position=vPos==='mitte'&&hPos==='mitte'?'mitte':vPos===hPos?vPos:vPos+' '+hPos;
+    var ancestors=[];var parent=el.parentElement;
+    for(var i=0;i<2&&parent&&parent.tagName!=='BODY'&&parent.tagName!=='HTML';i++,parent=parent.parentElement){
+      ancestors.unshift(parent.id?'#'+parent.id:parent.classList[0]?'.'+parent.classList[0]:parent.tagName.toLowerCase());
+    }
+    var hierarchy=ancestors.length>0?ancestors.join(' › ')+' › '+selector:undefined;
+    var rawText=(el.textContent||'').trim().replace(/\\s+/g,' ');
+    var text=rawText.length>15?rawText.slice(0,15)+'…':rawText||undefined;
+    console.log('__cc_capture:'+JSON.stringify({tag:el.tagName.toLowerCase(),id:el.id||'',classes:classes,text:text,selector:selector,page:document.title||window.location.pathname,position:position,hierarchy:hierarchy}));
+    clr();
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseleave',clr);
+  document.addEventListener('click',onClick,true);
+  window.__ccCleanup=function(){clr();ov.remove();bd.remove();document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseleave',clr);document.removeEventListener('click',onClick,true);window.__ccCleanup=null;};
+})();`
+
+const INSPECT_CLEANUP = `if(typeof window.__ccCleanup==='function')window.__ccCleanup();`
+
+// ── Legacy same-origin inject (kept for fallback) ─────────────────────────────
 function injectInspect(doc: Document, onCapture: (r: WorkshopElementRef) => void): () => void {
   const win = doc.defaultView!
 
@@ -186,9 +249,17 @@ async function captureViaServer(url: string, width: number, height: number): Pro
 export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreenshot, initialUrl = '' }: Props) {
   // Only subscribe to `theme` — avoids re-rendering BrowserPane on every store change
   const theme = useAppStore(s => s.theme)
-  const iframeRef      = useRef<HTMLIFrameElement>(null)
+  const webviewRef     = useRef<HTMLElement>(null)
   const drawRef        = useRef<DrawCanvasHandle>(null)
   const cleanupInspect = useRef<(() => void) | null>(null)
+  const wvReady        = useRef(false)   // true after dom-ready fires
+  const wv = () => webviewRef.current as WebviewEl | null
+
+  const execJS = (script: string) => {
+    const el = wv()
+    if (!el || !wvReady.current) return
+    el.executeJavaScript(script).catch(() => {})
+  }
 
   // Start with the project's app URL if known; otherwise blank (user enters manually)
   const [url, setUrl]           = useState(initialUrl)
@@ -216,31 +287,72 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
     setUrl(u); setInputUrl(u); setError(false); setLoading(true)
   }, [])
 
-  const reload = () => { if (iframeRef.current && url) { setLoading(true); iframeRef.current.src = url } }
-  const back   = () => { try { iframeRef.current?.contentWindow?.history.back()    } catch {} }
-  const fwd    = () => { try { iframeRef.current?.contentWindow?.history.forward() } catch {} }
+  const reload = () => { if (url) { setLoading(true); wv()?.reload() } }
+  const back   = () => { wv()?.goBack() }
+  const fwd    = () => { wv()?.goForward() }
 
-  // ── Inspect injection ───────────────────────────────────────────────────────
+  // ── Webview events (load / error / console-message) ─────────────────────────
   useEffect(() => {
-    if (cleanupInspect.current) { cleanupInspect.current(); cleanupInspect.current = null }
-    if (mode !== 'inspect') return
-    try {
-      const doc = iframeRef.current?.contentDocument
-      if (doc) cleanupInspect.current = injectInspect(doc, onElementCaptured)
-    } catch { /* cross-origin — silently ignore */ }
-  }, [mode, onElementCaptured, url])
+    const el = wv()
+    if (!el) return
 
-  const onIframeLoad = useCallback(() => {
-    setError(false); setLoading(false)
-    try { const iwin = iframeRef.current?.contentWindow; if (iwin) setInputUrl(iwin.location.href) } catch {}
-    if (mode === 'inspect') {
-      if (cleanupInspect.current) cleanupInspect.current()
-      try {
-        const doc = iframeRef.current?.contentDocument
-        if (doc) cleanupInspect.current = injectInspect(doc, onElementCaptured)
-      } catch {}
+    const onDomReady   = () => {
+      wvReady.current = true
+      if (mode === 'inspect') execJS(INSPECT_SCRIPT)
     }
-  }, [mode, onElementCaptured])
+    const onLoad = () => {
+      setError(false); setLoading(false)
+      try { setInputUrl(el.getURL()) } catch {}
+      if (mode === 'inspect') execJS(INSPECT_SCRIPT)
+    }
+    const onFailLoad = (e: Event) => {
+      const ev = e as Event & { isMainFrame?: boolean; errorCode?: number }
+      if (ev.isMainFrame && ev.errorCode !== -3) { setError(true); setLoading(false) }
+    }
+    const onStartLoad = () => { wvReady.current = false; setLoading(true) }
+    const onNavigate  = () => { try { setInputUrl(el.getURL()) } catch {} }
+    const onConsole   = (e: Event) => {
+      const msg = (e as Event & { message?: string }).message ?? ''
+      if (msg.startsWith('__cc_capture:')) {
+        try { onElementCaptured(JSON.parse(msg.slice('__cc_capture:'.length)) as WorkshopElementRef) } catch {}
+      }
+    }
+
+    el.addEventListener('dom-ready',            onDomReady)
+    el.addEventListener('did-finish-load',      onLoad)
+    el.addEventListener('did-fail-load',        onFailLoad)
+    el.addEventListener('did-start-loading',    onStartLoad)
+    el.addEventListener('did-navigate',         onNavigate)
+    el.addEventListener('did-navigate-in-page', onNavigate)
+    el.addEventListener('console-message',      onConsole)
+
+    // Handle already-loaded webview (events fired before listeners attached)
+    try {
+      if (!el.isLoading()) { wvReady.current = true; setError(false); setLoading(false); try { setInputUrl(el.getURL()) } catch {} }
+    } catch {}
+
+    return () => {
+      wvReady.current = false
+      el.removeEventListener('dom-ready',            onDomReady)
+      el.removeEventListener('did-finish-load',      onLoad)
+      el.removeEventListener('did-fail-load',        onFailLoad)
+      el.removeEventListener('did-start-loading',    onStartLoad)
+      el.removeEventListener('did-navigate',         onNavigate)
+      el.removeEventListener('did-navigate-in-page', onNavigate)
+      el.removeEventListener('console-message',      onConsole)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, mode, onElementCaptured])
+
+  // ── Inject / cleanup inspect on mode change ─────────────────────────────────
+  useEffect(() => {
+    if (mode === 'inspect') {
+      execJS(INSPECT_SCRIPT)
+    } else {
+      execJS(INSPECT_CLEANUP)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   // ── Draw: Speichern ──────────────────────────────────────────────────────────
   // Screenshots the current URL via Playwright, composites drawing strokes on top.
@@ -250,8 +362,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
 
     setSaving(true)
     try {
-      const iframe    = iframeRef.current
-      const rect      = iframe?.getBoundingClientRect() ?? { width: 1280, height: 800 }
+      const rect      = webviewRef.current?.getBoundingClientRect() ?? { width: 1280, height: 800 }
       const w         = Math.round(rect.width)  || 1280
       const h         = Math.round(rect.height) || 800
 
@@ -302,8 +413,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
   const takeScreenshot = useCallback(async () => {
     if (!url) return
     setScreenshotError(null)
-    const iframe = iframeRef.current
-    const rect   = iframe?.getBoundingClientRect() ?? { width: 1280, height: 800 }
+    const rect   = webviewRef.current?.getBoundingClientRect() ?? { width: 1280, height: 800 }
     const w      = Math.round(rect.width)  || 1280
     const h      = Math.round(rect.height) || 800
 
@@ -505,7 +615,13 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
       )}
 
       {/* ── Iframe area + overlays ── */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      {/* display:flex is required so the webview (flex:1) gets a real height.
+          Without it the container collapses to 0 because webview is the only child
+          and it's position:absolute — flex:1 alone doesn't establish a height for
+          absolutely-positioned children on a plain block container.
+          overflow must NOT be 'hidden' — Electron webview is a separate GPU surface
+          and overflow:hidden causes it to render black. */}
+      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
         {/* Inspect hint */}
         {mode === 'inspect' && (
@@ -570,21 +686,20 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           </div>
         )}
 
-        {/* iframe — only render when url is set; absolute positioning for reliable sizing */}
+        {/* webview — Electron-native, works cross-origin (localhost:xxxx etc.)
+            flex:1 makes it fill the container height without needing position:absolute
+            which would require the parent to have an established height first. */}
         {url && (
-          <iframe
-            ref={iframeRef}
+          <webview
+            ref={webviewRef}
             src={url}
-            onLoad={onIframeLoad}
-            onError={() => { setError(true); setLoading(false) }}
+            allowpopups=""
             style={{
-              position: 'absolute', inset: 0,
-              width: '100%', height: '100%',
-              border: 'none', display: 'block',
+              flex: 1, alignSelf: 'stretch',
+              width: '100%', minHeight: 0,
+              display: 'block',
               pointerEvents: mode === 'draw' ? 'none' : 'auto',
-            }}
-            title="Live Browser"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+            } as React.CSSProperties}
           />
         )}
 

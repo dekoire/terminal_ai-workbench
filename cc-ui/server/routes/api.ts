@@ -765,10 +765,11 @@ router.get('/api/process-status', (req, res) => {
 router.get('/api/app-log', (req, res) => {
   const port = req.query.port as string ?? 'unknown'
   const logFile = `/tmp/cc-app-${port}.log`
+  const chars = Math.min(Math.max(Number(req.query.chars) || 3000, 3000), 100000)
   try {
     const content = fs.readFileSync(logFile, 'utf8')
-    res.json({ ok: true, content: content.slice(-3000) })
-  } catch { res.json({ ok: true, content: '' }) }
+    res.json({ ok: true, content: content.slice(-chars), logFile })
+  } catch { res.json({ ok: true, content: '', logFile }) }
 })
 
 // ── POST /api/kill-port ────────────────────────────────────────────────────────

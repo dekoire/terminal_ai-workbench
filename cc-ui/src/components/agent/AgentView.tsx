@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { useAppStore } from '../../store/useAppStore'
 import type { SessionKind } from '../../store/useAppStore'
-import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight, IRefresh } from '../primitives/Icons'
+import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight, IRefresh, IWarn } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
 import { saveAgentMessage, loadLastProjectMessages, loadLatestContextSummary, saveContextSummary, compressAgentHistory, loadAgentMessageById, loadMessagesSince, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { resolveRefs } from '../../lib/resolveRefs'
@@ -902,23 +902,45 @@ function EventList({ events, kind, activeModel, cwd }: { events: AgentEvent[]; k
 }
 
 function CollapsibleError({ message }: { message: string }) {
+  const isLong = message.length > 200 || message.includes('\n')
   const [open, setOpen] = useState(false)
-  const short = message.length > 80 ? message.slice(0, 80) + '…' : message
+  const errStyle: React.CSSProperties = {
+    marginBottom: 8, padding: '8px 12px',
+    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+    borderRadius: 8,
+  }
+  const textStyle: React.CSSProperties = {
+    color: 'var(--err)', fontSize: 12, fontFamily: 'var(--font-ui)', lineHeight: 1.55,
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+  }
+  if (!isLong) {
+    return (
+      <div style={errStyle}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <IWarn style={{ width: 14, height: 14, color: 'var(--err)', flexShrink: 0, marginTop: 1 }} />
+          <span style={textStyle}>{message}</span>
+        </div>
+      </div>
+    )
+  }
+  const preview = message.split('\n')[0].slice(0, 120)
   return (
-    <div style={{ marginBottom: 8, padding: '7px 12px', background: 'rgba(239,122,122,0.07)', border: '1px solid rgba(239,122,122,0.25)', borderRadius: 6 }}>
+    <div style={errStyle}>
       <button
         onClick={() => setOpen(o => !o)}
         style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left' }}
       >
-        <span style={{ color: '#ef7a7a', fontSize: 12, flexShrink: 0 }}>⚠</span>
-        <span style={{ color: '#ef7a7a', fontSize: 12, flex: 1 }}>{open ? 'Fehler' : short}</span>
+        <IWarn style={{ width: 14, height: 14, color: 'var(--err)', flexShrink: 0 }} />
+        <span style={{ ...textStyle, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {open ? 'Fehler' : preview}
+        </span>
         {open
-          ? <IChevUp  style={{ width: 13, height: 13, color: '#ef7a7a', flexShrink: 0 }} />
-          : <IChevDown style={{ width: 13, height: 13, color: '#ef7a7a', flexShrink: 0 }} />
+          ? <IChevUp   style={{ width: 13, height: 13, color: 'var(--err)', flexShrink: 0 }} />
+          : <IChevDown style={{ width: 13, height: 13, color: 'var(--err)', flexShrink: 0 }} />
         }
       </button>
       {open && (
-        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(239,122,122,0.2)', color: '#ef7a7a', ...MONO, fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(239,68,68,0.18)', ...textStyle, fontSize: 11.5 }}>
           {message}
         </div>
       )}

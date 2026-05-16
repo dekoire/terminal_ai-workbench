@@ -8,6 +8,9 @@ export interface ProjectConfig {
   detectedAt: string | null
   detectionMethod: 'heuristic' | 'ai' | 'manual' | null
   retries: number
+  pid: number | null        // PID when started via Smart Launch; null if agent-started
+  logFile: string | null    // log path (/tmp/cc-app-<port>.log); null if agent-started
+  lastStarted: string | null // ISO timestamp of last start
 }
 
 export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -17,6 +20,9 @@ export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
   detectedAt: null,
   detectionMethod: null,
   retries: 0,
+  pid: null,
+  logFile: null,
+  lastStarted: null,
 }
 
 // ── Config I/O ────────────────────────────────────────────────────────────────

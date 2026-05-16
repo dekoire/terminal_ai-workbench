@@ -306,7 +306,7 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
 
       // ── Shared output processing ──────────────────────────────────────────────
       const stripAnsi = (s: string) => s
-        .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')          // CSI: ESC [ ... letter  (incl. ?-private)
+        .replace(/\x1b\[[0-9;?><]*[a-zA-Z]/g, '')         // CSI: ESC [ ... letter  (incl. ?, >, < private params)
         .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '') // OSC: ESC ] ... BEL/ST
         .replace(/\x1b[>=<()][0-9A-Za-z]*/g, '')          // Other ESC sequences
         .replace(/\x1b./g, '')                              // Any remaining ESC + char
@@ -318,8 +318,12 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
         const clean = stripAnsi(line).trim()
         if (!clean) return
         if (clean[0] !== '{') {
-          if (/allow|permission|do you want|y\/n|\[y\/n\]|proceed\?/i.test(clean)) {
+          if (!isCustomProvider && /allow|permission|do you want|y\/n|\[y\/n\]|proceed\?/i.test(clean)) {
             ws.send(JSON.stringify({ type: 'permission_request', text: clean, tool: lastToolUse }))
+          } else if (isCustomProvider) {
+            // Custom providers run with --dangerously-skip-permissions --bare, so all output
+            // should be stream-json. Non-JSON output is always an error — surface it visibly.
+            ws.send(JSON.stringify({ type: 'agent_error', message: clean }))
           }
           return
         }
@@ -411,7 +415,9 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
 
       } else {
         // ── Text-only path: PTY spawn (original behavior) ─────────────────────
-        const claudeArgs = [...baseClaudeArgs, '--print', text]
+        // '--' ends option parsing so text starting with '---' (inlined file separators)
+        // isn't parsed as an unknown CLI flag by claude.
+        const claudeArgs = [...baseClaudeArgs, '--print', '--', text]
 
         const ptyProc = pty.spawn('claude', claudeArgs, {
           name: 'xterm-color', cols: 220, rows: 50, cwd, env: baseEnv,
@@ -429,6 +435,11 @@ agentWss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
           const cleanBuf = stripAnsi(lineBuf).trim()
           // Skip: garbage/empty after stripping — need at least 8 printable chars
           if (!cleanBuf || cleanBuf[0] === '{' || cleanBuf.length < 8) { lineBuf = ''; return }
+          if (isCustomProvider) {
+            ws.send(JSON.stringify({ type: 'agent_error', message: cleanBuf }))
+            lineBuf = ''
+            return
+          }
           ws.send(JSON.stringify({ type: 'permission_request', text: cleanBuf, tool: lastToolUse }))
           lineBuf = ''
         }
