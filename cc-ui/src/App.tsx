@@ -15,9 +15,10 @@ import { GettingStartedModal } from './components/modals/GettingStartedModal'
 import { DESIGN_PRESETS, applyPreset } from './theme/presets'
 import { useSupabaseSync } from './lib/useSupabaseSync'
 import { ISpinner } from './components/primitives/Icons'
+import { ToastContainer } from './components/primitives/ToastContainer'
 
 export default function App() {
-  const { screen: rawScreen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone, currentUser, dataLoaded, setScreen } = useAppStore()
+  const { screen: rawScreen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone, currentUser, dataLoaded, setScreen, addToast } = useAppStore()
   // Guarantee screen is always a valid value — null/undefined causes a total black screen
   const screen = rawScreen || (currentUser ? 'workspace' : 'login')
 
@@ -45,6 +46,25 @@ export default function App() {
     window.addEventListener('cc:open-getting-started', handler)
     return () => window.removeEventListener('cc:open-getting-started', handler)
   }, [])
+
+  // cc:permission-pending → warning toast with Allow/Skip action buttons
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { sessionId, message } = (e as CustomEvent).detail as { sessionId: string; message?: string }
+      addToast({
+        type: 'warning',
+        title: 'Erlaubnis erforderlich',
+        body: message ?? 'Claude möchte eine Aktion ausführen.',
+        duration: 0,
+        actions: [
+          { label: 'Erlauben', variant: 'primary', onClick: () => window.dispatchEvent(new CustomEvent('cc:permission-decision', { detail: { sessionId, decision: 'allow' } })) },
+          { label: 'Ablehnen', variant: 'ghost', onClick: () => window.dispatchEvent(new CustomEvent('cc:permission-decision', { detail: { sessionId, decision: 'deny' } })) },
+        ],
+      })
+    }
+    window.addEventListener('cc:permission-pending', handler)
+    return () => window.removeEventListener('cc:permission-pending', handler)
+  }, [addToast])
 
   // Cloud sync — loads on login, saves debounced on every store change
   useSupabaseSync()
@@ -149,6 +169,8 @@ export default function App() {
           </div>
         )
       })()}
+
+      <ToastContainer />
     </div>
   )
 }

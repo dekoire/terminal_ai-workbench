@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useAppStore } from '../../store/useAppStore'
 import { IClose, ISearch, ITrophy, IBookmark, ITerminal, IGitFork, ICpu, IStar, IBolt, IPlay } from '../primitives/Icons'
 import type { LucideProps } from 'lucide-react'
 import { MultiCombobox } from '../primitives/MultiCombobox'
@@ -359,6 +360,7 @@ function assignRanks(rows: ModelRow[]): ModelRow[] {
 interface Props { onClose: () => void }
 
 export function ModelBrowserModal({ onClose }: Props) {
+  const addToast = useAppStore(s => s.addToast)
   const [models, setModels]         = useState<ModelRow[]>([])
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState('')
@@ -381,7 +383,7 @@ export function ModelBrowserModal({ onClose }: Props) {
         const rows = assignRanks((d.data as ORModel[]).map(parseModel))
         setModels(rows)
       })
-      .catch(() => setError('Konnte Modelle nicht laden. Internetverbindung prüfen.'))
+      .catch(() => { setError('Konnte Modelle nicht laden. Internetverbindung prüfen.'); addToast({ type: 'error', title: 'Modelle konnten nicht geladen werden', body: 'Internetverbindung prüfen.' }) })
       .finally(() => setLoading(false))
   }, [])
 

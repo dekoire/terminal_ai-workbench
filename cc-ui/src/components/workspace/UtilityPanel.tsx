@@ -205,6 +205,7 @@ const OPEN_WITH: Record<string, string[]> = {
 }
 
 function LiveTreeNode({ node, depth, installedApps }: { node: LiveNode; depth: number; installedApps: Set<string> | null }) {
+  const { addToast } = useAppStore()
   const [open, setOpen]           = useState(depth <= 1)
   const [children, setChildren]   = useState<LiveNode[]>(node.children ?? [])
   const [loaded, setLoaded]       = useState(node.loaded ?? false)
@@ -291,7 +292,7 @@ function LiveTreeNode({ node, depth, installedApps }: { node: LiveNode; depth: n
     })
     const d = await r.json() as { ok: boolean; error?: string }
     if (d.ok) { loadChildren(true); if (!open) setOpen(true) }
-    else alert(`Fehler: ${d.error}`)
+    else addToast({ type: 'error', title: 'Erstellen fehlgeschlagen', body: d.error })
   }
 
   return (
@@ -3873,6 +3874,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
   onSelect: (i: number) => void
   onClose: (i: number) => void
 }) {
+  const { addToast } = useAppStore()
   const [content, setContent]       = useState<string | null>(null)
   const [error, setError]           = useState('')
   const [mtime, setMtime]           = useState(0)
@@ -3933,8 +3935,8 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
       })
       const d = await r.json() as { ok: boolean; error?: string }
       if (d.ok) { setDirty(false); setContent(editText) }
-      else alert(`Fehler: ${d.error}`)
-    } catch (e) { alert(String(e)) }
+      else addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: d.error })
+    } catch (e) { addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: String(e) }) }
     finally { setSaving(false) }
   }
 

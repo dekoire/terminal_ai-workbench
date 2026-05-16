@@ -246,6 +246,17 @@ export interface DocTemplate {
   category?: DocTemplateCategory  // defaults to 'doc' if absent
 }
 
+// ── Toast notifications ───────────────────────────────────────────────────────
+export interface ToastAction { label: string; variant?: 'primary' | 'ghost'; onClick: () => void }
+export interface Toast {
+  id: string
+  type: 'success' | 'error' | 'warning' | 'info'
+  title: string
+  body?: string
+  actions?: ToastAction[]
+  duration?: number  // ms — 0 = manual dismiss; defaults: success/info 4000, warning 6000, error 0
+}
+
 export type ShortcutCategory = 'control' | 'navigation' | 'editing'
 
 export interface TerminalShortcut {
@@ -698,6 +709,7 @@ export interface AppState {
   projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
   orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
   dataLoaded: boolean                                // true once initial loadFromSupabase completes
+  toasts: Toast[]
   claudeProviders: ClaudeProvider[]
   setupWizardDone: boolean
   preferredOrModels: string[]
@@ -829,6 +841,9 @@ export interface AppState {
   setSidebarSections: (sections: SidebarSection[]) => void
   setUtilitySections: (sections: UtilitySection[]) => void
   setLayoutSections:  (sections: LayoutSection[]) => void
+  addToast: (t: Omit<Toast, 'id'>) => string
+  removeToast: (id: string) => void
+  clearToasts: () => void
   removeOrbitFavorite: (projectId: string, favId: string) => void
   addOrbitMessage: (chatId: string, msg: OrbitMessage) => void
   setOrbitMessages: (chatId: string, msgs: OrbitMessage[]) => void
@@ -1057,6 +1072,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   projectBrains: {},
   orbitChatsLoaded: {},
   dataLoaded: false,
+  toasts: [],
   claudeProviders: [],
   setupWizardDone: false,
   preferredOrModels: [],
@@ -1363,6 +1379,13 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setSidebarSections: (sections) => set({ sidebarSections: sections }),
   setUtilitySections: (sections) => set({ utilitySections: sections }),
   setLayoutSections:  (sections) => set({ layoutSections: sections }),
+  addToast: (t) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    set(s => ({ toasts: [{ ...t, id }, ...s.toasts] }))
+    return id
+  },
+  removeToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
+  clearToasts: () => set({ toasts: [] }),
   addOrbitFavorite: (fav) => set(s => ({
     orbitFavorites: { ...s.orbitFavorites, [fav.projectId]: [...(s.orbitFavorites[fav.projectId] ?? []), fav] },
   })),

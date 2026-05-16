@@ -13,6 +13,7 @@ export function LoginScreen() {
 
   const setScreen      = useAppStore(s => s.setScreen)
   const setCurrentUser = useAppStore(s => s.setCurrentUser)
+  const addToast       = useAppStore(s => s.addToast)
 
   const supabaseUrl    = useAppStore(s => s.supabaseUrl)
   const supabaseKey    = useAppStore(s => s.supabaseAnonKey)
@@ -25,7 +26,7 @@ export function LoginScreen() {
     setLoading(true); setError('')
     try {
       const { data, error: sbErr } = await sb.auth.signInWithPassword({ email: email.trim(), password })
-      if (sbErr) { setError(sbErr.message); return }
+      if (sbErr) { addToast({ type: 'error', title: 'Login fehlgeschlagen', body: sbErr.message }); return }
       const user = data.user
       const meta = user?.user_metadata ?? {}
       // Switch file storage to this user's personal file — all writes from here go there

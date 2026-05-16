@@ -74,7 +74,7 @@ export function NewProjectModal() {
   const {
     setNewProjectOpen, addProject, setScreen, setActiveProject, setNewSessionOpen,
     openrouterKey, docTemplates, updateDocTemplate, lastProjectPath, setLastProjectPath,
-    tokens, addToken, setProjectGithubToken, projects,
+    tokens, addToken, setProjectGithubToken, projects, addToast,
   } = useAppStore()
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -107,7 +107,6 @@ export function NewProjectModal() {
   const [addingToken, setAddingToken] = useState(false)
 
   const [applying, setApplying] = useState(false)
-  const [cloneErr, setCloneErr] = useState<string | null>(null)
 
   // ── Derive platform info from repo URL ──────────────────────────────────────
   const repoHost = (() => {
@@ -206,7 +205,6 @@ export function NewProjectModal() {
   const create = async (skipClone = false) => {
     if (!name.trim() || !path.trim()) return
     setApplying(true)
-    setCloneErr(null)
     try {
       const { newProjectId } = await import('../../lib/ids')
       const id = newProjectId()
@@ -227,7 +225,7 @@ export function NewProjectModal() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'clone', path: path.trim(), remote: authedUrl }),
         }).then(res => res.json()) as { ok: boolean; out: string }
-        if (!r.ok) { setCloneErr(r.out.slice(0, 200)); return }
+        if (!r.ok) { addToast({ type: 'error', title: 'Clone fehlgeschlagen', body: r.out.slice(0, 200) }); return }
       }
 
       addProject({ id, name: name.trim(), path: path.trim(), branch: '', sessions: [], appPort: port, appStartCmd: startCmd.trim() || undefined })
@@ -527,11 +525,6 @@ export function NewProjectModal() {
                     </div>
                   )}
                 </>
-              )}
-              {cloneErr && (
-                <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: 'rgba(255,80,80,0.08)', border: '1px solid rgba(255,80,80,0.25)', fontSize: 11, color: 'var(--err)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                  {cloneErr}
-                </div>
               )}
             </div>
             </div>

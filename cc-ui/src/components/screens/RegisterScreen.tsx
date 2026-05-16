@@ -17,6 +17,7 @@ export function RegisterScreen() {
 
   const setScreen      = useAppStore(s => s.setScreen)
   const setCurrentUser = useAppStore(s => s.setCurrentUser)
+  const addToast       = useAppStore(s => s.addToast)
 
   const supabaseUrl    = useAppStore(s => s.supabaseUrl)
   const supabaseKey    = useAppStore(s => s.supabaseAnonKey)
@@ -45,7 +46,7 @@ export function RegisterScreen() {
           },
         },
       })
-      if (sbErr) { setError(sbErr.message); return }
+      if (sbErr) { addToast({ type: 'error', title: 'Registrierung fehlgeschlagen', body: sbErr.message }); return }
 
       // If session is returned immediately (no email confirmation required)
       if (data.session && data.user) {
@@ -63,6 +64,7 @@ export function RegisterScreen() {
       } else {
         // Email confirmation required
         setSuccess(true)
+        addToast({ type: 'success', title: 'Fast geschafft!', body: 'Bestätigungs-E-Mail wurde gesendet. Bitte E-Mail prüfen.', duration: 0 })
       }
     } finally {
       setLoading(false)

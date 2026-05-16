@@ -1849,6 +1849,7 @@ function TerminalShortcutsModal({ shortcuts, onClose }: { shortcuts: TerminalSho
 // ── File Tab Viewer ───────────────────────────────────────────────────────────
 
 function FileTabViewer({ path }: { path: string }) {
+  const { addToast } = useAppStore()
   const [content, setContent]       = useState<string | null>(null)
   const [error, setError]           = useState('')
   const [search, setSearch]         = useState('')
@@ -1925,9 +1926,9 @@ function FileTabViewer({ path }: { path: string }) {
       })
       const d = await r.json() as { ok: boolean; error?: string }
       if (d.ok) { setDirty(false); setContent(editText) }
-      else alert(`Fehler beim Speichern: ${d.error}`)
+      else addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: d.error })
     } catch (e) {
-      alert(`Fehler: ${String(e)}`)
+      addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: String(e) })
     } finally {
       setSaving(false)
     }

@@ -652,6 +652,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
     brainUpdatePrompt,
     projectBrains, setProjectBrain,
     supabaseUrl, supabaseAnonKey, currentUser,
+    addToast,
   } = useAppStore()
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
@@ -862,7 +863,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
 
   const sendText = useCallback(async (text: string, attachedImages?: { dataUrl: string; mimeType: string }[]) => {
     if (!text.trim() && !attachedImages?.length || streaming) return
-    if (!openrouterKey) { setError('Kein OpenRouter-Key hinterlegt. Bitte in Einstellungen setzen.'); return }
+    if (!openrouterKey) { addToast({ type: 'error', title: 'Kein OpenRouter-Key', body: 'Bitte in Einstellungen hinterlegen.' }); return }
 
     setError(null)
     const projName = projects.find(p => p.id === activeProjectId)?.name ?? activeProjectId ?? 'unknown'
@@ -1101,7 +1102,8 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
         const userMsg2 = isCtx || is413
           ? 'Kontext zu lang — der Chat-Verlauf übersteigt das Kontextfenster des Modells. Starte einen neuen Chat (+ Taste oben rechts), um weiterzumachen.'
           : raw
-        setError(userMsg2)
+        setError(null)
+        addToast({ type: 'error', title: 'Orbit-Fehler', body: userMsg2 })
         // Inject visible error into the chat thread so it's not missed
         const errMsg: Message = {
           id: mkMsgId(chatId) + '-err',

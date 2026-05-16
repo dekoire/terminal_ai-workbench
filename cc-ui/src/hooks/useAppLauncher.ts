@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useAppStore } from '../store/useAppStore'
+import type { Toast } from '../store/useAppStore'
 import { aiDetectStartCmd } from '../utils/aiDetect'
 import {
   heuristicDetect,
@@ -54,7 +55,7 @@ export interface UseAppLauncher {
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useAppLauncher(projectId: string | undefined, openBrowserOnSuccess = true): UseAppLauncher {
-  const { projects, updateProject } = useAppStore()
+  const { projects, updateProject, addToast, removeToast } = useAppStore()
   const project = projects.find(p => p.id === projectId)
 
   const [state, setState] = useState<AppLauncherState>(IDLE)
@@ -67,6 +68,11 @@ export function useAppLauncher(projectId: string | undefined, openBrowserOnSucce
   const openBrowserRef = useRef(openBrowserOnSuccess)
   openBrowserRef.current = openBrowserOnSuccess
 
+  const addToastRef = useRef(addToast)
+  addToastRef.current = addToast
+  const removeToastRef = useRef(removeToast)
+  removeToastRef.current = removeToast
+
   // Reset when project changes
   useEffect(() => {
     setState(IDLE)
@@ -75,12 +81,37 @@ export function useAppLauncher(projectId: string | undefined, openBrowserOnSucce
 
   // ── Internal: run the server and monitor the port ─────────────────────────
 
-  const _doLaunch = useCallback(async (cmd: string, port: number | undefined) => {
+  const _doLaunch = useCallback(async (cmd: string, port: number | undefined, useToast = false) => {
     const p = projectRef.current
     if (!p?.path) return
 
     setState(s => ({ ...s, status: 'starting', cmd, port, url: port ? `http://localhost:${port}` : undefined }))
-    setShowModal(true)
+
+    let startingToastId: string | undefined
+    if (useToast) {
+      startingToastId = addToastRef.current({
+        type: 'info',
+        title: 'App wird gestartet…',
+        body: cmd,
+        duration: 0,
+      } as Omit<Toast, 'id'>)
+    } else {
+      setShowModal(true)
+    }
+
+    const _fail = (errorMsg: string) => {
+      setState(s => ({ ...s, status: 'error', errorMsg }))
+      if (useToast) {
+        if (startingToastId) removeToastRef.current(startingToastId)
+        addToastRef.current({
+          type: 'error',
+          title: 'App konnte nicht gestartet werden',
+          body: errorMsg,
+          duration: 0,
+          actions: [{ label: 'Details & KI-Retry', variant: 'primary', onClick: () => setShowModal(true) }],
+        } as Omit<Toast, 'id'>)
+      }
+    }
 
     let pid: number | undefined
     let extraPorts: number[] = []
@@ -93,19 +124,24 @@ export function useAppLauncher(projectId: string | undefined, openBrowserOnSucce
       })
       const d = await r.json() as { ok: boolean; pid?: number }
       if (!d.ok) {
-        setState(s => ({ ...s, status: 'error', errorMsg: 'Server konnte nicht gestartet werden.' }))
+        _fail('Server konnte nicht gestartet werden.')
         return
       }
       pid = d.pid
     } catch {
-      setState(s => ({ ...s, status: 'error', errorMsg: 'Netzwerkfehler beim Starten.' }))
+      _fail('Netzwerkfehler beim Starten.')
       return
     }
 
     // If no port known, assume success immediately
     if (!port && extraPorts.length === 0) {
       setState(s => ({ ...s, status: 'running' }))
-      setShowModal(false)
+      if (useToast) {
+        if (startingToastId) removeToastRef.current(startingToastId)
+        addToastRef.current({ type: 'success', title: 'App gestartet', duration: 4000 } as Omit<Toast, 'id'>)
+      } else {
+        setShowModal(false)
+      }
       return
     }
 
@@ -125,7 +161,12 @@ export function useAppLauncher(projectId: string | undefined, openBrowserOnSucce
           if (d.inUse) {
             const url = `http://localhost:${p}`
             setState(s => ({ ...s, status: 'running', port: p, url }))
-            setShowModal(false)
+            if (useToast) {
+              if (startingToastId) removeToastRef.current(startingToastId)
+              addToastRef.current({ type: 'success', title: 'App gestartet', body: url, duration: 4000 } as Omit<Toast, 'id'>)
+            } else {
+              setShowModal(false)
+            }
             if (openBrowserRef.current && !navigator.userAgent.includes('Electron')) window.open(url, '_blank')
             return
           }
@@ -139,18 +180,14 @@ export function useAppLauncher(projectId: string | undefined, openBrowserOnSucce
           const d = await r.json() as { alive: boolean }
           if (!d.alive) {
             const errMsg = await _readLogError(port ?? allPorts[0] ?? 0)
-            setState(s => ({ ...s, status: 'error', errorMsg: errMsg }))
+            _fail(errMsg)
             return
           }
         } catch { /* ignore */ }
       }
     }
 
-    setState(s => ({
-      ...s,
-      status: 'error',
-      errorMsg: `Server antwortet nicht auf Port ${allPorts.join(' / ')} (30s Timeout).`,
-    }))
+    _fail(`Server antwortet nicht auf Port ${allPorts.join(' / ')} (30s Timeout).`)
   }, [])
 
   // ── triggerDetect — called by Play button or Workshop ─────────────────────
@@ -165,10 +202,10 @@ export function useAppLauncher(projectId: string | undefined, openBrowserOnSucce
       return
     }
 
-    // Already have a configured cmd in store → launch (modal shown by _doLaunch)
+    // Already have a configured cmd in store → launch silently via toast (no modal)
     if (p.appStartCmd) {
       const port = p.appPort ?? guessPort(p.appStartCmd)
-      await _doLaunch(p.appStartCmd, port)
+      await _doLaunch(p.appStartCmd, port, true)
       return
     }
 

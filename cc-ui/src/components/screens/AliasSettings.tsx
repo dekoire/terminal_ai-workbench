@@ -2031,7 +2031,7 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
 // ── Claude Provider Tab ───────────────────────────────────────────────────────
 
 function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject<(() => void) | null> }) {
-  const { claudeProviders, addClaudeProvider, updateClaudeProvider, removeClaudeProvider, aliases, addAlias, updateAlias } = useAppStore()
+  const { claudeProviders, addClaudeProvider, updateClaudeProvider, removeClaudeProvider, aliases, addAlias, updateAlias, addToast } = useAppStore()
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
   const emptyForm = (): Omit<ClaudeProvider, 'id' | 'endpointOk'> => ({
@@ -2046,7 +2046,6 @@ function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject
   const [jsonDraft, setJsonDraft] = useState('')
   const [jsonError, setJsonError] = useState('')
   const [savedCmd, setSavedCmd] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
   const [homeDir, setHomeDir]   = useState<string>('')
 
   React.useEffect(() => {
@@ -2174,9 +2173,10 @@ function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject
       })
     }
 
-    setSavedCmd(`alias ${shellName}='${aliasCmd}'`)
+    const savedAliasCmd = `alias ${shellName}='${aliasCmd}'`
+    setSavedCmd(savedAliasCmd)
     setAdding(false); setEditId(null); setEndpointStatus(null); setJsonError('')
-    setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 3000)
+    addToast({ type: 'success', title: 'Provider gespeichert', body: savedAliasCmd, duration: 5000 })
   }
 
   const checkEndpoint = async () => {
@@ -2211,20 +2211,6 @@ function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject
       <div style={{ fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.55 }}>
         Definiere einen LLM-Provider mit eigenem API-Endpunkt. Die generierte <span className="mono">claude.json</span>-Config setzt Env-Vars, die claude CLI beim Start liest. Provider tauchen beim Erstellen einer Session als Modell-Option auf.
       </div>
-
-      {/* Success toast */}
-      {saveSuccess && (
-        <div style={{ padding: '10px 14px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13 }}>✓</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>Provider gespeichert</div>
-            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 1 }}>Shell-Alias wurde automatisch in ~/.zshrc eingetragen.</div>
-          </div>
-          {savedCmd && (
-            <button onClick={() => navigator.clipboard.writeText(savedCmd)} style={{ ...btnGhost, padding: '3px 10px', fontSize: 10.5, flexShrink: 0 }}>Alias kopieren</button>
-          )}
-        </div>
-      )}
 
       {/* Provider list */}
       {!showForm && (
@@ -2774,6 +2760,7 @@ function KontextMgmtPanel() {
     agentContextMsgCount, setAgentContextMsgCount,
     agentAutoCompressOnStart, setAgentAutoCompressOnStart,
     agentTailMessageCount, setAgentTailMessageCount,
+    addToast: addToastKontext,
   } = useAppStore()
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
@@ -2829,7 +2816,9 @@ function KontextMgmtPanel() {
       if (!result) throw new Error('Leere Antwort vom Modell')
       setCompressResult(result)
     } catch (e) {
-      setCompressError(e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      setCompressError(msg)
+      addToastKontext({ type: 'error', title: 'Komprimierung fehlgeschlagen', body: msg })
     } finally {
       setCompressing(false)
     }
