@@ -1030,7 +1030,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
 
   const handleAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
-    setAttachments(prev => [...prev, ...files.map(f => f.name)])
+    addFiles(files)  // pendingFiles system: Orbit → base64/inline, Agent → temp file path
     e.target.value = ''
   }
 
@@ -1073,7 +1073,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
   const send = async () => {
     const favBodies = templates.filter(t => t.favorite).map(t => t.body)
     if (!inputValue.trim() && attachments.length === 0 && favBodies.length === 0 && pendingFiles.length === 0) return
-    if (hasUploading) return  // wait for uploads to finish
+    if (hasUploading && isPtyTerminal) return  // only PTY terminal needs to wait for R2; orbit+agent read from File object directly
 
     // Save to history (max 20, no duplicates at top)
     if (inputValue.trim()) {
@@ -1090,20 +1090,17 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     if (activeSession?.kind === 'orbit') {
       // Orbit: images → base64 inline; text/doc files → fetch content and inline as code block
       // (R2 proxy URLs are localhost — unreachable by remote AI model servers)
-      const imageFiles = pendingFiles.filter(f => f.isImage && f.file)
-      const docFiles   = pendingFiles.filter(f => !f.isImage && f.status === 'done' && f.url)
+      const imageFiles = pendingFiles.filter(f => f.isImage)
+      const docFiles   = pendingFiles.filter(f => !f.isImage)
 
       const inlineDocContent = async (msg: string): Promise<string> => {
         if (docFiles.length === 0) return msg
         const inlined = await Promise.all(docFiles.map(async f => {
           try {
-            // Fetch content from local proxy (accessible from browser/frontend)
-            const r = await fetch(f.url!)
-            const text = await r.text()
+            const text = await f.file.text()
             const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
             return `\n\n--- ${f.name} ---\n\`\`\`${ext}\n${text}\n\`\`\``
           } catch {
-            // Fallback: just mention the file name
             return `\n\n[Anhang: ${f.name}]`
           }
         }))
@@ -1172,13 +1169,12 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       const sendWithRefs = async () => {
         let msg = fullMsg
 
-        // Inline text/doc files (same reason as orbit: proxy URLs are localhost-only)
-        const docFiles = pendingFiles.filter(f => !f.isImage && f.status === 'done' && f.url)
+        // Inline text/doc files directly from File object (no R2 URL needed)
+        const docFiles = pendingFiles.filter(f => !f.isImage)
         if (docFiles.length > 0) {
           const inlined = await Promise.all(docFiles.map(async f => {
             try {
-              const r = await fetch(f.url!)
-              const text = await r.text()
+              const text = await f.file.text()
               const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
               return `\n\n--- ${f.name} ---\n\`\`\`${ext}\n${text}\n\`\`\``
             } catch { return `\n\n[Anhang: ${f.name}]` }
@@ -1206,8 +1202,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
         }
 
         const resolved = await resolveRefs(msg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id)
-        sendMessage(attachments, resolved)
-        setAttachments([])
+        sendMessage(pendingFiles.map(f => f.name), resolved)
         setInputValue('')
         clearFiles()
         setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
@@ -1524,8 +1519,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
 
       {/* Inline path input — shown when Pfad/Bild button is active */}
       {isTerminal && pathInput && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, padding: '5px 8px', background: 'var(--bg-3)', border: '1px solid var(--accent)', borderRadius: 6 }}>
-          <IFile style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, padding: '5px 8px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6 }}>
+          <IFile style={{ color: 'var(--fg-3)', flexShrink: 0, width: 11, height: 11 }} />
           <input
             autoFocus
             value={pathInputVal}
@@ -1536,7 +1531,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
             placeholder={pathInput === 'image' ? 'Pfad eintippen oder Bild aus Finder hier reinziehen…' : 'Pfad eintippen oder Datei aus Finder hier reinziehen…'}
             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 11.5, color: 'var(--fg-0)', fontFamily: 'var(--font-mono)' }}
           />
-          <button onClick={confirmPathInput} disabled={!pathInputVal.trim()} style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600, color: 'var(--accent-fg, #1a1410)', cursor: pathInputVal.trim() ? 'pointer' : 'default', opacity: pathInputVal.trim() ? 1 : 0.4 }}>
+          <button onClick={confirmPathInput} disabled={!pathInputVal.trim()} style={{ background: 'var(--bg-3)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 500, color: 'var(--fg-1)', cursor: pathInputVal.trim() ? 'pointer' : 'default', opacity: pathInputVal.trim() ? 1 : 0.4 }}>
             Einfügen
           </button>
           <button onClick={() => { setPathInput(null); setPathInputVal(''); setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 2 }}>
@@ -1662,7 +1657,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 5, borderTop: '1px solid var(--line)' }}>
-          {isTerminal && !isOrbit ? (
+          {isPtyTerminal ? (
             <>
               <button
                 style={{ ...chip, background: pathInput ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${pathInput ? 'var(--accent)' : 'var(--line)'}`, color: pathInput ? 'var(--accent)' : 'var(--fg-2)', padding: '5px 8px' }}
