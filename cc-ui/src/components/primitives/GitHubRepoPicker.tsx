@@ -104,7 +104,7 @@ export function GitHubRepoPicker({ tokens, preselectedTokenId, onSelect, onCance
 
   // Styles
   const overlay: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }
-  const box: React.CSSProperties     = { background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 12, width: 480, maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.55)', overflow: 'hidden' }
+  const box: React.CSSProperties     = { background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 12, width: 640, maxWidth: '92vw', maxHeight: '62vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.55)', overflow: 'hidden' }
   const inp: React.CSSProperties     = { width: '100%', padding: '8px 10px', border: '1px solid var(--line-strong)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box' }
   const btnPri: React.CSSProperties  = { background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '8px 18px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
   const btnSec: React.CSSProperties  = { background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--line-strong)', padding: '8px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)' }

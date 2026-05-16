@@ -356,26 +356,26 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
 
         <form onSubmit={e => { e.preventDefault(); navigate(inputUrl) }}
           style={{ flex: 1, display: 'flex', position: 'relative', alignItems: 'center',
-            borderRadius: 6,
+            borderRadius: 10,
             border: error ? '1px solid #ef4444' : '1px solid transparent',
-            background: '#ffffff',
-            transition: 'border-color 0.12s',
+            background: 'rgba(0,0,0,0.07)',
+            transition: 'border-color 0.12s, background 0.12s',
           }}
-          onFocus={e => { if (!error) e.currentTarget.style.borderColor = 'var(--bg-1)' }}
-          onBlur={e => { if (!error) e.currentTarget.style.borderColor = 'transparent' }}
-          onMouseEnter={undefined}
-          onMouseLeave={undefined}
+          onFocus={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.10)'; if (!error) e.currentTarget.style.borderColor = 'rgba(0,0,0,0.15)' }}
+          onBlur={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)'; if (!error) e.currentTarget.style.borderColor = 'transparent' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.09)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)' }}
         >
-          <IGlobe style={{ position: 'absolute', left: 10, width: 15, height: 15, color: 'rgba(0,0,0,0.35)', pointerEvents: 'none', flexShrink: 0 }} />
+          <IGlobe style={{ position: 'absolute', left: 10, width: 14, height: 14, color: 'rgba(0,0,0,0.4)', pointerEvents: 'none', flexShrink: 0 }} />
           <input
             value={inputUrl}
             onChange={e => setInputUrl(e.target.value)}
             placeholder="http://localhost:3000"
             style={{
-              flex: 1, padding: '5px 10px 5px 30px', borderRadius: 6,
+              flex: 1, padding: '5px 10px 5px 30px', borderRadius: 10,
               border: 'none', background: 'transparent',
-              color: bChrome.color,
-              fontSize: 13, fontFamily: 'var(--font-ui)', outline: 'none',
+              color: 'rgba(0,0,0,0.75)',
+              fontSize: 12.5, fontFamily: 'var(--font-ui)', outline: 'none',
             }}
           />
         </form>
@@ -492,7 +492,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           <button
             onClick={saveDraw}
             disabled={saving}
-            style={{ ...btnBase, background: 'var(--accent)', color: 'var(--accent-fg)', fontWeight: 600, padding: '4px 12px', gap: 4, opacity: saving ? 0.6 : 1 }}
+            style={{ ...btnBase, background: 'var(--accent)', color: '#fff', fontWeight: 600, padding: '4px 12px', gap: 4, opacity: saving ? 0.6 : 1 }}
             title="Zeichnung mit Browser-Inhalt speichern"
           >
             <ISave style={{ width: 13, height: 13, strokeWidth: 2.2 }} />

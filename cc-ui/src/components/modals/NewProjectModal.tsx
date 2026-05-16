@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { DocTemplate } from '../../store/useAppStore'
-import { IClose, IFolderOpen, IDrive, ISpark } from '../primitives/Icons'
+import { IClose, IFolderOpen, IDrive, ISpark, IChevDown, ILock, IGlobe } from '../primitives/Icons'
 import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { aiDetectStartCmd } from '../../utils/aiDetect'
 
@@ -101,10 +101,88 @@ export function NewProjectModal() {
   const [showRepoPicker, setShowRepoPicker] = useState(false)
   const [pickedTokenId, setPickedTokenId]   = useState<string | undefined>(undefined)
   const [hasGit, setHasGit]         = useState(false)
-  const [selectedTokenId, setSelectedTokenId] = useState('')
+  const [selectedTokenId, setSelectedTokenId] = useState(() => tokens[0]?.id ?? '')
+  const [tokenDropOpen, setTokenDropOpen] = useState(false)
   const [newTokenLabel, setNewTokenLabel] = useState('')
   const [newTokenValue, setNewTokenValue] = useState('')
   const [addingToken, setAddingToken] = useState(false)
+
+  interface RepoMeta {
+    orgName: string; orgLogin: string; orgRepos: number
+    repoName: string; fullName: string; isPrivate: boolean; description: string | null
+  }
+  const [repoMeta, setRepoMeta] = useState<RepoMeta | null>(null)
+  const [repoMetaLoading, setRepoMetaLoading] = useState(false)
+
+  const [gitRepoMeta, setGitRepoMeta] = useState<RepoMeta | null>(null)
+  const [gitRepoMetaLoading, setGitRepoMetaLoading] = useState(false)
+  const [gitRemoteUrl, setGitRemoteUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!hasGit || !path.trim()) { setGitRepoMeta(null); setGitRemoteUrl(null); return }
+    setGitRepoMetaLoading(true)
+    fetch(`/api/file-read?path=${encodeURIComponent(path.trim() + '/.git/config')}`)
+      .then(r => r.json())
+      .then(async (d: { ok: boolean; content?: string }) => {
+        if (!d.ok || !d.content) { setGitRepoMetaLoading(false); return }
+        const m = d.content.match(/url\s*=\s*(.+)/m)
+        if (!m) { setGitRepoMetaLoading(false); return }
+        const rawUrl = m[1].trim()
+        const cleanUrl = rawUrl
+          .replace(/^git@github\.com:/, 'https://github.com/')
+          .replace(/https?:\/\/[^@]+@/, 'https://')
+        setGitRemoteUrl(cleanUrl)
+        const gm = cleanUrl.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/)
+        if (!gm) { setGitRepoMetaLoading(false); return }
+        const [, org, repo] = gm
+        const tok = tokens.find(t => t.host === 'github.com')?.token ?? ''
+        const hdrs: HeadersInit = tok ? { Authorization: `Bearer ${tok}` } : {}
+        const [rd, od] = await Promise.all([
+          fetch(`https://api.github.com/repos/${org}/${repo}`, { headers: hdrs }).then(r => r.json()),
+          fetch(`https://api.github.com/orgs/${org}`, { headers: hdrs })
+            .then(r => r.json())
+            .catch(() => fetch(`https://api.github.com/users/${org}`, { headers: hdrs }).then(r => r.json())),
+        ]) as [Record<string, unknown>, Record<string, unknown>]
+        setGitRepoMeta({
+          orgName: (od.name as string | null) || (od.login as string) || org,
+          orgLogin: (od.login as string) || org,
+          orgRepos: ((od.public_repos as number) || 0) + ((od.total_private_repos as number) || 0),
+          repoName: rd.name as string,
+          fullName: rd.full_name as string,
+          isPrivate: rd.private as boolean,
+          description: rd.description as string | null,
+        })
+      })
+      .catch(() => setGitRepoMeta(null))
+      .finally(() => setGitRepoMetaLoading(false))
+  }, [hasGit, path]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!pickedAuthUrl) { setRepoMeta(null); return }
+    const cleanUrl = pickedAuthUrl.replace(/https?:\/\/[^@]+@/, 'https://')
+    const m = cleanUrl.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/)
+    if (!m) return
+    const [, org, repo] = m
+    const tok = tokens.find(t => t.id === (pickedTokenId ?? selectedTokenId))?.token ?? ''
+    const hdrs: HeadersInit = tok ? { Authorization: `Bearer ${tok}` } : {}
+    setRepoMetaLoading(true)
+    Promise.all([
+      fetch(`https://api.github.com/repos/${org}/${repo}`, { headers: hdrs }).then(r => r.json()),
+      fetch(`https://api.github.com/orgs/${org}`, { headers: hdrs })
+        .then(r => r.json())
+        .catch(() => fetch(`https://api.github.com/users/${org}`, { headers: hdrs }).then(r => r.json())),
+    ]).then(([rd, od]: [Record<string, unknown>, Record<string, unknown>]) => {
+      setRepoMeta({
+        orgName: (od.name as string | null) || (od.login as string) || org,
+        orgLogin: (od.login as string) || org,
+        orgRepos: ((od.public_repos as number) || 0) + ((od.total_private_repos as number) || 0),
+        repoName: rd.name as string,
+        fullName: rd.full_name as string,
+        isPrivate: rd.private as boolean,
+        description: rd.description as string | null,
+      })
+    }).catch(() => setRepoMeta(null)).finally(() => setRepoMetaLoading(false))
+  }, [pickedAuthUrl]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [applying, setApplying] = useState(false)
 
@@ -236,6 +314,7 @@ export function NewProjectModal() {
       await applyDocTemplates(id, path.trim(), port, startCmd.trim())
       setNewProjectOpen(false)
       setScreen('workspace')
+      addToast({ type: 'success', title: 'Projekt angelegt', body: name.trim(), duration: 4000 })
     } finally { setApplying(false) }
   }
 
@@ -416,28 +495,174 @@ export function NewProjectModal() {
 
           {/* ── Step 3 ────────────────────────────────────────────────────── */}
           {step === 3 && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 120px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {hasGit ? (
-                <div style={{ padding: '10px 14px', borderRadius: 6, background: 'rgba(124,217,168,0.08)', border: '1px solid rgba(124,217,168,0.25)', fontSize: 12, color: 'var(--ok)' }}>
-                  ✓ Git-Repository bereits im Ordner vorhanden.
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-0)', border: `1px solid ${gitRepoMeta ? 'rgba(34,197,94,0.3)' : 'var(--line-strong)'}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Status row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {gitRepoMetaLoading ? (
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--fg-3)', flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ok)', flexShrink: 0, boxShadow: '0 0 6px var(--ok)' }} />
+                      )}
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ok)' }}>
+                        {gitRepoMetaLoading ? 'Lese Repository…' : 'Git-Repository erkannt'}
+                      </span>
+                      {gitRepoMeta && (
+                        <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          {gitRepoMeta.isPrivate ? <><ILock style={{ width: 11, height: 11, marginRight: 3 }} />privat</> : <><IGlobe style={{ width: 11, height: 11, marginRight: 3 }} />öffentlich</>}
+                        </span>
+                      )}
+                    </div>
+
+                    {gitRepoMeta ? (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                          <span style={{ color: 'var(--fg-3)', fontSize: 9.5, fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: 0.7, minWidth: 52 }}>Organisation</span>
+                          <span style={{ color: 'var(--fg-1)', fontWeight: 500 }}>{gitRepoMeta.orgName}</span>
+                          <span style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>@{gitRepoMeta.orgLogin}</span>
+                          {gitRepoMeta.orgRepos > 0 && (
+                            <span style={{ marginLeft: 'auto', color: 'var(--fg-3)', fontSize: 10 }}>{gitRepoMeta.orgRepos} Repos</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11 }}>
+                          <span style={{ color: 'var(--fg-3)', fontSize: 9.5, fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: 0.7, minWidth: 52, paddingTop: 1 }}>Repository</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: 'var(--fg-1)', fontWeight: 500, fontFamily: 'var(--font-mono)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{gitRepoMeta.fullName}</div>
+                            {gitRepoMeta.description && (
+                              <div style={{ color: 'var(--fg-3)', fontSize: 10, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{gitRepoMeta.description}</div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    ) : gitRemoteUrl && !gitRepoMetaLoading ? (
+                      <div style={{ fontSize: 11, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{gitRemoteUrl}</div>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <>
-                  {/* Repo URL */}
+                  {/* Token combobox — custom styled, always at top */}
                   <div>
-                    {tokens.some(t => t.host === 'github.com') && (
-                      <button
-                        onClick={() => setShowRepoPicker(true)}
-                        style={{ ...btnPrimary, width: '100%', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                      >
-                        Aus GitHub wählen →
-                      </button>
+                    <label style={fl}>Zugriffstoken</label>
+                    {!addingToken ? (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {/* Custom dropdown trigger */}
+                        <div style={{ flex: 1, position: 'relative' }}>
+                          <button
+                            onClick={() => setTokenDropOpen(o => !o)}
+                            style={{ ...fi, display: 'flex', alignItems: 'center', cursor: 'pointer', textAlign: 'left', border: `1px solid ${tokenDropOpen ? 'var(--accent)' : 'var(--line-strong)'}` }}
+                          >
+                            {selectedTokenId ? (
+                              <>
+                                <span style={{ flex: 1, color: 'var(--fg-0)' }}>{tokens.find(t => t.id === selectedTokenId)?.label ?? '—'}</span>
+                                <span style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 11, marginRight: 6 }}>{tokens.find(t => t.id === selectedTokenId)?.token.slice(0, 8)}…</span>
+                              </>
+                            ) : (
+                              <span style={{ flex: 1, color: 'var(--fg-3)' }}>— Kein Token —</span>
+                            )}
+                            <IChevDown style={{ width: 12, height: 12, color: 'var(--fg-3)', flexShrink: 0, transform: tokenDropOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                          </button>
+                          {tokenDropOpen && (
+                            <div
+                              style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.3)', zIndex: 200, overflow: 'hidden' }}
+                              onMouseLeave={() => setTokenDropOpen(false)}
+                            >
+                              <div
+                                onClick={() => { setSelectedTokenId(''); setTokenDropOpen(false) }}
+                                style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', background: !selectedTokenId ? 'var(--accent-soft)' : 'transparent' }}
+                                onMouseEnter={e => { if (selectedTokenId) e.currentTarget.style.background = 'var(--bg-2)' }}
+                                onMouseLeave={e => { if (selectedTokenId) e.currentTarget.style.background = 'transparent' }}
+                              >— Kein Token —</div>
+                              {tokens.map(t => (
+                                <div
+                                  key={t.id}
+                                  onClick={() => { setSelectedTokenId(t.id); setTokenDropOpen(false) }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 12, background: selectedTokenId === t.id ? 'var(--accent-soft)' : 'transparent', borderTop: '1px solid var(--line)' }}
+                                  onMouseEnter={e => { if (selectedTokenId !== t.id) e.currentTarget.style.background = 'var(--bg-2)' }}
+                                  onMouseLeave={e => { if (selectedTokenId !== t.id) e.currentTarget.style.background = 'transparent' }}
+                                >
+                                  <span style={{ flex: 1, color: 'var(--fg-0)', fontWeight: selectedTokenId === t.id ? 600 : 400 }}>{t.label}</span>
+                                  <span style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{t.token.slice(0, 8)}…</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setAddingToken(true)}
+                          style={{ ...btnGhost, fontSize: 11, padding: '5px 12px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                        >+ Neu</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line-strong)' }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <label style={fl}>Bezeichnung</label>
+                            <input style={fi} value={newTokenLabel} onChange={e => setNewTokenLabel(e.target.value)} placeholder={platformInfo ? `${platformInfo.name} Token` : 'Mein Git-Token'} />
+                          </div>
+                          <div style={{ flex: 2 }}>
+                            <label style={fl}>Token</label>
+                            <input
+                              style={{ ...fi, fontFamily: 'var(--font-mono)', letterSpacing: 0.5 }}
+                              type="password"
+                              value={newTokenValue}
+                              onChange={e => setNewTokenValue(e.target.value)}
+                              placeholder="ghp_… / glpat-… / …"
+                            />
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => {
+                              if (!newTokenLabel.trim() || !newTokenValue.trim()) return
+                              const id = `tok${Date.now()}`
+                              addToken({ id, label: newTokenLabel.trim(), host: repoHost || 'github.com', token: newTokenValue.trim() })
+                              setSelectedTokenId(id)
+                              setAddingToken(false)
+                              setNewTokenLabel('')
+                              setNewTokenValue('')
+                            }}
+                            disabled={!newTokenLabel.trim() || !newTokenValue.trim()}
+                            style={{ ...btnPrimary, fontSize: 11, padding: '5px 12px', opacity: (!newTokenLabel.trim() || !newTokenValue.trim()) ? 0.45 : 1 }}
+                          >Speichern</button>
+                          <button onClick={() => setAddingToken(false)} style={{ ...btnGhost, fontSize: 11, padding: '5px 10px' }}>Abbrechen</button>
+                        </div>
+                      </div>
                     )}
-                    <label style={fl}>
-                      {tokens.some(t => t.host === 'github.com') ? 'Oder URL manuell eingeben' : 'Repository-URL'}{' '}
-                      <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--fg-3)' }}>(optional)</span>
-                    </label>
+                  </div>
+
+                  {/* Repo section */}
+                  <div style={{ marginTop: 20 }}>
+                    {/* Section header */}
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-1)', marginBottom: 12 }}>
+                      Repository auswählen
+                    </div>
+
+                    {/* GitHub picker button */}
+                    {tokens.some(t => t.host === 'github.com') && (
+                      <div style={{ marginBottom: 14 }}>
+                        <button
+                          onClick={() => setShowRepoPicker(true)}
+                          style={{ ...btnPrimary, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                        >
+                          Aus GitHub wählen →
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Sub-header divider */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+                      <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase' as const, color: 'var(--fg-3)', whiteSpace: 'nowrap' as const }}>
+                        Oder URL manuell eingeben{' '}
+                        <span style={{ fontWeight: 400, textTransform: 'none' as const, letterSpacing: 0 }}>(optional)</span>
+                      </span>
+                      <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+                    </div>
+
                     <input
                       autoFocus={!tokens.some(t => t.host === 'github.com')}
                       style={fi}
@@ -445,82 +670,51 @@ export function NewProjectModal() {
                       onChange={e => setRepoUrl(e.target.value)}
                       placeholder="https://github.com/dein-user/dein-repo.git"
                     />
-                    {platformInfo && (
-                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>{platformInfo.name} erkannt —</span>
-                        <a href={platformInfo.tokenUrl} target="_blank" rel="noreferrer"
-                          style={{ fontSize: 10, color: 'var(--accent)', textDecoration: 'none' }}>
-                          Token erstellen →
-                        </a>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Token section — only show if URL entered */}
-                  {repoUrl.trim() && (
-                    <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
-                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-3)', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8 }}>Zugriffstoken</div>
+                  {/* Status card — shown after picker selection */}
+                  {pickedAuthUrl && (
+                    <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-0)', border: `1px solid ${repoMeta ? 'rgba(34,197,94,0.3)' : 'var(--line-strong)'}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {/* Status row */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {repoMetaLoading ? (
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--fg-3)', flexShrink: 0 }} />
+                        ) : (
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: repoMeta ? 'var(--ok)' : 'var(--err)', flexShrink: 0, boxShadow: repoMeta ? '0 0 6px var(--ok)' : 'none' }} />
+                        )}
+                        <span style={{ fontSize: 11, fontWeight: 600, color: repoMeta ? 'var(--ok)' : 'var(--fg-2)' }}>
+                          {repoMetaLoading ? 'Verbinde…' : repoMeta ? 'Verbunden' : 'Repo ausgewählt'}
+                        </span>
+                        {repoMeta && (
+                          <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            {repoMeta.isPrivate ? <><ILock style={{ width: 11, height: 11, marginRight: 3 }} />privat</> : <><IGlobe style={{ width: 11, height: 11, marginRight: 3 }} />öffentlich</>}
+                          </span>
+                        )}
+                      </div>
 
-                      {/* Existing matching tokens */}
-                      {matchingTokens.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
-                          {matchingTokens.map(t => (
-                            <div
-                              key={t.id}
-                              onClick={() => setSelectedTokenId(selectedTokenId === t.id ? '' : t.id)}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, background: selectedTokenId === t.id ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${selectedTokenId === t.id ? 'var(--accent-line)' : 'var(--line)'}`, cursor: 'pointer', transition: 'all 0.15s' }}
-                            >
-                              <div style={{ width: 7, height: 7, borderRadius: '50%', background: selectedTokenId === t.id ? 'var(--accent)' : 'var(--bg-3)', border: '1px solid var(--line-strong)', flexShrink: 0 }} />
-                              <span style={{ fontSize: 11.5, color: 'var(--fg-0)', fontWeight: 500 }}>{t.label}</span>
-                              <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{t.token.slice(0, 8)}…</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {repoMeta && (
+                        <>
+                          {/* Org row */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                            <span style={{ color: 'var(--fg-3)', fontSize: 9.5, fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: 0.7, minWidth: 52 }}>Organisation</span>
+                            <span style={{ color: 'var(--fg-1)', fontWeight: 500 }}>{repoMeta.orgName}</span>
+                            <span style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>@{repoMeta.orgLogin}</span>
+                            {repoMeta.orgRepos > 0 && (
+                              <span style={{ marginLeft: 'auto', color: 'var(--fg-3)', fontSize: 10 }}>{repoMeta.orgRepos} Repos</span>
+                            )}
+                          </div>
 
-                      {/* Add new token */}
-                      {!addingToken ? (
-                        <button
-                          onClick={() => setAddingToken(true)}
-                          style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: '1px dashed var(--accent-line)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', width: '100%', fontFamily: 'var(--font-ui)' }}
-                        >
-                          + Token hinterlegen
-                        </button>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line-strong)' }}>
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <div style={{ flex: 1 }}>
-                              <label style={fl}>Bezeichnung</label>
-                              <input style={fi} value={newTokenLabel} onChange={e => setNewTokenLabel(e.target.value)} placeholder={platformInfo ? `${platformInfo.name} Token` : 'Mein Git-Token'} />
-                            </div>
-                            <div style={{ flex: 2 }}>
-                              <label style={fl}>Token</label>
-                              <input
-                                style={{ ...fi, fontFamily: 'var(--font-mono)', letterSpacing: 0.5 }}
-                                type="password"
-                                value={newTokenValue}
-                                onChange={e => setNewTokenValue(e.target.value)}
-                                placeholder="ghp_… / glpat-… / …"
-                              />
+                          {/* Repo row */}
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11 }}>
+                            <span style={{ color: 'var(--fg-3)', fontSize: 9.5, fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: 0.7, minWidth: 52, paddingTop: 1 }}>Repository</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ color: 'var(--fg-1)', fontWeight: 500, fontFamily: 'var(--font-mono)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{repoMeta.fullName}</div>
+                              {repoMeta.description && (
+                                <div style={{ color: 'var(--fg-3)', fontSize: 10, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{repoMeta.description}</div>
+                              )}
                             </div>
                           </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              onClick={() => {
-                                if (!newTokenLabel.trim() || !newTokenValue.trim()) return
-                                const id = `tok${Date.now()}`
-                                addToken({ id, label: newTokenLabel.trim(), host: repoHost || 'github.com', token: newTokenValue.trim() })
-                                setSelectedTokenId(id)
-                                setAddingToken(false)
-                                setNewTokenLabel('')
-                                setNewTokenValue('')
-                              }}
-                              disabled={!newTokenLabel.trim() || !newTokenValue.trim()}
-                              style={{ ...btnPrimary, fontSize: 11, padding: '5px 12px', opacity: (!newTokenLabel.trim() || !newTokenValue.trim()) ? 0.45 : 1 }}
-                            >Speichern</button>
-                            <button onClick={() => setAddingToken(false)} style={{ ...btnGhost, fontSize: 11, padding: '5px 10px' }}>Abbrechen</button>
-                          </div>
-                        </div>
+                        </>
                       )}
                     </div>
                   )}
@@ -612,9 +806,9 @@ export function NewProjectModal() {
 function FolderPreview({ path }: { path: string }) {
   const parts = path.replace(/^\/Users\/[^/]+/, '~').split('/')
   return (
-    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
+    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px' }}>
       <IDrive style={{ color: 'var(--fg-3)', flexShrink: 0 }} />
-      <span style={{ fontSize: 10.5, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 10.5, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {parts.join(' / ')}
       </span>
     </div>

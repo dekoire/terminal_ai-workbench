@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { Toast } from '../../store/useAppStore'
-import { ICheck, IWarn, IAlertCircle, IClose } from './Icons'
+import { ICheckCircle2, IXCircle, IAlertCircle, IInfo, IClose } from './Icons'
 
 // ── Per-toast auto-dismiss ────────────────────────────────────────────────────
 
@@ -10,7 +10,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   const preset      = useAppStore(s => s.preset)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const defaultDuration = toast.type === 'error' ? 0 : toast.type === 'warning' ? 6000 : 4000
+  const defaultDuration = toast.actions?.length ? 0 : 4000
   const duration = toast.duration !== undefined ? toast.duration : defaultDuration
 
   useEffect(() => {
@@ -22,10 +22,10 @@ function ToastItem({ toast }: { toast: Toast }) {
   const isLight = document.documentElement.classList.contains('theme-light')
 
   const config = {
-    success: { color: '#22c55e', tint: 'rgba(34,197,94,0.22)',  Icon: ICheck },
-    error:   { color: '#ef4444', tint: 'rgba(239,68,68,0.22)',  Icon: IWarn },
-    warning: { color: '#f59e0b', tint: 'rgba(245,158,11,0.22)', Icon: IWarn },
-    info:    { color: '#94a3b8', tint: 'rgba(148,163,184,0.2)', Icon: IAlertCircle },
+    success: { color: '#22c55e', tint: 'rgba(34,197,94,0.22)',  Icon: ICheckCircle2 },
+    error:   { color: '#ef4444', tint: 'rgba(239,68,68,0.22)',  Icon: IXCircle },
+    warning: { color: '#f59e0b', tint: 'rgba(245,158,11,0.22)', Icon: IAlertCircle },
+    info:    { color: '#94a3b8', tint: 'rgba(148,163,184,0.2)', Icon: IInfo },
   }[toast.type]
 
   // Light theme → always dark card; dark theme → colored tint card
@@ -51,7 +51,7 @@ function ToastItem({ toast }: { toast: Toast }) {
     }}>
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-        <config.Icon style={{ width: 15, height: 15, color: '#fff', flexShrink: 0, marginTop: 1 }} />
+        <config.Icon style={{ width: 20, height: 20, color: '#fff', flexShrink: 0, marginTop: 0 }} />
         <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#fff', lineHeight: 1.35, fontFamily: 'var(--font-ui)' }}>
           {toast.title}
         </span>
@@ -65,14 +65,14 @@ function ToastItem({ toast }: { toast: Toast }) {
 
       {/* Body */}
       {toast.body && (
-        <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.45, paddingLeft: 24, fontFamily: 'var(--font-ui)', wordBreak: 'break-word' }}>
+        <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.45, paddingLeft: 29, fontFamily: 'var(--font-ui)', wordBreak: 'break-word' }}>
           {toast.body}
         </div>
       )}
 
       {/* Action buttons */}
       {toast.actions && toast.actions.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, paddingLeft: 24, marginTop: 2 }}>
+        <div style={{ display: 'flex', gap: 6, paddingLeft: 29, marginTop: 2 }}>
           {toast.actions.map((a, i) => (
             <button
               key={i}

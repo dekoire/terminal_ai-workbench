@@ -2767,7 +2767,6 @@ function KontextMgmtPanel() {
   const [tab, setTab] = useState<'chat' | 'agent' | 'verdichten'>('chat')
   const [compressing, setCompressing] = useState(false)
   const [compressResult, setCompressResult] = useState<string | null>(null)
-  const [compressError, setCompressError] = useState<string | null>(null)
   const [applied, setApplied] = useState(false)
 
   const numInput: React.CSSProperties = {
@@ -2817,7 +2816,6 @@ function KontextMgmtPanel() {
       setCompressResult(result)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      setCompressError(msg)
       addToastKontext({ type: 'error', title: 'Komprimierung fehlgeschlagen', body: msg })
     } finally {
       setCompressing(false)
@@ -3002,7 +3000,7 @@ function KontextMgmtPanel() {
           </div>
 
           <div style={card}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: compressError || !openrouterKey ? 12 : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: !openrouterKey ? 12 : 0 }}>
               <div>
                 <div style={cardTitle}>Aktueller Chat</div>
                 <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 2 }}>
@@ -3026,11 +3024,6 @@ function KontextMgmtPanel() {
             {!openrouterKey && (
               <div style={{ fontSize: 11, color: 'var(--err)', padding: '8px 12px', background: 'color-mix(in srgb, var(--err) 10%, transparent)', borderRadius: 6 }}>
                 OpenRouter API-Key fehlt — unter Large Language Models hinterlegen.
-              </div>
-            )}
-            {compressError && (
-              <div style={{ fontSize: 11, color: 'var(--err)', padding: '8px 12px', background: 'color-mix(in srgb, var(--err) 10%, transparent)', borderRadius: 6 }}>
-                {compressError}
               </div>
             )}
           </div>

@@ -18,7 +18,7 @@ export function NewSessionModal() {
     setNewSessionOpen, activeProjectId, projects, addSession, setActiveSession,
     aliases, setScreen,
     newSessionPreKind, setNewSessionPreKind, claudeProviders,
-    createOrbitChat,
+    createOrbitChat, addToast,
   } = useAppStore()
 
   // mode selection — pre-seeded from EmptyState quick-pick
@@ -105,17 +105,18 @@ export function NewSessionModal() {
     }
     setActiveSession(id)
     setNewSessionOpen(false)
+    addToast({ type: 'success', title: 'Session gestartet', body: sessionName, duration: 4000 })
   }
 
   // ── Orbit session creation ──────────────────────────────────────────────
   const startOrbit = () => {
-    // Reuse existing orbit session for this project — open a new chat in it instead
     const project = projects.find(p => p.id === activeProjectId)
     const existing = project?.sessions.find(s => s.kind === 'orbit')
     if (existing) {
       setActiveSession(existing.id)
       createOrbitChat(activeProjectId!, existing.id)
       setNewSessionOpen(false)
+      addToast({ type: 'success', title: 'Session gestartet', body: 'Orbit', duration: 4000 })
       return
     }
     const id = newSessionId(activeProjectId)
@@ -128,6 +129,7 @@ export function NewSessionModal() {
     })
     setActiveSession(id)
     setNewSessionOpen(false)
+    addToast({ type: 'success', title: 'Session gestartet', body: 'Orbit', duration: 4000 })
   }
 
   // ── Single session creation ──────────────────────────────────────────────
@@ -140,15 +142,17 @@ export function NewSessionModal() {
     if (isDangerous && !baseArgs.includes('--dangerously-skip-permissions')) {
       baseArgs = baseArgs ? baseArgs + ' --dangerously-skip-permissions' : '--dangerously-skip-permissions'
     }
+    const sessionName = title || aliasName || 'New session'
     addSession(activeProjectId, {
       id, kind: 'single',
-      name: title || aliasName || 'New session',
+      name: sessionName,
       alias: aliasName, cmd: baseCmd, args: baseArgs,
       status: 'active', permMode: isDangerous ? 'dangerous' : permMode,
       startedAt: Date.now(),
     })
     setActiveSession(id)
     setNewSessionOpen(false)
+    addToast({ type: 'success', title: 'Session gestartet', body: sessionName, duration: 4000 })
   }
 
   // ── Render helpers ───────────────────────────────────────────────────────
