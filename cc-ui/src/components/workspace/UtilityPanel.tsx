@@ -7,7 +7,8 @@ import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages, loadAllContextSummaries, type AgentContextSummary, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
-import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGit, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain, ITag, IDrag } from '../primitives/Icons'
+import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGit, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain, ITag, IDrag, IScrollText } from '../primitives/Icons'
+import { MonitoringPanel } from './MonitoringPanel'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
@@ -3424,7 +3425,7 @@ export function UtilityPanel() {
   const [tab, setTab] = useState(0)
   const [exporting, setExporting]  = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
-  const [tabConfig, setTabConfig] = useState<{ githubMode: 'github' | 'advanced' | 'none'; showFiles: boolean; showResearch: boolean }>({ githubMode: 'github', showFiles: true, showResearch: true })
+  const [tabConfig, setTabConfig] = useState<{ githubMode: 'github' | 'advanced' | 'none'; showFiles: boolean; showResearch: boolean; showLogs: boolean }>({ githubMode: 'github', showFiles: true, showResearch: true, showLogs: true })
   const [tabConfigOpen, setTabConfigOpen] = useState(false)
   const tabConfigRef = React.useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -3562,13 +3563,14 @@ export function UtilityPanel() {
   const isOrbitSession = session?.kind === 'orbit'
 
   // Tab indices:
-  // non-orbit: 0=Session 1=GitHub 2=GitAdvanced 3=Files 4=Data 5=Research [6=Terminal]
-  // orbit:     0=Chat   1=Session 2=GitHub 3=GitAdvanced 4=Files 5=Data 6=Research [7=Terminal]
-  const ghIdx       = isOrbitSession ? 2 : 1
-  const gitAdvIdx   = isOrbitSession ? 3 : 2
-  const filesIdx    = isOrbitSession ? 4 : 3
-  const dataIdx     = isOrbitSession ? 5 : 4
-  const researchIdx = isOrbitSession ? 6 : 5
+  // non-orbit: 0=Session 1=GitHub 2=GitAdvanced 3=Files 4=Data 5=Research 6=Logs [7=Terminal]
+  // orbit:     0=Chat   1=Session 2=GitHub 3=GitAdvanced 4=Files 5=Data 6=Research 7=Logs [8=Terminal]
+  const ghIdx         = isOrbitSession ? 2 : 1
+  const gitAdvIdx     = isOrbitSession ? 3 : 2
+  const filesIdx      = isOrbitSession ? 4 : 3
+  const dataIdx       = isOrbitSession ? 5 : 4
+  const researchIdx   = isOrbitSession ? 6 : 5
+  const monitoringIdx = isOrbitSession ? 7 : 6
 
   // Auto-switch away from Data tab when files are closed
   useEffect(() => {
@@ -3592,8 +3594,8 @@ export function UtilityPanel() {
 
   // Tab order: Session | GitHub | Git Pro | Dateien | Data | Research [| Terminal]
   const baseTabs = isOrbitSession
-    ? ['Chat', 'Session', 'GitHub', 'Git Pro', 'Dateien', 'Data', 'Research']
-    : ['Session', 'GitHub', 'Git Pro', 'Dateien', 'Data', 'Research']
+    ? ['Chat', 'Session', 'GitHub', 'Git Pro', 'Dateien', 'Data', 'Research', 'Logs']
+    : ['Session', 'GitHub', 'Git Pro', 'Dateien', 'Data', 'Research', 'Logs']
   const tabs = terminalOpen ? [...baseTabs, 'Terminal'] : baseTabs
 
   // Reset tab if it becomes hidden via config
@@ -3602,16 +3604,16 @@ export function UtilityPanel() {
       (tab === ghIdx     && tabConfig.githubMode !== 'github') ||
       (tab === gitAdvIdx && tabConfig.githubMode !== 'advanced') ||
       (tab === filesIdx  && !tabConfig.showFiles) ||
-      (tab === researchIdx && !tabConfig.showResearch)
+      (tab === researchIdx && !tabConfig.showResearch) ||
+      (tab === monitoringIdx && !tabConfig.showLogs)
     if (hidden) setTab(0)
-  }, [tabConfig, tab, ghIdx, gitAdvIdx, filesIdx, researchIdx])
+  }, [tabConfig, tab, ghIdx, gitAdvIdx, filesIdx, researchIdx, monitoringIdx])
   const terminalTabIdx = terminalOpen ? tabs.length - 1 : -1
-  // tabs with no padding (full-bleed): Chat, Files, Data, Terminal + gitAdv
-  const noPaddingBase = isOrbitSession ? [0, gitAdvIdx, 4, 5] : [gitAdvIdx, 3, 4]
+  // tabs with no padding (full-bleed): Chat, Files, Data, Monitoring, Terminal + gitAdv
+  const noPaddingBase = isOrbitSession ? [0, gitAdvIdx, 4, 5, monitoringIdx] : [gitAdvIdx, 3, 4, monitoringIdx]
   const noPadding = terminalOpen ? [...noPaddingBase, terminalTabIdx] : noPaddingBase
   // tabs that use their own internal scroll — outer wrapper must be overflow:hidden
-  // gitAdvIdx removed: Git Pro should scroll freely like a normal tab
-  const noScrollBase = isOrbitSession ? [0, 4, 5] : [3, 4]
+  const noScrollBase = isOrbitSession ? [0, 4, 5, monitoringIdx] : [3, 4, monitoringIdx]
   const noScroll = terminalOpen ? [...noScrollBase, terminalTabIdx] : noScrollBase
 
   return (
@@ -3623,6 +3625,7 @@ export function UtilityPanel() {
           if (t === 'Git Pro' && tabConfig.githubMode !== 'advanced') return null
           if (t === 'Dateien'     && !tabConfig.showFiles)                 return null
           if (t === 'Research'    && !tabConfig.showResearch)              return null
+          if (t === 'Logs'        && !tabConfig.showLogs)                  return null
           const isTermTab = t === 'Terminal'
           const active = i === tab
           return (
@@ -3671,8 +3674,8 @@ export function UtilityPanel() {
               <div style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', padding: '0 4px 4px' }}>Tabs anpassen</div>
 
               {/* Dateien */}
-              {(['Dateien', 'Research'] as const).map(label => {
-                const key = label === 'Dateien' ? 'showFiles' : 'showResearch'
+              {(['Dateien', 'Research', 'Logs'] as const).map(label => {
+                const key = label === 'Dateien' ? 'showFiles' : label === 'Research' ? 'showResearch' : 'showLogs'
                 const on = tabConfig[key]
                 return (
                   <div key={label} onClick={() => setTabConfig(c => ({ ...c, [key]: !c[key] }))}
@@ -3813,6 +3816,13 @@ export function UtilityPanel() {
         {tab === researchIdx && project && <AiSearchTab projectId={project.id} isOrbitSession={isOrbitSession} />}
         {tab === researchIdx && !project && (
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
+        )}
+
+        {/* ── Tab Logs ── */}
+        {tab === monitoringIdx && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <MonitoringPanel projectId={activeProjectId} />
+          </div>
         )}
 
         {/* ── Tab Terminal ── */}

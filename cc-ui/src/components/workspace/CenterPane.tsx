@@ -1087,7 +1087,47 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     let fullMsg = inputValue
     if (favBodies.length > 0) fullMsg += (fullMsg ? '\n\n' : '') + favBodies.join('\n\n')
 
-    if (activeSession?.kind === 'orbit') {
+    if (activeSession?.kind === 'openrouter-claude') {
+      // Agent session (Kimi/custom provider via Claude Code CLI):
+      // Read file content directly from File object — no R2 URL needed, no upload wait.
+      const sendAgentMsg = async () => {
+        let msg = fullMsg
+        const docFiles = pendingFiles.filter(f => !f.isImage)
+        if (docFiles.length > 0) {
+          const inlined = await Promise.all(docFiles.map(async f => {
+            try {
+              const text = await f.file.text()
+              const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
+              return `\n\n--- ${f.name} ---\n\`\`\`${ext}\n${text}\n\`\`\``
+            } catch { return `\n\n[Anhang: ${f.name}]` }
+          }))
+          msg += inlined.join('')
+        }
+        const imageFiles = pendingFiles.filter(f => f.isImage && f.file)
+        if (imageFiles.length > 0) {
+          const paths = await Promise.all(imageFiles.map(async f => {
+            try {
+              const res = await fetch('/api/write-temp-image', {
+                method: 'POST',
+                headers: { 'Content-Type': f.mimeType || 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name) },
+                body: f.file,
+              })
+              const data = await res.json() as { ok: boolean; path?: string }
+              return data.ok && data.path ? data.path : null
+            } catch { return null }
+          }))
+          const valid = paths.filter(Boolean) as string[]
+          if (valid.length > 0) msg += ' ' + valid.map(p => `--image "${p}"`).join(' ')
+        }
+        const resolved = await resolveRefs(msg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id)
+        window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: { sessionId: activeSessionId, data: resolved } }))
+        setInputValue('')
+        clearFiles()
+        setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
+      }
+      void sendAgentMsg()
+      return
+    } else if (activeSession?.kind === 'orbit') {
       // Orbit: images → base64 inline; text/doc files → fetch content and inline as code block
       // (R2 proxy URLs are localhost — unreachable by remote AI model servers)
       const imageFiles = pendingFiles.filter(f => f.isImage)

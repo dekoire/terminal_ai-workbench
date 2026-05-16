@@ -944,7 +944,7 @@ const TERMINAL_FONT_MAP_UI: Record<string, string> = {
   system:    'monospace',
 }
 
-type AussehTab = 'themes' | 'terminal'
+type AussehTab = 'themes' | 'terminal' | 'logs'
 
 // Static accent family definitions — each has a dark and light variant
 const ACCENT_FAMILIES = [
@@ -969,6 +969,7 @@ function AussehenpPanel() {
     setTerminalFontFamily, setTerminalFontSize,
     customTerminalColors, setCustomTerminalColor, resetCustomTerminalColors,
     customUiColors, setCustomUiColor, setCustomUiColors, resetCustomUiColors,
+    logColors, setLogColor, resetLogColors,
   } = useAppStore()
 
   const accent           = _ac ?? '#ff8a5b'
@@ -1051,6 +1052,7 @@ function AussehenpPanel() {
         <div style={{ display: 'flex', gap: 2, padding: '3px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
           <button style={tabStyle('themes')}   onClick={() => setTab('themes')}>Themes</button>
           <button style={tabStyle('terminal')} onClick={() => setTab('terminal')}>Terminal</button>
+          <button style={tabStyle('logs')}     onClick={() => setTab('logs')}>Logs</button>
         </div>
       </div>
 
@@ -1376,6 +1378,51 @@ function AussehenpPanel() {
             </div>
             </>}
           </section>
+        </div>
+      )}
+
+      {/* ── Logs ── */}
+      {tab === 'logs' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Log-Level Farben</div>
+            <button onClick={resetLogColors} style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>Zurücksetzen</button>
+          </div>
+
+          {/* Preview */}
+          <div style={{ border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+            {([
+              { level: 'error', label: 'ERROR', sample: 'ECONNREFUSED ::1:5432 — connection refused' },
+              { level: 'warn',  label: 'WARN',  sample: 'Deprecated API: use /api/v2 instead' },
+              { level: 'info',  label: 'INFO',  sample: 'Server listening on http://localhost:3000' },
+              { level: 'debug', label: 'DEBUG', sample: 'GET /api/health 200 OK (12ms)' },
+            ] as const).map(({ level, label, sample }) => {
+              const c = logColors[level]
+              const r = parseInt(c.slice(1, 3), 16), g = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16)
+              const bg = level === 'debug' ? 'transparent' : `rgba(${r},${g},${b},0.07)`
+              return (
+                <div key={level} style={{ borderLeft: `3px solid ${c}`, background: bg, padding: '3px 10px 3px 8px', display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ color: 'var(--fg-3)', fontSize: 10, flexShrink: 0 }}>12:34:56</span>
+                  <span style={{ color: c, fontWeight: 700, fontSize: 9.5, flexShrink: 0, width: 38, textTransform: 'uppercase' }}>{label}</span>
+                  <span style={{ color: level === 'debug' ? 'var(--fg-3)' : level === 'info' ? 'var(--fg-1)' : c }}>{sample}</span>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Color pickers */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {([
+              { level: 'error', label: 'Error' },
+              { level: 'warn',  label: 'Warn' },
+              { level: 'info',  label: 'Info' },
+              { level: 'debug', label: 'Debug' },
+            ] as const).map(({ level, label }) => (
+              <ColorRow key={level} label={label} hint={`log.${level}`}
+                value={logColors[level]}
+                onChange={v => setLogColor(level, v)} />
+            ))}
+          </div>
         </div>
       )}
 

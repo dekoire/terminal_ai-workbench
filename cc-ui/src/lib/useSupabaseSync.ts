@@ -168,6 +168,7 @@ export function useSupabaseSync() {
       console.warn('[supabaseSync] Supabase not configured — skipping load')
       loadedRef.current  = true
       loadingRef.current = false
+      useAppStore.getState().setDataLoaded(true)
       return
     }
 
@@ -178,6 +179,7 @@ export function useSupabaseSync() {
         console.warn('[supabaseSync] No active session — skipping load')
         loadedRef.current  = true
         loadingRef.current = false
+        useAppStore.getState().setDataLoaded(true)
         return
       }
       return loadFromSupabase(sb, userId)

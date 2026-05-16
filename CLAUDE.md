@@ -30,3 +30,12 @@ Start: `cd cc-ui && npm run dev` → http://localhost:4321
 - CSS-Variablen: `cc-ui/src/index.css`
 - Icons: `cc-ui/src/components/primitives/Icons.tsx`
 - App-Routing: `cc-ui/src/App.tsx`
+
+## Monitoring — project.config.json
+Wenn du einen Dev-Server oder eine App startest (npm run dev, uvicorn, python manage.py runserver, cargo run, etc.):
+Erkenne den Port aus dem Output und schreibe ihn in `project.config.json` im Projekt-Root:
+```json
+{ "port": 3000, "lastStarted": "2026-05-16T12:00:00.000Z" }
+```
+Das ermöglicht dem Monitoring-Tab im rechten Panel die Logs automatisch anzuzeigen.
+Nutze dazu das Datei-Write-Tool: Pfad = `<projektpfad>/project.config.json`

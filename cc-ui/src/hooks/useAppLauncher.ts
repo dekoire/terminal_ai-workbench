@@ -122,12 +122,20 @@ export function useAppLauncher(projectId: string | undefined, openBrowserOnSucce
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectPath: p.path, port, startCmd: cmd, extraPorts }),
       })
-      const d = await r.json() as { ok: boolean; pid?: number }
+      const d = await r.json() as { ok: boolean; pid?: number; logFile?: string }
       if (!d.ok) {
         _fail('Server konnte nicht gestartet werden.')
         return
       }
       pid = d.pid
+      // Persist PID + logFile so MonitoringPanel can find the log
+      if (p.path) {
+        void writeProjectConfig(p.path, {
+          pid: d.pid ?? null,
+          logFile: d.logFile ?? null,
+          lastStarted: new Date().toISOString(),
+        })
+      }
     } catch {
       _fail('Netzwerkfehler beim Starten.')
       return
@@ -161,13 +169,19 @@ export function useAppLauncher(projectId: string | undefined, openBrowserOnSucce
           if (d.inUse) {
             const url = `http://localhost:${p}`
             setState(s => ({ ...s, status: 'running', port: p, url }))
+            // Always write the actual running port back to config so Logs tab stays in sync
+            const proj = projectRef.current
+            if (proj?.path) {
+              void writeProjectConfig(proj.path, { port: p, appUrl: url })
+              // Also update store so appPort is immediately correct
+            }
             if (useToast) {
               if (startingToastId) removeToastRef.current(startingToastId)
               addToastRef.current({ type: 'success', title: 'App gestartet', body: url, duration: 4000 } as Omit<Toast, 'id'>)
             } else {
               setShowModal(false)
             }
-            if (openBrowserRef.current && !navigator.userAgent.includes('Electron')) window.open(url, '_blank')
+            if (openBrowserRef.current) window.open(url, '_blank')
             return
           }
         } catch { /* ignore */ }
