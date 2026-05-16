@@ -120,8 +120,8 @@ export function GettingStartedModal({ onClose }: Props) {
       <div style={{ padding: '48px 40px', display: 'flex', flexDirection: 'column', gap: 24, overflowY: 'auto' }}>
         <img src={simpleLogo} alt="Codera AI" style={{ width: 40, height: 40 }} />
         <div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2, letterSpacing: -0.5, marginBottom: 12, whiteSpace: 'pre-line' }}>
-            {'KI-Coding.\nZentral gesteuert.'}
+          <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2, letterSpacing: -0.5, marginBottom: 12 }}>
+            Codera AI
           </div>
           <div style={{ fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.65, maxWidth: 320 }}>
             Richte Codera AI in wenigen Schritten ein — verbinde dein KI-Modell und lege dein erstes Projekt an.
@@ -143,15 +143,10 @@ export function GettingStartedModal({ onClose }: Props) {
           style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }}
         />
         {/* Overlay gradient + logo/slogan */}
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 50%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', top: 24, left: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <ISpinner size={26} spin={false} style={{ color: '#ffffff' }} />
-            <span style={{ fontSize: 18, fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1, textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>Codera</span>
-          </div>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', fontFamily: 'var(--font-ui)', letterSpacing: 0.2, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
-            KI-Coding. Zentral gesteuert.
-          </span>
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: 24, right: 24, display: 'flex', alignItems: 'center', gap: 9 }}>
+          <ISpinner size={22} spin={false} style={{ color: '#ffffff', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.5))' }} />
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1, textShadow: '0 1px 6px rgba(0,0,0,0.5)' }}>Codera</span>
         </div>
       </div>
     </div>

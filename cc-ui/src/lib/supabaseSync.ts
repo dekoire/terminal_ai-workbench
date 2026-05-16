@@ -28,6 +28,7 @@ import type {
   ProjectBrainEntry,
   QuickLink,
   Project,
+  LayoutSection,
 } from '../store/useAppStore'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ export interface SettingsPayload {
   ai_function_map_json: Record<string, string>
   active_orbit_chat_json: Record<string, string>   // sessionId → chatId (UI state only)
   quick_links_json: QuickLink[]
+  layout_sections_json: LayoutSection[]
   // Timestamps
   updated_at: string
 }
@@ -156,6 +158,7 @@ export function buildSettingsPayload(s: AppState): SettingsPayload {
     ai_function_map_json:           s.aiFunctionMap,
     active_orbit_chat_json:         s.activeOrbitChatId,
     quick_links_json:               s.quickLinks,
+    layout_sections_json:           s.layoutSections,
     projects_json:                  s.projects.map(p => ({
       id: p.id, name: p.name, path: p.path, branch: p.branch,
       appPort: p.appPort, appStartCmd: p.appStartCmd,
@@ -316,6 +319,7 @@ export async function loadFromSupabase(
       aiFunctionMap:                  (row.ai_function_map_json as Record<string, string>) || undefined,
       activeOrbitChatId:              (row.active_orbit_chat_json as Record<string, string>) || undefined,
       quickLinks:                     (row.quick_links_json as QuickLink[]) || undefined,
+      layoutSections:                 (row.layout_sections_json as LayoutSection[]) || undefined,
       // orbitChats → built from orbit_chats table in step 2
       // orbitFavorites → loaded from orbit_favorites table in step 2b
     }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useAppStore, setActiveStorageUser } from '../../store/useAppStore'
-import type { Project, Session } from '../../store/useAppStore'
+import { useAppStore, setActiveStorageUser, DEFAULT_SIDEBAR_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
+import type { Project, Session, SidebarSection, SidebarSectionId, LayoutSection, AllSectionId } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
-import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag } from '../primitives/Icons'
+import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag, IExternalLink, IBrain, ILayers } from '../primitives/Icons'
+import { CtxLogButton, CompactGitCard, QuickLinksWidget, UserStoriesCard, SessionInfoCard } from './UtilityPanel'
 import { AdminPanel } from '../screens/AdminPanel'
 import avatarDefault from '../../assets/avatar.jpg'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
@@ -216,14 +217,102 @@ function PopMenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: s
   )
 }
 
+const PROJECTS_COLLAPSED = 5
+
 export function ProjectSidebar() {
-  const { projects, templates, activeProjectId, activeSessionId, setActiveProject, setActiveSession, setScreen, setNewProjectOpen, setNewSessionOpen, removeProject, removeSession, inputValue, setInputValue, currentUser, adminEmails } = useAppStore()
+  const {
+    projects, templates, activeProjectId, activeSessionId,
+    setActiveProject, setActiveSession, setScreen, setNewProjectOpen, setNewSessionOpen,
+    removeProject, removeSession, inputValue, setInputValue,
+    currentUser, adminEmails,
+    sidebarSections, setSidebarSections,
+    layoutSections, setLayoutSections,
+  } = useAppStore()
   const isAdmin = !!currentUser?.email && adminEmails.map(e => e.toLowerCase()).includes(currentUser.email.toLowerCase())
+  const [projectsExpanded, setProjectsExpanded] = useState(false)
+  const [openProjectId, setOpenProjectId] = useState<string | null>(activeProjectId)
+  const toggleProject = (id: string) => setOpenProjectId(prev => prev === id ? null : id)
+
+  // Left-panel sections from the unified layout system
+  const allLayout = layoutSections ?? DEFAULT_LAYOUT_SECTIONS
+  const sections: LayoutSection[] = allLayout.filter(s => s.panel === 'left')
+
+  const SECTION_LABELS: Record<AllSectionId, string> = {
+    workspaces:          'Workspaces',
+    prompts:             'Prompts',
+    github:              'GitHub',
+    quicklinks:          'Quick Links',
+    tasks:               'Tasks',
+    kontextlog:          'Kontext Log',
+    'projekt-terminal':  'Session Card',
+  }
+
+  // Active project/session for sidebar renderers
+  const activeProject = projects.find(p => p.id === activeProjectId)
+  const activeSession = activeProject?.sessions.find(s => s.id === activeSessionId)
+
+  const renderSection = (id: AllSectionId) => {
+    switch (id) {
+      case 'workspaces': return (
+        <CollapsibleSection label="Workspaces" count={projects.length} defaultOpen action={
+          <button onClick={() => setNewProjectOpen(true)} style={iconBtn}><IPlus /></button>
+        }>
+          {(projectsExpanded ? projects : projects.slice(0, PROJECTS_COLLAPSED)).map((p) => (
+            <ProjectRow
+              key={p.id}
+              project={p}
+              active={p.id === activeProjectId}
+              open={openProjectId === p.id}
+              onToggleOpen={() => toggleProject(p.id)}
+              activeSessionId={activeSessionId}
+              onSelectProject={setActiveProject}
+              onSelectSession={(sid) => { setActiveProject(p.id); setActiveSession(sid) }}
+              onNewSession={() => { setActiveProject(p.id); setNewSessionOpen(true) }}
+              onDeleteProject={() => removeProject(p.id)}
+              onCloseSession={(sid) => removeSession(p.id, sid)}
+            />
+          ))}
+          {projects.length > PROJECTS_COLLAPSED && (
+            <div
+              onClick={() => setProjectsExpanded(e => !e)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '5px 0 8px', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 300, width: '100%' }}
+            >
+              {projectsExpanded ? <IChevUp style={{ width: 8, height: 8 }} /> : <IChevDown style={{ width: 8, height: 8 }} />}
+              {projectsExpanded ? 'Weniger anzeigen' : `${projects.length - PROJECTS_COLLAPSED} weitere`}
+            </div>
+          )}
+        </CollapsibleSection>
+      )
+      case 'prompts': return projects.length > 0 ? (
+        <TemplatesSection
+          templates={templates}
+          onAdd={() => setScreen('templates')}
+          onPick={(body) => setInputValue(inputValue ? inputValue + '\n' + body : body)}
+        />
+      ) : null
+      case 'github': return activeProject?.path
+        ? <div style={{ padding: '0 10px 10px' }}><CompactGitCard projectPath={activeProject.path} onOpenGitTab={() => {}} /></div>
+        : null
+      case 'quicklinks': return <div style={{ padding: '0 10px' }}><QuickLinksWidget /></div>
+      case 'tasks': return <div style={{ padding: '0 10px' }}><UserStoriesCard projectId={activeProject?.id} sessionId={activeSession?.id ?? ''} /></div>
+      case 'kontextlog': return activeProject ? (
+        <div style={{ padding: '0 10px 10px' }}>
+          <CtxLogButton projectId={activeProject.id} />
+        </div>
+      ) : null
+      case 'projekt-terminal': return (
+        <div style={{ padding: '0 10px 10px' }}>
+          <SessionInfoCard />
+        </div>
+      )
+      default: return null
+    }
+  }
 
   return (
     <aside style={{
-      width: '100%', flexShrink: 0, background: 'var(--sidebar-bg)',
-      color: 'var(--sidebar-fg)',
+      width: '100%', flexShrink: 0, background: 'var(--bg-1)',
+      color: 'var(--fg-0)',
       display: 'flex', flexDirection: 'column',
     }}>
       <style>{`
@@ -236,34 +325,10 @@ export function ProjectSidebar() {
         }
       `}</style>
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 0 12px' }}>
-        {/* Projects */}
-        <CollapsibleSection label="Workspaces" count={projects.length} defaultOpen action={
-          <button onClick={() => setNewProjectOpen(true)} style={iconBtn}><IPlus /></button>
-        }>
-          {projects.map((p) => (
-            <ProjectRow
-              key={p.id}
-              project={p}
-              active={p.id === activeProjectId}
-              activeSessionId={activeSessionId}
-              onSelectProject={setActiveProject}
-              onSelectSession={(sid) => { setActiveProject(p.id); setActiveSession(sid) }}
-              onNewSession={() => { setActiveProject(p.id); setNewSessionOpen(true) }}
-              onDeleteProject={() => removeProject(p.id)}
-              onCloseSession={(sid) => removeSession(p.id, sid)}
-            />
-          ))}
-        </CollapsibleSection>
-
-        {/* Prompts — only visible when at least one workspace exists */}
-        {projects.length > 0 && (
-          <TemplatesSection
-            templates={templates}
-            onAdd={() => setScreen('templates')}
-            onPick={(body) => setInputValue(inputValue ? inputValue + '\n' + body : body)}
-          />
-        )}
-
+        {/* Visible sections in stored order */}
+        {sections.filter(s => s.visible).map(s => (
+          <div key={s.id}>{renderSection(s.id as AllSectionId)}</div>
+        ))}
       </div>
 
       <div style={{ padding: '8px 10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
@@ -351,7 +416,7 @@ function RemoveWorkspaceDialog({ projectName, onConfirm, onCancel }: {
         {/* Body */}
         <div style={{ padding: '18px 24px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Safe info */}
-          <div style={{ background: 'var(--bg-3)', borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div style={{ background: 'var(--bg-0)', borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <IFolder style={{ width: 16, height: 16, marginTop: 1, flexShrink: 0, color: 'var(--accent)' }} />
             <span style={{ fontSize: 11.5, color: 'var(--fg-1)', lineHeight: 1.55 }}>
               Deine <strong>lokalen Dateien</strong> und das <strong>GitHub-Repository</strong> bleiben vollständig erhalten — es wird nichts vom Laufwerk gelöscht.
@@ -398,15 +463,17 @@ function RemoveWorkspaceDialog({ projectName, onConfirm, onCancel }: {
   )
 }
 
-function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelectSession, onNewSession, onDeleteProject, onCloseSession }: {
-  project: Project; active: boolean; activeSessionId: string
+function ProjectRow({ project, active, open, onToggleOpen, activeSessionId, onSelectProject, onSelectSession, onNewSession, onDeleteProject, onCloseSession }: {
+  project: Project; active: boolean; open: boolean; activeSessionId: string
+  onToggleOpen: () => void
   onSelectProject: (id: string) => void
   onSelectSession: (id: string) => void
   onNewSession: () => void
   onDeleteProject: () => void
   onCloseSession: (id: string) => void
 }) {
-  const [open, setOpen] = useState(active)
+  const [sessionsExpanded, setSessionsExpanded] = useState(false)
+  const SESSIONS_COLLAPSED = 4
   const [hovered, setHovered] = useState(false)
   const [kanbanOpen, setKanbanOpen] = useState(false)
   const [docUpdating, setDocUpdating] = useState(false)
@@ -460,7 +527,7 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
         />
       )}
       <div
-        onClick={() => { setOpen(o => !o); onSelectProject(project.id) }}
+        onClick={() => { onToggleOpen(); onSelectProject(project.id) }}
         onContextMenu={handleContextMenu}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -484,11 +551,6 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
         {isDocApplying && (
           <ILoader className="anim-spin" style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }} title="Docu wird angelegt…" />
         )}
-        <IKanban
-          style={{ color: 'var(--fg-3)', flexShrink: 0, width: 11, height: 11, cursor: 'pointer', opacity: hovered ? 1 : 0.5, transition: 'opacity 0.1s' }}
-          onClick={(e: React.MouseEvent) => { e.stopPropagation(); setKanbanOpen(true) }}
-          title="Kanban Board"
-        />
         {project.dirty != null && hasGit && (
           <span className="mono" style={{ fontSize: 9.5, color: 'var(--warn)', background: 'rgba(244,195,101,0.10)', padding: '1px 5px', borderRadius: 3 }}>
             {project.dirty}
@@ -497,20 +559,31 @@ function ProjectRow({ project, active, activeSessionId, onSelectProject, onSelec
       </div>
 
       {open && (
-        <div style={{ paddingLeft: 24, marginTop: 2, marginBottom: 4 }}>
-          {project.sessions.map((s) => (
-            <SessionRow key={s.id} session={s} active={s.id === activeSessionId} project={project} onSelect={() => onSelectSession(s.id)} onClose={() => onCloseSession(s.id)} />
-          ))}
-          <div
-            onClick={onNewSession}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px 4px 6px',
-              margin: '0 6px', borderRadius: 6, color: 'var(--fg-3)', fontSize: 11.5, cursor: 'pointer',
-            }}
-          >
-            <IPlus /><span>New session</span>
+        <>
+          <div style={{ paddingLeft: 24, marginTop: 1, marginBottom: 1 }}>
+            {(sessionsExpanded ? project.sessions : project.sessions.slice(0, SESSIONS_COLLAPSED)).map((s) => (
+              <SessionRow key={s.id} session={s} active={s.id === activeSessionId} project={project} onSelect={() => onSelectSession(s.id)} onClose={() => onCloseSession(s.id)} />
+            ))}
+            <div
+              onClick={onNewSession}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px 4px 6px',
+                margin: '0 6px', borderRadius: 6, color: 'var(--fg-3)', fontSize: 11.5, cursor: 'pointer',
+              }}
+            >
+              <IPlus /><span>New session</span>
+            </div>
           </div>
-        </div>
+          {project.sessions.length > SESSIONS_COLLAPSED && (
+            <div
+              onClick={() => setSessionsExpanded(e => !e)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '2px 0', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 300, width: '100%', marginBottom: 2 }}
+            >
+              {sessionsExpanded ? <IChevUp style={{ width: 8, height: 8 }} /> : <IChevDown style={{ width: 8, height: 8 }} />}
+              {sessionsExpanded ? 'Weniger anzeigen' : `${project.sessions.length - SESSIONS_COLLAPSED} weitere`}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -619,7 +692,7 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
   )
 }
 
-const TEMPLATES_COLLAPSED = 6
+const TEMPLATES_COLLAPSED = 4
 
 function TemplateRow({
   t, onPick, onToggleFavorite, onDelete, onEditDone,
@@ -747,9 +820,9 @@ function TemplatesSection({
           {templates.length > TEMPLATES_COLLAPSED && (
             <div
               onClick={() => setExpanded(e => !e)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 10.5 }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '3px 0', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 300, width: '100%' }}
             >
-              <IChev style={{ transform: expanded ? 'rotate(90deg)' : 'none', width: 8, height: 8 }} />
+              {expanded ? <IChevUp style={{ width: 8, height: 8 }} /> : <IChevDown style={{ width: 8, height: 8 }} />}
               {expanded ? 'Weniger anzeigen' : `${hidden} weitere`}
             </div>
           )}
@@ -936,6 +1009,63 @@ function StoryRow({ ticket, projectName, onOpen }: {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ── Compact GitHub section ────────────────────────────────────────────────────
+
+function CompactGitHubSection() {
+  const { projects, activeProjectId } = useAppStore()
+  const project = projects.find(p => p.id === activeProjectId)
+  const remoteUrl = useGitRemote(project?.path ?? '')
+  const repoUrl = remoteUrl ? toRepoUrl(remoteUrl) : null
+
+  // Extract slug (owner/repo) from the full URL
+  const slug = repoUrl ? repoUrl.replace(/^https?:\/\/[^/]+\//, '') : null
+
+  if (!project) return null
+  return (
+    <div style={{ marginBottom: 14, padding: '0 10px' }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', padding: '0 4px', marginBottom: 6 }}>GitHub</div>
+      <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 8, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--fg-2)">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        {slug && repoUrl
+          ? <a href={repoUrl} target="_blank" rel="noreferrer" style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--fg-1)', textDecoration: 'none' }}>{slug}</a>
+          : <span style={{ flex: 1, fontSize: 11, color: 'var(--fg-3)' }}>Kein Remote</span>
+        }
+      </div>
+    </div>
+  )
+}
+
+// ── Compact Quick Links section ───────────────────────────────────────────────
+
+function CompactQuickLinksSection() {
+  const { quickLinks } = useAppStore()
+  if (quickLinks.length === 0) return null
+  const openLink = (url: string) => { try { window.open(url, '_blank') } catch { /* ignore */ } }
+  return (
+    <div style={{ marginBottom: 14, padding: '0 10px' }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', padding: '0 4px', marginBottom: 6 }}>Quick Links</div>
+      <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 8, overflow: 'hidden' }}>
+        {quickLinks.slice(0, 6).map((link, i) => (
+          <button
+            key={link.id}
+            onClick={() => openLink(link.url)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', borderTop: i > 0 ? '0.5px solid var(--line)' : 'none' }}
+          >
+            <img
+              src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=32`}
+              style={{ width: 13, height: 13, borderRadius: 2, flexShrink: 0 }}
+              onError={e => { (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23888"/></svg>` }}
+            />
+            <span style={{ fontSize: 11.5, color: 'var(--fg-0)', flex: 1 }}>{link.title}</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

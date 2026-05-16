@@ -783,32 +783,52 @@ function TokensPanel() {
 
       {/* Token list */}
       {tokens.length === 0 && !adding ? (
-        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6 }}>
-          No tokens saved yet. Add one above.
+        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6, marginBottom: 20 }}>
+          Noch kein Token gespeichert.
         </div>
       ) : (
-        <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: 20 }}>
-          {tokens.map((t, i) => (
-            <div key={t.id} style={{
-              display: 'grid', gridTemplateColumns: '1fr 120px 1fr 80px',
-              padding: '10px 14px', alignItems: 'center', gap: 12, fontSize: 12,
-              borderBottom: i < tokens.length - 1 ? '1px solid var(--line)' : 'none',
-              background: t.id === editId ? 'var(--accent-soft)' : 'transparent',
-            }}>
-              <span style={{ fontWeight: 600, color: 'var(--fg-0)' }}>{t.label}</span>
-              <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)' }}>{t.host}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', letterSpacing: showIds.has(t.id) ? 0 : 1 }}>
-                  {showIds.has(t.id) ? t.token : mask(t.token)}
-                </span>
-                <button onClick={() => toggleShow(t.id)} style={{ background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', fontSize: 10, padding: '1px 4px', fontFamily: 'inherit' }}>
-                  {showIds.has(t.id) ? 'hide' : 'show'}
-                </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+          {tokens.map((t) => (
+            <div key={t.id} style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, padding: '10px 14px', alignItems: 'center' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{t.label}</span>
+                    <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)', background: 'var(--bg-3)', padding: '1px 6px', borderRadius: 4 }}>{t.host}</span>
+                  </div>
+                  <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', letterSpacing: showIds.has(t.id) ? 0 : 1 }}>
+                    {showIds.has(t.id) ? t.token : mask(t.token)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  <button onClick={() => toggleShow(t.id)} style={{ ...btnGhost, fontSize: 11 }}>
+                    {showIds.has(t.id) ? 'Verbergen' : 'Anzeigen'}
+                  </button>
+                  <button onClick={() => openEdit(t)} style={{ ...btnGhost, fontSize: 11 }}>Bearbeiten</button>
+                  <button onClick={() => { if (confirm(`Token „${t.label}" löschen?`)) removeToken(t.id) }} style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--err)', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontFamily: 'var(--font-ui)' }}>Löschen</button>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => openEdit(t)} />
-                <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`Delete token "${t.label}"?`)) removeToken(t.id) }} />
-              </div>
+              {t.id === editId && (
+                <div style={{ borderTop: '1px solid var(--line)', padding: '12px 14px', background: 'var(--bg-0)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={fieldLabel}>Bezeichnung</label>
+                    <input style={fieldInput} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={fieldLabel}>Git-Host</label>
+                    <input style={fieldInput} value={form.host} onChange={e => setForm(f => ({ ...f, host: e.target.value }))} list="host-list" />
+                    <datalist id="host-list">{HOSTS.map(h => <option key={h} value={h} />)}</datalist>
+                  </div>
+                  <div style={{ gridColumn: '1 / span 2' }}>
+                    <label style={fieldLabel}>Token</label>
+                    <input style={fieldInput} type="password" value={form.token} onChange={e => setForm(f => ({ ...f, token: e.target.value }))} autoComplete="new-password" />
+                  </div>
+                  <div style={{ gridColumn: '1 / span 2', display: 'flex', gap: 8 }}>
+                    <button onClick={save} style={btnPrimary}>Speichern</button>
+                    <button onClick={cancel} style={btnGhost}>Abbrechen</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1020,6 +1040,12 @@ function AussehenpPanel() {
 
   return (
     <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 680, margin: '0 auto' }}>
+      {/* Page header */}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Aussehen</div>
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Themes, Schrift, Farben</div>
+      </div>
+
       {/* Inner tab bar */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <div style={{ display: 'flex', gap: 2, padding: '3px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
@@ -1092,12 +1118,6 @@ function AussehenpPanel() {
 
           {/* UI Font + Size + Weight — compact 3-column dropdowns */}
           {(() => {
-            const sel: React.CSSProperties = {
-              width: '100%', padding: '5px 7px', borderRadius: 6,
-              border: '1px solid var(--line-strong)', background: 'var(--bg-2)',
-              color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)',
-              cursor: 'pointer', outline: 'none',
-            }
             const lbl: React.CSSProperties = {
               fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: 0.6,
               color: 'var(--fg-3)', fontWeight: 600, marginBottom: 4, display: 'block',
@@ -1106,24 +1126,35 @@ function AussehenpPanel() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px', gap: 8 }}>
                 <div>
                   <span style={lbl}>Schriftart</span>
-                  <select value={uiFont} onChange={e => setUiFont(e.target.value)} style={sel}>
-                    {UI_FONTS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-                  </select>
+                  <SingleCombobox
+                    value={uiFont}
+                    onChange={setUiFont}
+                    options={UI_FONTS.map(f => ({ value: f.id, label: f.label }))}
+                    placeholder="Schrift wählen…"
+                  />
                 </div>
                 <div>
                   <span style={lbl}>Größe</span>
-                  <select value={uiFontSize} onChange={e => setUiFontSize(Number(e.target.value))} style={sel}>
-                    {[10,11,12,13,14,15,16,17,18].map(n => <option key={n} value={n}>{n} px</option>)}
-                  </select>
+                  <SingleCombobox
+                    value={String(uiFontSize)}
+                    onChange={v => setUiFontSize(Number(v))}
+                    options={[10,11,12,13,14,15,16,17,18].map(n => ({ value: String(n), label: `${n} px` }))}
+                    placeholder="Größe…"
+                  />
                 </div>
                 <div>
                   <span style={lbl}>Dicke</span>
-                  <select value={uiFontWeight} onChange={e => setUiFontWeight(Number(e.target.value) as 300|400|500|600)} style={sel}>
-                    <option value={300}>Dünn</option>
-                    <option value={400}>Normal</option>
-                    <option value={500}>Mittel</option>
-                    <option value={600}>Fett</option>
-                  </select>
+                  <SingleCombobox
+                    value={String(uiFontWeight)}
+                    onChange={v => setUiFontWeight(Number(v) as 300|400|500|600)}
+                    options={[
+                      { value: '300', label: 'Dünn' },
+                      { value: '400', label: 'Normal' },
+                      { value: '500', label: 'Mittel' },
+                      { value: '600', label: 'Fett' },
+                    ]}
+                    placeholder="Dicke…"
+                  />
                 </div>
               </div>
             )
@@ -1798,7 +1829,7 @@ const PROVIDER_DEFAULTS: Record<string, { label: string; model: string; placehol
 const AI_FUNCTIONS: { key: string; label: string; description: string }[] = [
   { key: 'terminal',      label: 'Terminal Textbox',      description: 'KI-Überarbeitung im Eingabefeld der Terminalsitzung' },
   { key: 'kanban',        label: 'Kanban User Story',     description: 'User Story generieren & überarbeiten im Kanban-Board' },
-  { key: 'devDetect',     label: 'Dev Server Erkennung',  description: 'Start-Befehl automatisch aus Projektdateien ableiten (▶ AI-Button im Dev-Server-Dialog)' },
+  { key: 'devDetect',     label: 'App-Start Erkennung',   description: 'Start-Befehl & Port ermitteln wenn Heuristik versagt (Play ▶ → Fallback). Liest package.json, requirements.txt usw. lokal aus und sendet sie als Text-Kontext — kein Laufwerkszugriff durch das Modell.' },
   { key: 'docUpdate',     label: 'Docu Update',           description: 'Dokumentation mit AI aktualisieren (Rechtsklick → Docu aktualisieren)' },
   { key: 'contextSearch', label: 'AI Search',             description: 'KI durchsucht die komplette Projekt-Historie und erstellt Zusammenfassungen (Tab "AI Search" im rechten Panel)' },
 ]
@@ -2346,6 +2377,7 @@ const TEMPLATE_USAGE: Record<string, { screen: string; element: string }> = {
   'ai-prompt-start-detect':      { screen: 'Workspace',  element: 'Play ▶ → AI erkennt Start-Befehl' },
   'user-story-analyse':          { screen: 'Kanban',     element: 'AI-Button „Mit Docs analysieren" ⚡' },
   'ai-prompt-context-search':    { screen: 'Utility-Panel', element: 'Tab „Research" → Suchen' },
+  'prompt-support':              { screen: 'Workspace',  element: 'AI ⚡ im Eingabefeld (Implementierungsauftrag)' },
 }
 
 const VORLAGEN_TABS: { key: VorlagenTab; label: string; hint: string; pathLabel: string; contentLabel: string; pathPlaceholder: string; contentPlaceholder: string; needsPath: boolean; defaultCategory: string; adminOnly?: boolean }[] = [
@@ -2380,11 +2412,11 @@ function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
 
   const filtered = activeTab === 'docs'
     ? docTemplates.filter(t => (t.category ?? 'doc') === 'doc')
-    : docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story')
+    : docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story' || t.category === 'prompt-support')
 
   const tabCount = (tab: VorlagenTab) => {
     if (tab === 'docs') return docTemplates.filter(t => (t.category ?? 'doc') === 'doc').length
-    if (tab === 'prompts') return docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story').length
+    if (tab === 'prompts') return docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story' || t.category === 'prompt-support').length
     return templates.length
   }
 
@@ -2410,7 +2442,7 @@ function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
   const cancel   = () => { setAdding(false); setEditId(null); setTplAdding(false); setTplEditId(null) }
 
   const handleReset = () => {
-    const nonDocTemplates = docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story')
+    const nonDocTemplates = docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story' || t.category === 'prompt-support')
     const defaultDocTemplates = DEFAULT_DOC_TEMPLATES.filter(t => (t.category ?? 'doc') === 'doc')
     const next = [...defaultDocTemplates, ...nonDocTemplates]
     setDocTemplates(next)

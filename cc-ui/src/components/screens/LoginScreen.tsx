@@ -30,6 +30,9 @@ export function LoginScreen() {
       const meta = user?.user_metadata ?? {}
       // Switch file storage to this user's personal file — all writes from here go there
       setActiveStorageUser(user!.id)
+      // Re-hydrate the store from the user-specific file (Zustand only reads storage once on
+      // startup, so without this the user's saved config is never applied after login)
+      await useAppStore.persist.rehydrate()
       // Mark session active BEFORE setCurrentUser so the Supabase watcher
       // doesn't immediately sign us back out when it sees the new session
       sessionStorage.setItem('cc-active-session', '1')
@@ -88,8 +91,7 @@ export function LoginScreen() {
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 380 }}>
           <h1 style={{ margin: '0 0 16px', fontSize: 32, fontWeight: 700, letterSpacing: -0.8, color: 'var(--fg-0)', lineHeight: 1.15 }}>
-            KI-Coding.<br/>
-            <span style={{ color: 'var(--accent)' }}>Zentral gesteuert.</span>
+            Codera AI
           </h1>
           <p style={{ margin: '0 0 28px', color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.65 }}>
             Arbeite mit Claude Code, DeepSeek und weiteren Agenten in einer Oberfläche — inklusive Terminal, Projektkontext, Session-Verlauf, Prompt-Vorlagen und Git-Integration.

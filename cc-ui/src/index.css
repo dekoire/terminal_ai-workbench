@@ -124,6 +124,10 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────── */
+/* Hide browser-native autofill/keychain key icon — it's invisible on dark bg */
+input::-webkit-credentials-auto-fill-button { visibility: hidden; pointer-events: none; }
+input::-webkit-contacts-auto-fill-button    { visibility: hidden; pointer-events: none; }
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

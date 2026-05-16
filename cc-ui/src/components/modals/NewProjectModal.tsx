@@ -32,14 +32,12 @@ async function applyDocTemplates(projectId: string, projectPath: string, appPort
       body: JSON.stringify({ path: fullPath, content }),
     })
   }
-  if (appPort || appStartCmd) {
-    const config = { port: appPort ?? null, startCmd: appStartCmd || null, appUrl: appPort ? `http://localhost:${appPort}` : null }
-    await fetch('/api/file-write', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: `${projectPath}/project.config.json`, content: JSON.stringify(config, null, 2) }),
-    })
-  }
+  const config = { port: appPort ?? null, startCmd: appStartCmd || null, appUrl: appPort ? `http://localhost:${appPort}` : null, detectedAt: null, detectionMethod: null, retries: 0 }
+  await fetch('/api/file-write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: `${projectPath}/project.config.json`, content: JSON.stringify(config, null, 2) }),
+  })
   useAppStore.getState().setDocApplying(projectId, false)
 }
 

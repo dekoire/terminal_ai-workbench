@@ -195,7 +195,47 @@ export interface AIProvider {
   model: string
 }
 
-export type DocTemplateCategory = 'doc' | 'ai-prompt' | 'user-story'
+export type DocTemplateCategory = 'doc' | 'ai-prompt' | 'user-story' | 'prompt-support'
+
+export type SidebarSectionId = 'workspaces' | 'prompts' | 'github' | 'quicklinks' | 'tasks'
+export interface SidebarSection { id: SidebarSectionId; visible: boolean }
+export const DEFAULT_SIDEBAR_SECTIONS: SidebarSection[] = [
+  { id: 'workspaces', visible: true },
+  { id: 'prompts',    visible: true },
+  { id: 'github',     visible: true },
+  { id: 'quicklinks', visible: true },
+  { id: 'tasks',      visible: true },
+]
+
+export type UtilityPanelSectionId = 'kontextlog' | 'github' | 'quicklinks' | 'tasks'
+export interface UtilitySection { id: UtilityPanelSectionId; visible: boolean }
+export const DEFAULT_UTILITY_SECTIONS: UtilitySection[] = [
+  { id: 'kontextlog', visible: true },
+  { id: 'github',     visible: true },
+  { id: 'quicklinks', visible: true },
+  { id: 'tasks',      visible: true },
+]
+
+// ── Unified cross-panel layout sections ───────────────────────────────────────
+export type AllSectionId =
+  'workspaces' | 'prompts' | 'github' | 'quicklinks' | 'tasks' |
+  'kontextlog' | 'projekt-terminal'
+
+export interface LayoutSection {
+  id: AllSectionId
+  panel: 'left' | 'right'
+  visible: boolean
+}
+
+export const DEFAULT_LAYOUT_SECTIONS: LayoutSection[] = [
+  { id: 'workspaces',        panel: 'left',  visible: true },
+  { id: 'prompts',           panel: 'left',  visible: true },
+  { id: 'projekt-terminal',  panel: 'right', visible: true },
+  { id: 'kontextlog',        panel: 'right', visible: true },
+  { id: 'github',            panel: 'right', visible: true },
+  { id: 'quicklinks',        panel: 'right', visible: true },
+  { id: 'tasks',             panel: 'right', visible: true },
+]
 
 export interface DocTemplate {
   id: string
@@ -517,6 +557,41 @@ Antworte AUSSCHLIESSLICH als gültiges JSON-Objekt (kein Markdown drumherum, nur
   "agentContext": "Englischer Kontext-Block für einen KI-Agenten. Format: TOPIC: ... | FILES: ... | HISTORY: ... (kompakt, nur das Wesentliche, max 400 Tokens)"
 }`,
   },
+  // ── Prompt Support ───────────────────────────────────────────────────────
+  {
+    id: 'prompt-support',
+    name: 'Prompt Support',
+    relativePath: '',
+    enabled: true,
+    category: 'prompt-support' as const,
+    content: `Du bist ein erfahrener Software-Architekt. Du formulierst Implementierungsaufträge für Claude Code — direkt, technisch und präzise.
+
+WICHTIG:
+- Kein klassisches User-Story-Format ("Als Nutzer möchte ich...").
+- Direkte Sprache, wie ein Senior Developer an Claude Code spricht.
+- Orientiere dich an den bestehenden Patterns und Architektur aus der Dokumentation.
+- Erkenne Abhängigkeiten zu anderen Komponenten.
+- Beachte UI-Konsistenz: neue Bereiche sollen so aussehen wie bestehende.
+
+ANTWORT-FORMAT (exakt so, kein Prolog/Epilog):
+
+**Titel:** [prägnanter Titel]
+
+## Aufgabe
+[Was genau implementiert werden soll — klar, direkt]
+
+## Betroffene Dateien & Komponenten
+[Basierend auf der Dokumentation: welche Dateien werden geändert/erstellt]
+
+## Implementierungsdetails
+[Technische Anforderungen, Patterns, Constraints — basierend auf der Doku-Architektur]
+
+## Abhängigkeiten
+[Andere Komponenten/Features/State die berücksichtigt werden müssen]
+
+## Akzeptanzkriterien
+- [ ] ...`,
+  },
   // ── User Stories ──────────────────────────────────────────────────────────
   {
     id: 'user-story-analyse',
@@ -617,6 +692,9 @@ export interface AppState {
   brainUpdatePrompt: string                        // template prompt for updateBrainWithAI ({brain},{messages},{date},{n},{projectName})
   orbitFavorites: Record<string, OrbitFavorite[]>  // projectId → favorites
   quickLinks:     QuickLink[]
+  sidebarSections: SidebarSection[]
+  utilitySections: UtilitySection[]
+  layoutSections:  LayoutSection[]
   projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
   orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
   dataLoaded: boolean                                // true once initial loadFromSupabase completes
@@ -748,6 +826,9 @@ export interface AppState {
   setBrainUpdatePrompt: (brainUpdatePrompt: string) => void
   addOrbitFavorite:  (fav: OrbitFavorite) => void
   setQuickLinks:     (links: QuickLink[]) => void
+  setSidebarSections: (sections: SidebarSection[]) => void
+  setUtilitySections: (sections: UtilitySection[]) => void
+  setLayoutSections:  (sections: LayoutSection[]) => void
   removeOrbitFavorite: (projectId: string, favId: string) => void
   addOrbitMessage: (chatId: string, msg: OrbitMessage) => void
   setOrbitMessages: (chatId: string, msgs: OrbitMessage[]) => void
@@ -970,6 +1051,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   brainUpdatePrompt: '',
   orbitFavorites: {},
   quickLinks: [],
+  sidebarSections: DEFAULT_SIDEBAR_SECTIONS,
+  utilitySections: DEFAULT_UTILITY_SECTIONS,
+  layoutSections:  DEFAULT_LAYOUT_SECTIONS,
   projectBrains: {},
   orbitChatsLoaded: {},
   dataLoaded: false,
@@ -1017,6 +1101,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     docTemplates:           DEFAULT_DOC_TEMPLATES,
     claudeProviders:        [],
     quickLinks:             [],
+    sidebarSections:        DEFAULT_SIDEBAR_SECTIONS,
     deletedProjectIds:      [],
     // Credentials — must never bleed to another user
     openrouterKey:          '',
@@ -1275,6 +1360,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setAgentTailMessageCount: (agentTailMessageCount) => set({ agentTailMessageCount }),
   setBrainUpdatePrompt: (brainUpdatePrompt) => set({ brainUpdatePrompt }),
   setQuickLinks: (links) => set({ quickLinks: links }),
+  setSidebarSections: (sections) => set({ sidebarSections: sections }),
+  setUtilitySections: (sections) => set({ utilitySections: sections }),
+  setLayoutSections:  (sections) => set({ layoutSections: sections }),
   addOrbitFavorite: (fav) => set(s => ({
     orbitFavorites: { ...s.orbitFavorites, [fav.projectId]: [...(s.orbitFavorites[fav.projectId] ?? []), fav] },
   })),
@@ -1389,6 +1477,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.cloudflareR2Endpoint === undefined) state.cloudflareR2Endpoint = ''
     if (state.cloudflareR2PublicUrl === undefined) state.cloudflareR2PublicUrl = ''
     if (state.currentUser === undefined) state.currentUser = null
+    if (!state.sidebarSections || state.sidebarSections.length === 0) state.sidebarSections = DEFAULT_SIDEBAR_SECTIONS
+    if (!state.utilitySections || state.utilitySections.length === 0) state.utilitySections = DEFAULT_UTILITY_SECTIONS
+    if (!state.layoutSections  || state.layoutSections.length === 0)  state.layoutSections  = DEFAULT_LAYOUT_SECTIONS
     // Flush migrated values back to file storage so they persist across restarts
     // Use setTimeout(0) to let Zustand finish rehydration before triggering a set
     setTimeout(() => {
@@ -1450,6 +1541,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     setupWizardDone:     s.setupWizardDone,
     preferredOrModels:   s.preferredOrModels,
     quickLinks:          s.quickLinks,
+    sidebarSections:     s.sidebarSections,
+    utilitySections:     s.utilitySections,
+    layoutSections:      s.layoutSections,
     deletedProjectIds:   s.deletedProjectIds,
     currentUser:         s.currentUser,
     adminEmails:         s.adminEmails,

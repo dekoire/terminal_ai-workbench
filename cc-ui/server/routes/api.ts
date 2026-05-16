@@ -753,6 +753,24 @@ router.get('/api/check-port', (req, res) => {
   })
 })
 
+// ── GET /api/process-status ───────────────────────────────────────────────────
+router.get('/api/process-status', (req, res) => {
+  const pid = parseInt(req.query.pid as string ?? '0', 10)
+  if (!pid) { res.json({ alive: false }); return }
+  try { process.kill(pid, 0); res.json({ alive: true }) }
+  catch { res.json({ alive: false }) }
+})
+
+// ── GET /api/app-log ──────────────────────────────────────────────────────────
+router.get('/api/app-log', (req, res) => {
+  const port = req.query.port as string ?? 'unknown'
+  const logFile = `/tmp/cc-app-${port}.log`
+  try {
+    const content = fs.readFileSync(logFile, 'utf8')
+    res.json({ ok: true, content: content.slice(-3000) })
+  } catch { res.json({ ok: true, content: '' }) }
+})
+
 // ── POST /api/kill-port ────────────────────────────────────────────────────────
 router.post('/api/kill-port', async (req, res) => {
   try {
@@ -786,11 +804,11 @@ router.post('/api/start-app', async (req, res) => {
       // Wait 400ms for processes to fully exit before spawning
       setTimeout(() => {
         const child = spawn('bash', ['-c', `cd ${JSON.stringify(projectPath)} && ${startCmd}`], {
-          detached: true, stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
+          detached: true,
+          stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
+          env: { ...process.env, BROWSER: 'none', OPEN_BROWSER: 'false' },
         })
         child.unref()
-        // Open the primary port in default browser (macOS: `open`, fallback: ignore)
-        if (port) setTimeout(() => exec(`open http://localhost:${port} 2>/dev/null || true`), 2500)
         res.json({ ok: true, pid: child.pid ?? 0, logFile })
       }, 400)
     })

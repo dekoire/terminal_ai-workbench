@@ -3,8 +3,9 @@ import { useAppStore } from '../../store/useAppStore'
 import { ProjectSidebar } from './ProjectSidebar'
 import { CenterPane } from './CenterPane'
 import { UtilityPanel } from './UtilityPanel'
-import { IMoon, ISun, ILogout, ITerminal, IPlay, IBot, ICompass, ISquareTerminal, IKanban, IPanelLeftOpen, IPanelLeftClose, IPanelRightOpen, IPanelRightClose, ISpinner } from '../primitives/Icons'
+import { IMoon, ISun, ILogout, ITerminal, IPlay, IBot, ICompass, ISquareTerminal, IKanban, IPanelLeftOpen, IPanelLeftClose, IPanelRightOpen, IPanelRightClose, ISpinner, IAppLayout } from '../primitives/Icons'
 import { ModelBrowserModal } from '../modals/ModelBrowserModal'
+import { LayoutEditorModal } from '../modals/LayoutEditorModal'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
 // ── drag-to-resize hook ───────────────────────────────────────────────────────
@@ -153,6 +154,7 @@ export function Workspace() {
   const savedUtilityW = useRef(280)
   const [playBlink, setPlayBlink] = useState(false)
   const [modelBrowserOpen, setModelBrowserOpen] = useState(false)
+  const [layoutEditorOpen, setLayoutEditorOpen] = useState(false)
 
   const [winW, setWinW] = useState(window.innerWidth)
   const [leftOpen, setLeftOpen] = useState(true)
@@ -239,6 +241,12 @@ export function Workspace() {
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
                 <IKanban style={{ width: 15, height: 15 }} />
               </button>
+              <button
+                onClick={() => setLayoutEditorOpen(true)}
+                title="Layout-Editor"
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
+                <IAppLayout style={{ width: 15, height: 15 }} />
+              </button>
               <button onClick={() => setModelBrowserOpen(true)} title="Modell-Browser"
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
                 <IBot style={{ width: 15, height: 15 }} />
@@ -246,6 +254,7 @@ export function Workspace() {
             </div>
           )}
           {modelBrowserOpen && <ModelBrowserModal onClose={() => setModelBrowserOpen(false)} />}
+          {layoutEditorOpen && <LayoutEditorModal onClose={() => setLayoutEditorOpen(false)} />}
         </div>
       )}
 
@@ -271,7 +280,7 @@ export function Workspace() {
 
         {/* Utility panel — only visible when at least one workspace exists */}
         {showRight && projects.length > 0 && (
-          <div style={{ width: utilityW, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
+          <div style={{ width: utilityW, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <UtilityPanel />
           </div>
         )}
