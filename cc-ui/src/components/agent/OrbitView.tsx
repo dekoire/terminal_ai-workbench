@@ -6,6 +6,7 @@ import { SingleCombobox } from '../primitives/SingleCombobox'
 import { IOrbit, IClose, ICopy, ITrash, IPlus, IStar, IBookmark } from '../primitives/Icons'
 import type { SingleOption } from '../primitives/SingleCombobox'
 import { renderBrain, updateBrainWithAI } from '../../lib/projectBrain'
+import { sanitizeKey } from '../../utils/orProvider'
 import { getSupabase } from '../../lib/supabase'
 import { saveProjectBrainToSupabase } from '../../lib/supabaseSync'
 import { resolveRefs } from '../../lib/resolveRefs'
@@ -386,7 +387,7 @@ function AiAvatar({ pulsing = false }: { pulsing?: boolean; dark?: boolean }) {
     <div style={{ width: 28, height: 28, flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
       <svg
         viewBox="0 0 3508 3508"
-        style={{ width: 22, height: 22, display: 'block', animation: 'orbit-spin 8s linear infinite', ...(pulsing ? { animation: 'orbit-pulse 1.8s ease-in-out infinite' } : {}) }}
+        style={{ width: 22, height: 22, display: 'block', ...(pulsing ? { animation: 'orbit-pulse 1.8s ease-in-out infinite' } : {}) }}
       >
         {paths.map((p, i) => (
           <g key={i} transform={p.t}>
@@ -648,17 +649,26 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
     orbitCtxBefore, orbitCtxAfter,
     orbitFavorites, addOrbitFavorite, removeOrbitFavorite,
     orbitCompressPrompt, orbitCompressModel,
+    brainUpdatePrompt,
     projectBrains, setProjectBrain,
     supabaseUrl, supabaseAnonKey, currentUser,
+    addToast,
   } = useAppStore()
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
   // Ensure there's always an active chat for this session.
-  // Each session gets its own new chat on first mount — never reuse another session's chat.
   const chatId: string = activeOrbitChatId[sessionId] ?? ''
+  const chatCreatingRef = useRef(false)
   useEffect(() => {
     if (!activeProjectId) return
-    if (!chatId) {
+    if (chatId) { chatCreatingRef.current = false; return }
+    if (chatCreatingRef.current) return
+    chatCreatingRef.current = true
+    // Reuse the most recent existing chat for this project instead of always creating a new empty one
+    const existing = orbitChats[activeProjectId] ?? []
+    if (existing.length > 0) {
+      setActiveOrbitChat(sessionId, existing[existing.length - 1])
+    } else {
       createOrbitChat(activeProjectId, sessionId)
     }
   }, [sessionId, chatId, activeProjectId])
@@ -790,7 +800,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
       try {
         const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${openrouterKey}`, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'google/gemini-2.0-flash-001',
             messages: [
@@ -853,7 +863,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
 
   const sendText = useCallback(async (text: string, attachedImages?: { dataUrl: string; mimeType: string }[]) => {
     if (!text.trim() && !attachedImages?.length || streaming) return
-    if (!openrouterKey) { setError('Kein OpenRouter-Key hinterlegt. Bitte in Einstellungen setzen.'); return }
+    if (!openrouterKey) { addToast({ type: 'error', title: 'Kein OpenRouter-Key', body: 'Bitte in Einstellungen hinterlegen.' }); return }
 
     setError(null)
     const projName = projects.find(p => p.id === activeProjectId)?.name ?? activeProjectId ?? 'unknown'
@@ -941,7 +951,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
         signal: ctrl.signal,
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openrouterKey}`,
+          'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': window.location.origin,
           'X-Title': 'Codera AI · Orbit',
@@ -1075,6 +1085,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
           projectName: projName,
           projectId,
           compressModel: orbitCompressModel,
+          customPrompt: brainUpdatePrompt || undefined,
         }).then(updatedBrain => {
           setProjectBrain(projectId, updatedBrain)
           const sb = getSupabase(supabaseUrl, supabaseAnonKey)
@@ -1091,7 +1102,8 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
         const userMsg2 = isCtx || is413
           ? 'Kontext zu lang — der Chat-Verlauf übersteigt das Kontextfenster des Modells. Starte einen neuen Chat (+ Taste oben rechts), um weiterzumachen.'
           : raw
-        setError(userMsg2)
+        setError(null)
+        addToast({ type: 'error', title: 'Orbit-Fehler', body: userMsg2 })
         // Inject visible error into the chat thread so it's not missed
         const errMsg: Message = {
           id: mkMsgId(chatId) + '-err',

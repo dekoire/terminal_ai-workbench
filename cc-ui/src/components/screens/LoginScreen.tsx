@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useAppStore, setActiveStorageUser } from '../../store/useAppStore'
-import { IShield, IGit, ITerminal, ISpark, IChev } from '../primitives/Icons'
+import { IShield, IGit, ITerminal, ISpark, IChev, ISpinner, IEye, IEyeOff } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
-import logoWhite from '../../assets/codera_logo_white.png'
-import logoBlack from '../../assets/codera_logo_black.png'
 
 export function LoginScreen() {
   const [email, setEmail]       = useState('')
@@ -11,10 +9,12 @@ export function LoginScreen() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [showLogin, setShowLogin] = useState(true)
+  const [showPw, setShowPw]     = useState(false)
 
   const setScreen      = useAppStore(s => s.setScreen)
   const setCurrentUser = useAppStore(s => s.setCurrentUser)
-  const theme          = useAppStore(s => s.theme)
+  const addToast       = useAppStore(s => s.addToast)
+
   const supabaseUrl    = useAppStore(s => s.supabaseUrl)
   const supabaseKey    = useAppStore(s => s.supabaseAnonKey)
 
@@ -26,11 +26,14 @@ export function LoginScreen() {
     setLoading(true); setError('')
     try {
       const { data, error: sbErr } = await sb.auth.signInWithPassword({ email: email.trim(), password })
-      if (sbErr) { setError(sbErr.message); return }
+      if (sbErr) { addToast({ type: 'error', title: 'Login fehlgeschlagen', body: sbErr.message }); return }
       const user = data.user
       const meta = user?.user_metadata ?? {}
       // Switch file storage to this user's personal file — all writes from here go there
       setActiveStorageUser(user!.id)
+      // Re-hydrate the store from the user-specific file (Zustand only reads storage once on
+      // startup, so without this the user's saved config is never applied after login)
+      await useAppStore.persist.rehydrate()
       // Mark session active BEFORE setCurrentUser so the Supabase watcher
       // doesn't immediately sign us back out when it sees the new session
       sessionStorage.setItem('cc-active-session', '1')
@@ -81,15 +84,15 @@ export function LoginScreen() {
         position: 'relative', zIndex: 1, borderRight: '1px solid var(--line)',
       }}>
         <div style={{ marginBottom: 0 }}>
-          <img src={theme === 'light' ? logoBlack : logoWhite} alt="Codera AI" style={{ height: 60, width: 'auto', display: 'block' }} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <ISpinner spin={false} size={34} style={{ color: 'var(--accent)' }} />
+            <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1 }}>Codera</span>
+          </span>
         </div>
-        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, letterSpacing: 0.3, margin: '-16px 0 0', paddingLeft: 47 }}>AI Development IDE</span>
-
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 380 }}>
           <h1 style={{ margin: '0 0 16px', fontSize: 32, fontWeight: 700, letterSpacing: -0.8, color: 'var(--fg-0)', lineHeight: 1.15 }}>
-            KI-Coding.<br/>
-            <span style={{ color: 'var(--accent)' }}>Zentral gesteuert.</span>
+            Codera AI
           </h1>
           <p style={{ margin: '0 0 28px', color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.65 }}>
             Arbeite mit Claude Code, DeepSeek und weiteren Agenten in einer Oberfläche — inklusive Terminal, Projektkontext, Session-Verlauf, Prompt-Vorlagen und Git-Integration.
@@ -136,7 +139,24 @@ export function LoginScreen() {
               </div>
               <div>
                 <label style={fieldLabel}>Passwort</label>
-                <input style={fieldInput} type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={handleKeyDown} />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...fieldInput, paddingRight: 36 }}
+                    type={showPw ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(v => !v)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', alignItems: 'center' }}
+                    tabIndex={-1}
+                  >
+                    {showPw ? <IEyeOff style={{ width: 15, height: 15 }} /> : <IEye style={{ width: 15, height: 15 }} />}
+                  </button>
+                </div>
               </div>
               {error && (
                 <div style={{ fontSize: 11.5, color: 'var(--err)', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, padding: '8px 10px' }}>

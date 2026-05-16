@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { getOrModel } from '../../utils/orProvider'
-import type { OrbitMessage, QuickLink } from '../../store/useAppStore'
+import { getOrModel, sanitizeKey } from '../../utils/orProvider'
+import type { OrbitMessage, QuickLink, RepoToken, UtilitySection, UtilityPanelSectionId, AllSectionId, LayoutSection } from '../../store/useAppStore'
+import { DEFAULT_UTILITY_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
+import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
-import { loadLastProjectMessages } from '../../lib/agentSync'
-import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine } from '../primitives/Icons'
+import { loadLastProjectMessages, loadAllContextSummaries, type AgentContextSummary, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
+import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGit, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain, ITag } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
@@ -203,6 +205,7 @@ const OPEN_WITH: Record<string, string[]> = {
 }
 
 function LiveTreeNode({ node, depth, installedApps }: { node: LiveNode; depth: number; installedApps: Set<string> | null }) {
+  const { addToast } = useAppStore()
   const [open, setOpen]           = useState(depth <= 1)
   const [children, setChildren]   = useState<LiveNode[]>(node.children ?? [])
   const [loaded, setLoaded]       = useState(node.loaded ?? false)
@@ -289,7 +292,7 @@ function LiveTreeNode({ node, depth, installedApps }: { node: LiveNode; depth: n
     })
     const d = await r.json() as { ok: boolean; error?: string }
     if (d.ok) { loadChildren(true); if (!open) setOpen(true) }
-    else alert(`Fehler: ${d.error}`)
+    else addToast({ type: 'error', title: 'Erstellen fehlgeschlagen', body: d.error })
   }
 
   return (
@@ -636,6 +639,9 @@ function humanGitError(raw: string): string {
   if (raw.includes('permission denied') || raw.includes('Permission denied')) return 'Keine Berechtigung. Hast du Schreibzugriff auf das Projekt?'
   if (raw.includes('merge conflict') || raw.includes('CONFLICT')) return 'Es gibt einen Konflikt mit den Online-Updates. Bitte löse ihn manuell.'
   if (raw.includes('not a git repository')) return 'Dieser Ordner ist noch nicht eingerichtet.'
+  if (raw.includes('no tracking information') || raw.includes('specify which branch')) return 'Kein Remote-Branch verknüpft. Lade zuerst etwas hoch (Speichern & Hochladen).'
+  if (raw.includes('does not have any commits')) return 'Das Repository ist leer — committe zuerst Dateien.'
+  if (raw.includes('src refspec') || raw.includes('failed to push')) return 'Push fehlgeschlagen. Stelle sicher dass der Branch auf GitHub existiert.'
   return raw.slice(0, 140)
 }
 
@@ -780,9 +786,9 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', background: 'var(--bg-3)', borderRadius: 6, padding: 2 }}>
+          <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
             {(['side', 'inline'] as const).map(m => (
-              <button key={m} onClick={() => setMode(m)} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: mode === m ? 'rgba(255,138,76,0.2)' : 'transparent', color: mode === m ? 'var(--accent)' : 'var(--fg-3)', fontFamily: 'var(--font-ui)' }}>
+              <button key={m} onClick={() => setMode(m)} style={{ padding: '5px 14px', border: 'none', borderRadius: 5, fontSize: 11.5, cursor: 'pointer', fontFamily: 'var(--font-ui)', fontWeight: mode === m ? 600 : 400, background: mode === m ? 'var(--accent-soft)' : 'transparent', color: mode === m ? 'var(--accent)' : 'var(--fg-2)' }}>
                 {m === 'side' ? 'Nebeneinander' : 'Inline'}
               </button>
             ))}
@@ -912,13 +918,13 @@ function DiffModal({ projectPath, files, initialFile, onClose, readOnly = false,
               </>
             ) : (
               <button onClick={() => setConfirmDiscard(true)}
-                style={{ background: 'transparent', color: 'var(--err)', border: '0.5px solid rgba(226,75,74,0.4)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                style={{ background: 'var(--danger-soft)', color: 'var(--err)', border: '1px solid var(--danger-line)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 5 }}>
                 <IUndo style={{ width: 11, height: 11 }} /> Änderung verwerfen
               </button>
             )
           )}
           <button onClick={() => { onOpenReview(selFile); onClose() }}
-            style={{ background: 'rgba(255,138,76,0.15)', color: 'var(--accent)', border: '0.5px solid rgba(255,138,76,0.3)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-line)', padding: '4px 10px', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-ui)', display: 'flex', alignItems: 'center', gap: 5 }}>
             <ISpark style={{ width: 11, height: 11 }} /> KI-Review dieser Datei
           </button>
         </div>
@@ -937,7 +943,7 @@ const REVIEW_PROMPTS: Record<ReviewType, string> = {
 
 // ── Compact git card (Session tab) ───────────────────────────────────────────
 
-function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; onOpenGitTab: () => void }) {
+export function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; onOpenGitTab: () => void }) {
   const cached = _gitCache.get(projectPath)
   const [data,      setData]      = useState<GhData | null>(cached?.data ?? null)
   const [status,    setStatus]    = useState<GhStatus>(cached?.status ?? 'loading')
@@ -948,10 +954,9 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
   const [diffOpen,  setDiffOpen]  = useState(false)
   const [diffFile,  setDiffFile]  = useState('')
   const [setupOpen, setSetupOpen] = useState(false)
-  const { githubToken: _legacyGhToken, tokens: repoTokens, projects, theme: compactTheme } = useAppStore()
-  // Use the first github.com entry from repoTokens; fall back to legacy store field for compat
-  const githubToken = repoTokens.find(t => t.host === 'github.com')?.token || _legacyGhToken
+  const { githubToken: _legacyGhToken, tokens: repoTokens, projects, theme: compactTheme, setProjectGithubToken, activeProjectId } = useAppStore()
   const projectName = projects.find(p => p.path === projectPath)?.name ?? ''
+  const activeProject = projects.find(p => p.path === projectPath)
 
   const load = useCallback(() => {
     const c = _gitCache.get(projectPath)
@@ -959,7 +964,7 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
     fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
       .then(r => r.json())
       .then((d: { hasGit?: boolean; status?: GhFileInfo[]; branches?: GhBranch[]; log?: GhCommit[]; remotes?: string[]; diffStat?: string }) => {
-        const files = (d.status ?? []).filter(f => f.flag !== '??')
+        const files = d.status ?? []
         const branch = (d.branches ?? []).find(b => b.current)?.name ?? 'main'
         const remote = (d.remotes ?? [])[0] ?? null
         const { added, removed } = parseDiffStat(d.diffStat ?? '')
@@ -984,23 +989,30 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  const resolvedToken = activeProject?.githubTokenId
+    ? repoTokens.find(t => t.id === activeProject.githubTokenId)?.token
+    : repoTokens.find(t => t.host === 'github.com')?.token ?? _legacyGhToken
+
   const gitAction = (action: string, extra?: Record<string, string>) =>
     fetch('/api/git-action', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, path: projectPath, ...extra }),
+      body: JSON.stringify({ action, path: projectPath, token: resolvedToken, ...extra }),
     }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
 
   const showToast = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000) }
 
   const handleSave = useCallback(async () => {
-    if (!data || status !== 'dirty' || busy) return
+    if (!data || busy) return
+    if (status !== 'dirty' && !data.remote) return
     setBusy('save')
     try {
-      const autoMsg = data.files.length > 0 ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''}` : 'Update'
-      const r1 = await gitAction('stage')
-      if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
-      const r2 = await gitAction('commit', { message: note.trim() || autoMsg })
-      if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      if (status === 'dirty') {
+        const autoMsg = data.files.length > 0 ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''}` : 'Update'
+        const r1 = await gitAction('stage')
+        if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
+        const r2 = await gitAction('commit', { message: note.trim() || autoMsg })
+        if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      }
       if (data.remote) {
         const r3 = await gitAction('push')
         if (!r3.ok) { showToast(humanGitError(r3.out), false); return }
@@ -1034,6 +1046,11 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
   const hasDiff = added > 0 || removed > 0
   const statusColor = status === 'synced' ? 'var(--ok)' : status === 'dirty' ? 'var(--warn)' : 'var(--err)'
   const borderColor = 'var(--line-strong)'
+  const compactGhUrl = (() => {
+    if (!data?.remote) return null
+    const m = data.remote.match(/github\.com[:/](.+?)(?:\.git)?$/)
+    return m ? { slug: m[1], url: `https://github.com/${m[1]}` } : null
+  })()
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -1044,9 +1061,8 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
       >
         <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
           GitHub
-          {/* status dot — right next to label */}
           {status !== 'loading' && (
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--fg-3)', flexShrink: 0 }} />
           )}
         </span>
 
@@ -1075,6 +1091,24 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
       {/* ── Section body — only when open ── */}
       {open && (
         <div style={{ background: 'var(--bg-2)', border: `0.5px solid ${borderColor}`, borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+
+          {/* Repo name row */}
+          {compactGhUrl && (
+            <div style={{ padding: '6px 12px 5px', borderBottom: '0.5px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 11, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)' }}>{compactGhUrl.slug}</span>
+              <a
+                href={compactGhUrl.url} target="_blank" rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                style={{ display: 'flex', alignItems: 'center', color: 'var(--fg-3)', textDecoration: 'none', flexShrink: 0 }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--fg-1)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--fg-3)')}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ display: 'block' }}>
+                  <path d="M2.5 9.5L9.5 2.5M9.5 2.5H5M9.5 2.5V7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </a>
+            </div>
+          )}
 
           {/* DiffModal */}
           {diffOpen && data && data.files.length > 0 && (
@@ -1113,7 +1147,9 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
             <GitSetupModal
               projectPath={projectPath}
               projectName={projectName}
-              githubToken={githubToken}
+              tokens={repoTokens}
+              preselectedTokenId={activeProject?.githubTokenId}
+              onTokenSelected={(tokenId) => { if (activeProject) setProjectGithubToken(activeProject.id, tokenId) }}
               onClose={() => setSetupOpen(false)}
               onDone={() => { setSetupOpen(false); _gitInvalidate(projectPath); load() }}
             />
@@ -1133,9 +1169,6 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                   <div style={{ color: 'var(--fg-3)', fontSize: 10, marginTop: 1, fontFamily: 'var(--font-mono)' }}>{data.log[0].hash.slice(0, 7)}</div>
                 </div>
               )}
-              <div style={{ textAlign: 'center', marginTop: 0 }}>
-                <span onClick={onOpenGitTab} style={{ fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer' }}>Alle Details →</span>
-              </div>
             </div>
           )}
 
@@ -1153,8 +1186,8 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                     </div>
                   ))}
                   {data.files.length > 4 && (
-                    <div onClick={onOpenGitTab} style={{ padding: '4px 8px', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', textAlign: 'center' }}>
-                      + {data.files.length - 4} weitere →
+                    <div onClick={onOpenGitTab} style={{ padding: '4px 8px', fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer', textAlign: 'center' }}>
+                      + {data.files.length - 4} weitere
                     </div>
                   )}
                 </div>
@@ -1169,9 +1202,6 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
                   {busy === 'pull' ? <ISpinner style={{ width: 12, height: 12 }} /> : <IArrowDownLine style={{ width: 13, height: 13, strokeWidth: 2.5 }} />}
                 </button>
               </div>
-              <div style={{ textAlign: 'center', marginTop: 7 }}>
-                <span onClick={onOpenGitTab} style={{ fontSize: 10.5, color: 'var(--fg-3)', cursor: 'pointer' }}>Alle Details →</span>
-              </div>
             </div>
           )}
         </div>
@@ -1185,12 +1215,17 @@ function CompactGitCard({ projectPath, onOpenGitTab }: { projectPath: string; on
 type SetupMode = 'init' | 'clone' | 'connect' | null
 
 function GitSetupModal({
-  projectPath, projectName, githubToken, onClose, onDone,
-}: { projectPath: string; projectName: string; githubToken: string; onClose: () => void; onDone: () => void }) {
-  const [mode,       setMode]       = useState<SetupMode>(null)
-  const [remoteUrl,  setRemoteUrl]  = useState('')
-  const [busy,       setBusy]       = useState(false)
-  const [result,     setResult]     = useState<{ ok: boolean; msg: string } | null>(null)
+  projectPath, projectName, tokens, preselectedTokenId, onTokenSelected, onClose, onDone,
+}: { projectPath: string; projectName: string; tokens: RepoToken[]; preselectedTokenId?: string; onTokenSelected: (tokenId: string) => void; onClose: () => void; onDone: () => void }) {
+  const [mode,        setMode]        = useState<SetupMode>(null)
+  const [remoteUrl,   setRemoteUrl]   = useState('')
+  const [busy,        setBusy]        = useState(false)
+  const [result,      setResult]      = useState<{ ok: boolean; msg: string } | null>(null)
+  const [showPicker,  setShowPicker]  = useState(false)
+  const [offerGh,     setOfferGh]     = useState(false)   // after init success
+
+  const ghTokens = tokens.filter(t => t.host === 'github.com')
+  const hasGhTokens = ghTokens.length > 0
 
   const gitAction = (action: string, extra?: Record<string, string>) =>
     fetch('/api/git-action', {
@@ -1199,33 +1234,52 @@ function GitSetupModal({
       body: JSON.stringify({ action, path: projectPath, ...extra }),
     }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
 
-  const withToken = (url: string) =>
-    githubToken && url.includes('github.com')
-      ? url.replace('https://github.com/', `https://${githubToken}@github.com/`)
-      : url
-
   const run = async () => {
     setBusy(true)
     setResult(null)
     try {
       if (mode === 'init') {
         const r = await gitAction('init')
-        setResult(r.ok ? { ok: true, msg: 'Projekt eingerichtet ✓' } : { ok: false, msg: 'Fehler beim Einrichten.' })
-        if (r.ok) setTimeout(onDone, 1200)
+        if (r.ok) {
+          setResult({ ok: true, msg: 'Projekt eingerichtet ✓' })
+          // Offer GitHub connection if tokens available
+          if (hasGhTokens) { setOfferGh(true) } else { setTimeout(onDone, 1200) }
+        } else {
+          setResult({ ok: false, msg: 'Fehler beim Einrichten.' })
+        }
       } else if (mode === 'clone') {
-        const r = await gitAction('clone', { remote: withToken(remoteUrl) })
+        // remoteUrl already has token injected by picker (or is manual)
+        const r = await gitAction('clone', { remote: remoteUrl })
         setResult(r.ok ? { ok: true, msg: 'Erfolgreich geklont ✓' } : { ok: false, msg: r.out.slice(0, 120) })
         if (r.ok) setTimeout(onDone, 1200)
       } else if (mode === 'connect') {
         const r1 = await gitAction('init')
         if (!r1.ok) { setResult({ ok: false, msg: 'Fehler beim Einrichten.' }); return }
         if (remoteUrl.trim()) {
-          const r2 = await gitAction('add-remote', { remote: withToken(remoteUrl) })
+          const r2 = await gitAction('add-remote', { remote: remoteUrl })
           if (!r2.ok) { setResult({ ok: false, msg: 'Remote konnte nicht verbunden werden.' }); return }
         }
         setResult({ ok: true, msg: 'Ordner verbunden ✓' })
         setTimeout(onDone, 1200)
       }
+    } finally { setBusy(false) }
+  }
+
+  const connectRemote = async (url: string) => {
+    setBusy(true)
+    try {
+      const r = await gitAction('add-remote', { remote: url })
+      if (!r.ok) { setResult({ ok: false, msg: 'Remote konnte nicht verbunden werden.' }); return }
+      // Auto-push existing commits to set up upstream tracking
+      const push = await gitAction('push')
+      if (push.ok) {
+        setResult({ ok: true, msg: 'Verbunden & hochgeladen ✓' })
+      } else {
+        // Push failed (e.g. empty local repo) — still connected, just no upstream yet
+        setResult({ ok: true, msg: 'Verbunden ✓ — Lade Dateien hoch sobald du Änderungen hast.' })
+      }
+      setOfferGh(false)
+      setTimeout(onDone, 1800)
     } finally { setBusy(false) }
   }
 
@@ -1237,6 +1291,7 @@ function GitSetupModal({
   const btnSec: React.CSSProperties = { background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--line-strong)', padding: '8px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 
   return (
+    <>
     <div style={modalBg} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={modalBox}>
         {/* Header */}
@@ -1287,15 +1342,19 @@ function GitSetupModal({
         )}
 
         {/* Form: clone */}
-        {mode === 'clone' && !result && (
+        {mode === 'clone' && !result && !showPicker && (
           <div>
-            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>GitHub URL</label>
-            <input style={inp} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus />
-            {githubToken
-              ? <div style={{ fontSize: 10.5, color: 'var(--ok)', marginBottom: 14 }}>✓ GitHub Token hinterlegt — authentifizierter Zugriff</div>
-              : <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 14 }}>Kein GitHub Token — nur öffentliche Repos klonbar</div>
-            }
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            {hasGhTokens && (
+              <button onClick={() => setShowPicker(true)} style={{ ...btnPri, width: '100%', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                Aus GitHub wählen →
+              </button>
+            )}
+            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>
+              {hasGhTokens ? 'Oder URL manuell eingeben' : 'GitHub URL'}
+            </label>
+            <input style={inp} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus={!hasGhTokens} />
+            {!hasGhTokens && <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 14 }}>Kein GitHub Token — nur öffentliche Repos klonbar</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
               <button onClick={() => setMode(null)} style={btnSec}>Zurück</button>
               <button onClick={run} disabled={busy || !remoteUrl.trim()} style={{ ...btnPri, opacity: (busy || !remoteUrl.trim()) ? 0.5 : 1 }}>
                 {busy ? 'Wird geklont…' : 'Klonen'}
@@ -1305,13 +1364,20 @@ function GitSetupModal({
         )}
 
         {/* Form: connect */}
-        {mode === 'connect' && !result && (
+        {mode === 'connect' && !result && !showPicker && (
           <div>
             <div style={{ fontSize: 12, color: 'var(--fg-2)', marginBottom: 14, lineHeight: 1.6 }}>
               Git wird in diesem Ordner eingerichtet und optional mit einem GitHub-Repo verbunden.
             </div>
-            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>GitHub URL (optional)</label>
-            <input style={{ ...inp, marginBottom: 16 }} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" autoFocus />
+            {hasGhTokens && (
+              <button onClick={() => setShowPicker(true)} style={{ ...btnPri, width: '100%', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                Aus GitHub wählen →
+              </button>
+            )}
+            <label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 6 }}>
+              {hasGhTokens ? 'Oder URL manuell eingeben (optional)' : 'GitHub URL (optional)'}
+            </label>
+            <input style={{ ...inp, marginBottom: 16 }} value={remoteUrl} onChange={e => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo" />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setMode(null)} style={btnSec}>Zurück</button>
               <button onClick={run} disabled={busy} style={{ ...btnPri, opacity: busy ? 0.6 : 1 }}>
@@ -1321,23 +1387,65 @@ function GitSetupModal({
           </div>
         )}
 
-        {/* Result */}
+        {/* Result — success + offerGh */}
         {result && (
-          <div style={{ padding: '14px 16px', borderRadius: 8, background: result.ok ? 'rgba(125,201,125,0.1)' : 'rgba(226,75,74,0.1)', border: `1px solid ${result.ok ? 'rgba(125,201,125,0.3)' : 'rgba(226,75,74,0.3)'}`, color: result.ok ? 'var(--ok)' : 'var(--err)', fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
-            {result.msg}
-            {!result.ok && (
-              <button onClick={() => { setResult(null) }} style={{ display: 'block', margin: '10px auto 0', ...btnSec, fontSize: 11 }}>Nochmal versuchen</button>
+          <div>
+            <div style={{ padding: '14px 16px', borderRadius: 8, background: result.ok ? 'rgba(125,201,125,0.1)' : 'rgba(226,75,74,0.1)', border: `1px solid ${result.ok ? 'rgba(125,201,125,0.3)' : 'rgba(226,75,74,0.3)'}`, color: result.ok ? 'var(--ok)' : 'var(--err)', fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
+              {result.msg}
+              {!result.ok && (
+                <button onClick={() => { setResult(null) }} style={{ display: 'block', margin: '10px auto 0', ...btnSec, fontSize: 11 }}>Nochmal versuchen</button>
+              )}
+            </div>
+            {/* After init success: offer GitHub connection */}
+            {result.ok && offerGh && !showPicker && (
+              <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--fg-1)', marginBottom: 10, fontWeight: 500 }}>Möchtest du dieses Projekt mit GitHub verbinden?</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setShowPicker(true)} style={btnPri}>Ja, Repo wählen</button>
+                  <button onClick={onDone} style={btnSec}>Nein, später</button>
+                </div>
+              </div>
             )}
           </div>
         )}
       </div>
     </div>
+
+    {/* GitHubRepoPicker overlay */}
+    {showPicker && (
+      <GitHubRepoPicker
+        tokens={tokens}
+        preselectedTokenId={preselectedTokenId}
+        onSelect={(url, tokenId) => {
+          onTokenSelected(tokenId)
+          setShowPicker(false)
+          if (mode === 'clone') {
+            setRemoteUrl(url)
+            setBusy(true)
+            fetch('/api/git-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'clone', path: projectPath, remote: url, token: tokens.find(t => t.id === tokenId)?.token }) })
+              .then(r => r.json())
+              .then((d: { ok: boolean; out: string }) => {
+                setResult(d.ok ? { ok: true, msg: 'Erfolgreich geklont ✓' } : { ok: false, msg: d.out.slice(0, 120) })
+                if (d.ok) setTimeout(onDone, 1200)
+              })
+              .finally(() => setBusy(false))
+          } else {
+            // connect mode or after-init offer — add remote + auto-push
+            connectRemote(url)
+          }
+        }}
+        onCancel={() => setShowPicker(false)}
+      />
+    )}
+    </>
   )
 }
 
 function GitHubTab({ projectPath, projectName }: { projectPath: string; projectName: string }) {
-  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken: _legacyGhToken2, setGithubToken, tokens: repoTokens2, addToken: addRepoToken, updateToken: updateRepoToken, theme } = useAppStore()
+  const { openrouterKey, codeReviewModel, setCodeReviewModel, githubToken: _legacyGhToken2, setGithubToken, tokens: repoTokens2, addToken: addRepoToken, updateToken: updateRepoToken, theme, projects, activeProjectId, setProjectGithubToken } = useAppStore()
   const githubToken = repoTokens2.find(t => t.host === 'github.com')?.token || _legacyGhToken2
+  const activeProject = projects.find(p => p.path === projectPath)
+  const ghTokens = repoTokens2.filter(t => t.host === 'github.com')
   const [data,            setData]          = useState<GhData | null>(null)
   const [showSetupModal,  setShowSetupModal] = useState(false)
   const [status,   setStatus]   = useState<GhStatus>('loading')
@@ -1372,7 +1480,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
       const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openrouterKey}`,
+          'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://codera.ai',
           'X-Title': 'Codera AI Code Review',
@@ -1410,7 +1518,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
     fetch(`/api/git?path=${encodeURIComponent(projectPath)}`)
       .then(r => r.json())
       .then((d: { hasGit?: boolean; status?: GhFileInfo[]; branches?: GhBranch[]; log?: GhCommit[]; remotes?: string[]; diffStat?: string }) => {
-        const files = (d.status ?? []).filter(f => f.flag !== '??')
+        const files = d.status ?? []
         const currentBranch = (d.branches ?? []).find(b => b.current)?.name ?? 'main'
         const remote = (d.remotes ?? [])[0] ?? null
         const { added, removed } = parseDiffStat(d.diffStat ?? '')
@@ -1429,25 +1537,32 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
   useEffect(() => { load() }, [load])
   useEffect(() => _gitSubscribe(projectPath, load), [projectPath, load])
 
+  const resolvedToken2 = activeProject?.githubTokenId
+    ? repoTokens2.find(t => t.id === activeProject.githubTokenId)?.token
+    : repoTokens2.find(t => t.host === 'github.com')?.token ?? _legacyGhToken2
+
   const gitAction = (action: string, extra?: Record<string, string>) =>
     fetch('/api/git-action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, path: projectPath, ...extra }),
+      body: JSON.stringify({ action, path: projectPath, token: resolvedToken2, ...extra }),
     }).then(r => r.json()) as Promise<{ ok: boolean; out: string }>
 
   const handleSave = async () => {
     if (!data) return
+    if (status !== 'dirty' && !data.remote) return
     setBusy('save')
     try {
-      const autoMsg = data.files.length > 0
-        ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''} (${data.files.slice(0, 3).map(f => f.file.split('/').pop()).join(', ')}${data.files.length > 3 ? ` +${data.files.length - 3}` : ''})`
-        : 'Update'
-      const msg = note.trim() || autoMsg
-      const r1 = await gitAction('stage')
-      if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
-      const r2 = await gitAction('commit', { message: msg })
-      if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      if (status === 'dirty') {
+        const autoMsg = data.files.length > 0
+          ? `Änderungen an ${data.files.length} Datei${data.files.length > 1 ? 'en' : ''} (${data.files.slice(0, 3).map(f => f.file.split('/').pop()).join(', ')}${data.files.length > 3 ? ` +${data.files.length - 3}` : ''})`
+          : 'Update'
+        const msg = note.trim() || autoMsg
+        const r1 = await gitAction('stage')
+        if (!r1.ok) { showToast(humanGitError(r1.out), false); return }
+        const r2 = await gitAction('commit', { message: msg })
+        if (!r2.ok && !r2.out.includes('nothing to commit')) { showToast(humanGitError(r2.out), false); return }
+      }
       if (data.remote) {
         const r3 = await gitAction('push')
         if (!r3.ok) { showToast(humanGitError(r3.out), false); return }
@@ -1513,7 +1628,9 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
         <GitSetupModal
           projectPath={projectPath}
           projectName={projectName}
-          githubToken={githubToken}
+          tokens={repoTokens2}
+          preselectedTokenId={activeProject?.githubTokenId}
+          onTokenSelected={(tokenId) => { if (activeProject) setProjectGithubToken(activeProject.id, tokenId) }}
           onClose={() => setShowSetupModal(false)}
           onDone={() => { setShowSetupModal(false); load() }}
         />
@@ -1528,7 +1645,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
           onDiscard={handleDiscardFile}
         />
       )}
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingTop: 2 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingTop: 2, flex: 1, minHeight: 0 }}>
 
       {/* Toast */}
       {toast && (
@@ -1539,10 +1656,10 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
 
       {/* No git repo detected */}
       {data !== null && !data.hasGit && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, paddingTop: 24, paddingBottom: 8, textAlign: 'center' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(var(--accent-rgb,255,138,76),0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <IFolder style={{ width: 20, height: 20, color: 'var(--accent)' }} />
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, textAlign: 'center', flex: 1 }}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--fg-3)', flexShrink: 0 }}>
+            <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.483 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836a9.59 9.59 0 012.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" fill="currentColor"/>
+          </svg>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 5 }}>Noch kein Git-Projekt</div>
             <div style={{ fontSize: 11.5, color: 'var(--fg-3)', lineHeight: 1.6, maxWidth: 210 }}>
@@ -1563,13 +1680,25 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
 
       {/* 1 — Status card */}
       <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: ghUrl ? 3 : 5 }}>
           <span style={{ fontSize: 12.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
             <IFolder style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
             {projectName}
           </span>
           <span style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{data?.branch ?? '—'}</span>
         </div>
+        {ghUrl && (
+          <a
+            href={ghUrl} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--accent)', textDecoration: 'none', fontFamily: 'var(--font-mono)', marginBottom: 6, opacity: 0.85 }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '0.85')}
+          >
+            <IGitFork style={{ width: 11, height: 11, flexShrink: 0 }} />
+            {ghUrl.replace('https://github.com/', '')}
+          </a>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, marginBottom: 3 }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
           <span style={{ color: statusColor }}>{statusText}</span>
@@ -1771,6 +1900,23 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
         {sections.settings && (
           <div style={{ paddingBottom: 8, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 10 }}>
 
+            {/* Per-project token selector */}
+            {ghTokens.length > 0 && (
+              <div>
+                <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--fg-3)', marginBottom: 5 }}>Token für dieses Projekt</div>
+                <select
+                  value={activeProject?.githubTokenId ?? ''}
+                  onChange={e => { if (activeProject) setProjectGithubToken(activeProject.id, e.target.value || undefined) }}
+                  style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="">— Erster verfügbarer Token</option>
+                  {ghTokens.map(t => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* GitHub Token inline */}
             <div>
               <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--fg-3)', marginBottom: 5 }}>GitHub Token</div>
@@ -1905,110 +2051,109 @@ function GitTab({ projectPath }: { projectPath: string }) {
   if (loading) return <div style={{ padding: 20, textAlign: 'center', color: 'var(--fg-3)', fontSize: 12 }}>Loading…</div>
   if (!info || info.error) return <div style={{ padding: 14, color: 'var(--err)', fontSize: 11 }}>No git repository found at this path.</div>
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+  const card: React.CSSProperties = {
+    background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)',
+    borderRadius: 8, overflow: 'hidden',
+  }
 
-      {/* Header bar */}
-      <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 8, margin: '10px 12px 0' }}>
-        <span className="mono" style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowX: 'hidden' }}>
+
+      {/* Header */}
+      <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, borderBottom: '1px solid var(--line)' }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--ok)', flexShrink: 0 }} />
+        <span className="mono" style={{ fontSize: 11, color: 'var(--fg-0)', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {currentBranch?.name ?? '—'}
         </span>
-        <span style={{ flex: 1, fontSize: 10, color: 'var(--fg-3)' }}>
-          {info.lastCommit ? `last commit ${info.lastCommit}` : ''}
-        </span>
-        <button onClick={refresh} disabled={!!busy} style={smallBtn}>↻</button>
+        {info.lastCommit && <span style={{ fontSize: 10, color: 'var(--fg-3)', flexShrink: 0 }}>{info.lastCommit}</span>}
+        <button onClick={refresh} disabled={!!busy} title="Aktualisieren" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', alignItems: 'center', borderRadius: 4 }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        </button>
         {repoUrl && (
-          <button
-            onClick={() => window.open(repoUrl, '_blank')}
-            title={repoUrl}
-            style={{ ...smallBtn, display: 'flex', alignItems: 'center', gap: 5, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', color: 'var(--accent)' }}
-          >
-            <IExternalLink style={{ width: 10, height: 10 }} />
-            Repository
+          <button onClick={() => window.open((repoUrl as { url: string }).url ?? repoUrl, '_blank')} title="Repository öffnen"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', alignItems: 'center', borderRadius: 4 }}>
+            <IExternalLink style={{ width: 11, height: 11 }} />
           </button>
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
         {/* Branches */}
-        <section>
-          <SectionLabel>Branches</SectionLabel>
+        <div style={card}>
+          <div style={{ padding: '6px 10px', borderBottom: '0.5px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Branches</span>
+          </div>
           {info.branches.map(b => (
-            <div
-              key={b.name}
-              onClick={() => !b.current && run('checkout', { branch: b.name })}
-              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 6px', borderRadius: 6, cursor: b.current ? 'default' : 'pointer', background: b.current ? 'var(--accent-soft)' : 'transparent', marginBottom: 1 }}
+            <div key={b.name} onClick={() => !b.current && run('checkout', { branch: b.name })}
+              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 10px', cursor: b.current ? 'default' : 'pointer', background: b.current ? 'var(--accent-soft)' : 'transparent', borderBottom: '0.5px solid var(--line)' }}
             >
               <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: b.current ? 'var(--accent)' : 'var(--fg-3)' }} />
-              <span className="mono" style={{ flex: 1, fontSize: 11, color: b.current ? 'var(--accent)' : 'var(--fg-1)', fontWeight: b.current ? 600 : 400 }}>{b.name}</span>
-              {!b.current && <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>switch</span>}
+              <span className="mono" style={{ flex: 1, fontSize: 11, color: b.current ? 'var(--accent)' : 'var(--fg-1)', fontWeight: b.current ? 600 : 400, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
+              {!b.current && <span style={{ fontSize: 9, color: 'var(--fg-3)', flexShrink: 0 }}>wechseln</span>}
             </div>
           ))}
-          {/* New branch */}
-          <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
-            <input
-              value={newBranch} onChange={e => setNewBranch(e.target.value)}
-              placeholder="new-branch-name"
-              style={{ flex: 1, padding: '4px 7px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', outline: 'none' }}
+          <div style={{ display: 'flex', gap: 5, padding: '6px 10px' }}>
+            <input value={newBranch} onChange={e => setNewBranch(e.target.value)} placeholder="new-branch-name"
+              style={{ flex: 1, minWidth: 0, padding: '4px 7px', border: '1px solid var(--line)', borderRadius: 5, background: 'var(--bg-3)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', outline: 'none' }}
             />
-            <button
-              onClick={() => { if (newBranch.trim()) { run('new-branch', { branch: newBranch.trim() }); setNewBranch('') } }}
+            <button onClick={() => { if (newBranch.trim()) { run('new-branch', { branch: newBranch.trim() }); setNewBranch('') } }}
               disabled={!newBranch.trim() || !!busy}
-              style={smallBtn}
-            >+ Branch</button>
+              style={{ ...smallBtn, flexShrink: 0 }}>+ Branch</button>
           </div>
-        </section>
+        </div>
 
         {/* Changes */}
-        <section>
-          <SectionLabel>
-            Changes {info.status.length > 0 && <span style={{ color: 'var(--warn)', fontWeight: 600 }}>{info.status.length}</span>}
-          </SectionLabel>
-          {info.status.length === 0
-            ? <div style={{ color: 'var(--ok)', fontSize: 11, padding: '2px 0' }}>✓ Working tree clean</div>
-            : <>
-              {info.status.slice(0, 12).map((s, i) => (
-                <div key={i} style={{ display: 'flex', gap: 7, padding: '2px 0', fontSize: 11 }}>
-                  <span className="mono" style={{ color: flagColor(s.flag), fontWeight: 700, width: 12, flexShrink: 0 }}>{s.flag}</span>
-                  <span className="mono" style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{s.file}</span>
-                </div>
-              ))}
-              {info.status.length > 12 && <div style={{ fontSize: 10, color: 'var(--fg-3)', paddingTop: 2 }}>+{info.status.length - 12} more</div>}
-              {info.diffStat && <div style={{ marginTop: 4, fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{info.diffStat}</div>}
-            </>
-          }
-        </section>
+        <div style={card}>
+          <div style={{ padding: '6px 10px', borderBottom: '0.5px solid var(--line)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, flex: 1 }}>Änderungen</span>
+            {info.status.length > 0 && <span style={{ fontSize: 9.5, color: 'var(--warn)', fontWeight: 700 }}>{info.status.length}</span>}
+          </div>
+          <div style={{ padding: '6px 10px' }}>
+            {info.status.length === 0
+              ? <div style={{ color: 'var(--ok)', fontSize: 11 }}>✓ Working tree clean</div>
+              : <>
+                {info.status.slice(0, 12).map((s, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 7, padding: '2px 0', fontSize: 11 }}>
+                    <span className="mono" style={{ color: flagColor(s.flag), fontWeight: 700, width: 12, flexShrink: 0 }}>{s.flag}</span>
+                    <span className="mono" style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{s.file}</span>
+                  </div>
+                ))}
+                {info.status.length > 12 && <div style={{ fontSize: 10, color: 'var(--fg-3)', paddingTop: 2 }}>+{info.status.length - 12} weitere</div>}
+              </>
+            }
+          </div>
+        </div>
 
         {/* Commit */}
-        <section>
-          <SectionLabel>Commit</SectionLabel>
-          <textarea
-            value={commitMsg}
-            onChange={e => setCommitMsg(e.target.value)}
-            placeholder="Commit message…"
-            rows={2}
-            style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
-          />
-          <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
-            <button onClick={() => run('stage')} disabled={!!busy} style={smallBtn}>
-              {busy === 'stage' ? '…' : '+ Stage all'}
-            </button>
-            <button
-              onClick={() => { if (commitMsg.trim()) run('commit', { message: commitMsg }); setCommitMsg('') }}
-              disabled={!commitMsg.trim() || !!busy}
-              style={{ ...smallBtn, background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', flex: 1 }}
-            >
-              {busy === 'commit' ? '…' : '✓ Commit'}
-            </button>
+        <div style={card}>
+          <div style={{ padding: '6px 10px', borderBottom: '0.5px solid var(--line)' }}>
+            <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Commit</span>
           </div>
-        </section>
+          <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <textarea value={commitMsg} onChange={e => setCommitMsg(e.target.value)} placeholder="Commit message…" rows={2}
+              style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 5, background: 'var(--bg-3)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: 5 }}>
+              <button onClick={() => run('stage')} disabled={!!busy} style={smallBtn}>
+                {busy === 'stage' ? '…' : '+ Stage all'}
+              </button>
+              <button onClick={() => { if (commitMsg.trim()) { run('commit', { message: commitMsg }); setCommitMsg('') } }} disabled={!commitMsg.trim() || !!busy}
+                style={{ ...smallBtn, background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', flex: 1 }}>
+                {busy === 'commit' ? '…' : '✓ Commit'}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Remote */}
         {info.remotes.length > 0 && (
-          <section>
-            <SectionLabel>Remote · {info.remotes.join(', ')}</SectionLabel>
-            <div style={{ display: 'flex', gap: 5 }}>
+          <div style={card}>
+            <div style={{ padding: '6px 10px', borderBottom: '0.5px solid var(--line)' }}>
+              <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Remote</span>
+              {info.remotes[0] && <span className="mono" style={{ fontSize: 9, color: 'var(--fg-3)', marginLeft: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', maxWidth: '60%', verticalAlign: 'middle' }}>{info.remotes[0].replace(/^https?:\/\/[^@]*@/, 'https://')}</span>}
+            </div>
+            <div style={{ padding: '8px 10px', display: 'flex', gap: 5 }}>
               <button onClick={() => run('pull')} disabled={!!busy} style={{ ...smallBtn, flex: 1 }}>
                 {busy === 'pull' ? '…' : '↓ Pull'}
               </button>
@@ -2016,31 +2161,38 @@ function GitTab({ projectPath }: { projectPath: string }) {
                 {busy === 'push' ? '…' : '↑ Push'}
               </button>
             </div>
-          </section>
+          </div>
         )}
 
         {/* Action log */}
         {log && (
-          <section>
-            <SectionLabel>Output</SectionLabel>
-            <pre style={{ margin: 0, padding: '6px 8px', background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 80, overflowY: 'auto' }}>{log}</pre>
-          </section>
+          <div style={card}>
+            <div style={{ padding: '6px 10px', borderBottom: '0.5px solid var(--line)' }}>
+              <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>Output</span>
+            </div>
+            <pre style={{ margin: 0, padding: '8px 10px', fontSize: 10, color: 'var(--fg-1)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 80, overflowY: 'auto' }}>{log}</pre>
+          </div>
         )}
 
-        {/* Commit log */}
-        <section>
-          <SectionLabel>History</SectionLabel>
-          {info.log.length === 0 && <div style={{ color: 'var(--fg-3)', fontSize: 11 }}>No commits yet</div>}
-          {info.log.map(c => (
-            <div key={c.hash} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '5px 0', borderBottom: '1px solid var(--line)', fontSize: 11 }}>
-              <span className="mono" style={{ color: 'var(--accent)', flexShrink: 0, fontSize: 10, paddingTop: 1, minWidth: 44 }}>{c.hash}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.msg}</div>
-                <div style={{ color: 'var(--fg-3)', fontSize: 9.5, marginTop: 1 }}>{c.author} · {c.when}</div>
+        {/* History */}
+        <div style={card}>
+          <div style={{ padding: '6px 10px', borderBottom: '0.5px solid var(--line)' }}>
+            <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600 }}>History</span>
+          </div>
+          {info.log.length === 0
+            ? <div style={{ padding: '8px 10px', color: 'var(--fg-3)', fontSize: 11 }}>Noch keine Commits</div>
+            : info.log.map((c, i) => (
+              <div key={c.hash} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 10px', borderBottom: i < info.log.length - 1 ? '0.5px solid var(--line)' : 'none' }}>
+                <span className="mono" style={{ color: 'var(--accent)', flexShrink: 0, fontSize: 9.5, paddingTop: 1, minWidth: 46 }}>{c.hash}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.msg}</div>
+                  <div style={{ fontSize: 9.5, color: 'var(--fg-3)', marginTop: 1 }}>{c.author} · {c.when}</div>
+                </div>
               </div>
-            </div>
-          ))}
-        </section>
+            ))
+          }
+        </div>
+
       </div>
     </div>
   )
@@ -2197,7 +2349,7 @@ function NewTaskModal({ projectId, projectName, onClose }: { projectId: string; 
   )
 }
 
-function UserStoriesCard({ projectId: activeProjectId, sessionId }: { projectId?: string; sessionId: string }) {
+export function UserStoriesCard({ projectId: activeProjectId, sessionId }: { projectId?: string; sessionId: string }) {
   const { kanban, projects } = useAppStore()
   const [openTicket,  setOpenTicket]  = useState<{ projectId: string; projectName: string; projectPath: string; ticketId: string } | null>(null)
   const [showNewTask, setShowNewTask] = useState(false)
@@ -2470,23 +2622,25 @@ function ChatTab({ projectId, sessionId }: { projectId: string; sessionId: strin
         </div>
       </div>
 
-      {/* Pill bar + New Chat button */}
+      {/* Tab bar + New Chat button */}
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, padding: '6px 10px 8px', flexShrink: 0, position: 'relative' }}>
+        <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
         {(['chats', 'favoriten'] as const).map(p => {
           const active = pill === p
           return (
             <button
               key={p}
               onClick={() => setPill(p)}
-              style={{ position: 'relative', padding: '3px 14px', borderRadius: 99, border: active ? '1px solid #a78bfa' : '1px solid rgba(167,139,250,0.25)', background: active ? 'rgba(167,139,250,0.18)' : 'transparent', color: active ? '#c4b5fd' : 'rgba(167,139,250,0.5)', fontSize: 10.5, fontWeight: active ? 600 : 400, cursor: 'pointer', fontFamily: 'var(--font-ui)', transition: 'all 0.12s' }}
+              style={{ position: 'relative', padding: '5px 14px', border: 'none', borderRadius: 5, fontSize: 10.5, fontWeight: active ? 600 : 400, cursor: 'pointer', fontFamily: 'var(--font-ui)', background: active ? 'var(--orbit-soft)' : 'transparent', color: active ? 'var(--orbit)' : 'var(--fg-2)', transition: 'all 0.12s' }}
             >
               {p === 'chats' ? 'Chats' : 'Favoriten'}
               {p === 'favoriten' && favCount > 0 && (
-                <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 7.5, fontWeight: 700, minWidth: 13, height: 13, borderRadius: 99, background: 'rgba(167,139,250,0.35)', border: '1px solid rgba(167,139,250,0.6)', color: '#e9d5ff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{favCount}</span>
+                <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 7.5, fontWeight: 700, minWidth: 13, height: 13, borderRadius: 99, background: 'var(--orbit-soft)', border: '1px solid var(--orbit-line)', color: 'var(--orbit)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px', lineHeight: 1 }}>{favCount}</span>
               )}
             </button>
           )
         })}
+        </div>
         <button
           onClick={() => createOrbitChat(projectId, sessionId)}
           title="Neuer Chat"
@@ -2614,7 +2768,423 @@ function CopyButton({ text }: { text: string }) {
 
 type SearchResult = { humanSummary: string; detailed: string; agentContext: string; inputTokens: number; outputTokens: number }
 
-function AiSearchTab({ projectId }: { projectId: string }) {
+// ── Standalone CtxLogButton ───────────────────────────────────────────────────
+
+export function CtxLogButton({ projectId }: { projectId: string }) {
+  const { supabaseUrl, supabaseAnonKey, currentUser, agentTailMessageCount, projects } = useAppStore()
+  const [open, setOpen]         = useState(false)
+  const [items, setItems]       = useState<AgentContextSummary[]>([])
+  const [msgs, setMsgs]         = useState<DbAgentMessage[]>([])
+  const [loading, setLoading]   = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const projName = projects.find(p => p.id === projectId)?.name ?? projectId
+
+  const openLog = async () => {
+    setOpen(true)
+    setExpanded(new Set())
+    setLoading(true)
+    try {
+      const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+      if (sb && currentUser?.id) {
+        const [sumItems, rawMsgs] = await Promise.all([
+          loadAllContextSummaries(sb, currentUser.id, projectId, 50),
+          loadLastProjectMessages(sb, currentUser.id, projectId, 200, 0),
+        ])
+        setItems(sumItems)
+        setMsgs(rawMsgs.slice().sort((a, b) => a.ts - b.ts))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const deleteItem = async (itemId: string) => {
+    const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+    if (!sb || !currentUser?.id) return
+    await sb.from('agent_context_summaries').delete().eq('id', itemId).eq('user_id', currentUser.id)
+    setItems(prev => prev.filter(i => i.id !== itemId))
+    setExpanded(prev => { const n = new Set(prev); n.delete(`e-sum-${itemId}`); return n })
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => void openLog()}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--bg-2)', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+        title="Kontext-Komprimierungen dieses Projekts"
+      >
+        <ILayers style={{ width: 15, height: 15, color: 'var(--accent)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Kontext-Log</div>
+          <div style={{ fontSize: 10, color: 'var(--fg-3)', lineHeight: 1.3 }}>Alle Chats · chronologische Timeline</div>
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>›</span>
+      </button>
+
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, width: '100%', maxWidth: 660, maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ILayers style={{ width: 16, height: 16, color: 'var(--accent)', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-0)' }}>Kontext-Log</div>
+                  <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>{projName} · was wann an den Agenten übergeben wurde</div>
+                </div>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>×</button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+              {loading ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+                  <ISpinner size={20} style={{ color: 'var(--fg-3)' }} />
+                </div>
+              ) : items.length === 0 ? (
+                <div style={{ color: 'var(--fg-3)', fontSize: 12, textAlign: 'center', padding: '40px 20px', lineHeight: 1.9 }}>
+                  Noch keine Kontext-Komprimierungen für dieses Projekt.<br />
+                  <span style={{ fontSize: 11 }}>Wird automatisch beim Start einer neuen Session erstellt,<br />sobald ein OpenRouter-Key gesetzt ist.</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', padding: '8px 0 16px' }}>
+                  {[...items].sort((a, b) => (b.last_ts ?? 0) - (a.last_ts ?? 0)).map((item, ti) => {
+                    const key        = `sum-${item.id ?? ti}`
+                    const eKey       = `e-${key}`
+                    const isExpanded = expanded.has(eKey)
+                    const date       = new Date(item.created_at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
+                    const modelShort = item.model ? item.model.split('/').pop() : null
+                    const inTok      = item.input_tokens  ?? 0
+                    const outTok     = item.output_tokens ?? 0
+                    const firstLine  = (item.summary ?? '').split('\n').find(l => l.trim()) ?? ''
+                    const preview    = firstLine.length > 120 ? firstLine.slice(0, 120) + '…' : firstLine
+                    const toggle     = () => setExpanded(prev => { const n = new Set(prev); n.has(eKey) ? n.delete(eKey) : n.add(eKey); return n })
+                    const sortedOldFirst = [...items].sort((a2, b2) => (a2.last_ts ?? 0) - (b2.last_ts ?? 0))
+                    const idxOldFirst    = sortedOldFirst.findIndex(s => s.id === item.id)
+                    const prevLastTs     = idxOldFirst > 0 ? (sortedOldFirst[idxOldFirst - 1]?.last_ts ?? 0) : 0
+                    const entryLastTs    = item.last_ts ?? 0
+                    const compressedMsgs = msgs.filter(m => m.ts > prevLastTs && m.ts <= entryLastTs)
+                    const tailMsgs       = msgs.filter(m => m.ts > entryLastTs).slice(0, agentTailMessageCount)
+
+                    return (
+                      <div key={key} style={{ margin: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-1))', border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)', overflow: 'hidden' }}>
+                        <div onClick={toggle} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 12px', cursor: 'pointer' }}>
+                          <span style={{ fontSize: 11, color: 'var(--fg-4)', flexShrink: 0 }}>{isExpanded ? '▼' : '▶'}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', flexShrink: 0 }}>⚡ Komprimierung</span>
+                          <span style={{ fontSize: 10, color: 'var(--fg-3)', flexShrink: 0 }}>{date}</span>
+                          {modelShort && (
+                            <span style={{ fontSize: 9.5, padding: '1px 6px', borderRadius: 99, background: 'var(--bg-3)', border: '1px solid var(--line)', color: 'var(--fg-3)', flexShrink: 0 }}>
+                              {modelShort}
+                            </span>
+                          )}
+                          <span style={{ fontSize: 9.5, color: 'var(--fg-4)', flexShrink: 0 }}>
+                            {item.source_count}msg · {inTok > 0 ? `↑${inTok.toLocaleString('de-DE')}` : '—'} · {outTok > 0 ? `↓${outTok.toLocaleString('de-DE')}` : '—'} tok
+                          </span>
+                          {preview && (
+                            <span style={{ fontSize: 10.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                              {preview}
+                            </span>
+                          )}
+                          <button
+                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.summary ?? '').catch(() => {}) }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            title="Summary kopieren"
+                          >
+                            <ICopy style={{ width: 10, height: 10 }} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); if (item.id) deleteItem(item.id).catch(() => {}) }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-4)', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            title="Eintrag löschen"
+                          >
+                            <ITrash style={{ width: 10, height: 10 }} />
+                          </button>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={{ borderTop: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px 10px', background: 'var(--bg-2)', borderRadius: 6, padding: '8px 10px', fontSize: 10 }}>
+                              {[
+                                ['Komprimiert', String(item.source_count)],
+                                ['Input Tokens', inTok > 0 ? inTok.toLocaleString('de-DE') : '—'],
+                                ['Output Tokens', outTok > 0 ? outTok.toLocaleString('de-DE') : '—'],
+                                ['Summary-Größe', `~${Math.round((item.summary?.length ?? 0) / 4)} Tok`],
+                              ].map(([label, value]) => (
+                                <div key={label}>
+                                  <div style={{ fontSize: 9, color: 'var(--fg-4)', marginBottom: 1 }}>{label}</div>
+                                  <div style={{ fontWeight: 700, color: 'var(--fg-0)' }}>{value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                📤 Übergabe-Kontext (was die neue Session bekommt)
+                              </div>
+                              <div style={{ fontSize: 11.5, color: 'var(--fg-1)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'var(--bg-2)', borderRadius: 6, padding: '10px 12px' }}>
+                                {item.summary || <span style={{ color: 'var(--fg-3)', fontStyle: 'italic' }}>— kein Inhalt —</span>}
+                              </div>
+                            </div>
+
+                            {compressedMsgs.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                  🗜 Verarbeitet &amp; komprimiert ({compressedMsgs.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {compressedMsgs.map(m => {
+                                    const isUser   = m.role === 'user'
+                                    const preview2 = m.content.slice(0, 140).replace(/\n/g, ' ')
+                                    const time2    = new Date(m.ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+                                    return (
+                                      <div key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                                        <span style={{ fontSize: 9.5, fontWeight: 700, color: isUser ? 'var(--fg-3)' : 'var(--accent)', flexShrink: 0, width: 30 }}>{isUser ? 'Du' : 'AI'}</span>
+                                        <span style={{ fontSize: 9.5, color: 'var(--fg-4)', flexShrink: 0 }}>{time2}</span>
+                                        <span style={{ fontSize: 10.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                                          {preview2}{m.content.length > 140 ? '…' : ''}
+                                        </span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {tailMsgs.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                  📋 Verbatim mitgeschickt — Tail ({tailMsgs.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {tailMsgs.map(m => {
+                                    const isUser   = m.role === 'user'
+                                    const preview2 = m.content.slice(0, 300).replace(/\n/g, ' ')
+                                    const time2    = new Date(m.ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+                                    return (
+                                      <div key={m.id} style={{ background: 'var(--bg-2)', borderRadius: 5, padding: '6px 9px' }}>
+                                        <div style={{ display: 'flex', gap: 5, marginBottom: 3 }}>
+                                          <span style={{ fontSize: 9.5, fontWeight: 700, color: isUser ? 'var(--fg-3)' : 'var(--accent)' }}>{isUser ? 'Du' : 'AI'}</span>
+                                          <span style={{ fontSize: 9, color: 'var(--fg-4)' }}>{time2}</span>
+                                        </div>
+                                        <div style={{ fontSize: 10.5, color: 'var(--fg-1)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                                          {preview2}{m.content.length > 300 ? '…' : ''}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {tailMsgs.length === 0 && agentTailMessageCount > 0 && (
+                              <div style={{ fontSize: 10, color: 'var(--fg-4)', fontStyle: 'italic' }}>
+                                Kein Verbatim-Tail — alle Nachrichten bis zu diesem Zeitpunkt waren komprimiert.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Standalone ProjectBrainButton ─────────────────────────────────────────────
+
+function ProjectBrainButton({ projectId }: { projectId: string }) {
+  const { projectBrains, setProjectBrain, openrouterKey, orbitCompressModel, brainUpdatePrompt,
+    supabaseUrl, supabaseAnonKey, currentUser, projects } = useAppStore()
+  const [open, setOpen]           = useState(false)
+  const [updating, setUpdating]   = useState(false)
+
+  const brain    = projectBrains[projectId]
+  const projName = projects.find(p => p.id === projectId)?.name ?? projectId
+
+  const handleUpdate = async () => {
+    if (!openrouterKey || !brain) return
+    setUpdating(true)
+    try {
+      const { updateBrainWithAI } = await import('../../lib/projectBrain')
+      const updated = await updateBrainWithAI({
+        openrouterKey,
+        currentBrain: brain,
+        recentMessages: [],
+        projectName: projName,
+        projectId,
+        compressModel: orbitCompressModel,
+        customPrompt: brainUpdatePrompt || undefined,
+      })
+      setProjectBrain(projectId, updated)
+      const sb = getSupabase(supabaseUrl, supabaseAnonKey)
+      if (sb && currentUser?.id) {
+        const { saveProjectBrainToSupabase } = await import('../../lib/supabaseSync')
+        await saveProjectBrainToSupabase(sb, currentUser.id, updated)
+      }
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title={brain ? `Project Brain — zuletzt: ${new Date(brain.lastUpdatedAt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : 'Project Brain — noch kein Brain generiert'}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--line)', background: 'var(--bg-2)', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+      >
+        <IBrain style={{ width: 15, height: 15, color: 'var(--accent)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Project Brain</div>
+          <div style={{ fontSize: 10, color: 'var(--fg-3)', lineHeight: 1.3 }}>
+            {brain
+              ? `${brain.brainTokens} Tokens · ${brain.generationModel ? brain.generationModel.split('/').pop() : '?'} · ${new Date(brain.lastUpdatedAt).toLocaleDateString('de-DE')}`
+              : 'Noch kein Brain — wird automatisch generiert'}
+          </div>
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>›</span>
+      </button>
+
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, width: '100%', maxWidth: 580, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <IBrain style={{ width: 16, height: 16, color: 'var(--accent)', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-0)' }}>Project Brain</div>
+                  <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>{projName}</div>
+                </div>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>×</button>
+            </div>
+
+            <div style={{ overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {!brain ? (
+                <div style={{ color: 'var(--fg-3)', fontSize: 12, textAlign: 'center', padding: '24px 0' }}>
+                  Noch kein Brain für dieses Projekt.<br />
+                  <span style={{ fontSize: 11 }}>Wird automatisch nach je 5 Orbit-Antworten generiert.</span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ background: 'var(--bg-2)', borderRadius: 7, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Stats</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+                      {[
+                        ['Letzte Aktualisierung', new Date(brain.lastUpdatedAt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })],
+                        ['Brain-Größe (im Context)', `${brain.brainTokens} Tokens`],
+                        ['Modell', brain.generationModel ? brain.generationModel.split('/').pop() : '—'],
+                        ['Input Tokens (gelesen)', brain.generationInputTokens ? brain.generationInputTokens.toLocaleString('de-DE') : '—'],
+                        ['Output Tokens (generiert)', brain.generationOutputTokens ? brain.generationOutputTokens.toLocaleString('de-DE') : '—'],
+                        ['Auto-Update', 'alle 5 Orbit-Antworten'],
+                      ].map(([label, value]) => (
+                        <div key={label}>
+                          <div style={{ fontSize: 9.5, color: 'var(--fg-3)', marginBottom: 1 }}>{label}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--fg-0)', fontWeight: 600, wordBreak: 'break-all' }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {brain.generationModel && (
+                      <div style={{ marginTop: 4, paddingTop: 8, borderTop: '1px solid var(--line)', fontSize: 10, color: 'var(--fg-3)' }}>
+                        Vollständiges Modell: <span style={{ color: 'var(--fg-2)', fontFamily: 'monospace' }}>{brain.generationModel}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {brain.summary && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Summary</div>
+                        <div style={{ fontSize: 12, color: 'var(--fg-1)', lineHeight: 1.6 }}>{brain.summary}</div>
+                      </div>
+                    )}
+                    {brain.architecture && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Architektur</div>
+                        <div style={{ fontSize: 12, color: 'var(--fg-1)', lineHeight: 1.6 }}>{brain.architecture}</div>
+                      </div>
+                    )}
+                    {brain.recentWork.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Zuletzt gearbeitet</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {brain.recentWork.map((w, i) => (
+                            <div key={i} style={{ fontSize: 11.5, color: 'var(--fg-1)', display: 'flex', gap: 8 }}>
+                              <span style={{ color: 'var(--fg-3)', flexShrink: 0 }}>{w.date}</span>
+                              <span>{w.item}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {brain.openTasks.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Offene Tasks</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {brain.openTasks.map((t, i) => (
+                            <div key={i} style={{ fontSize: 11.5, color: 'var(--fg-1)', display: 'flex', gap: 6 }}>
+                              <span style={{ color: 'var(--accent)', flexShrink: 0 }}>•</span>
+                              <span>{t}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {brain.keyFiles.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Key Files</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {brain.keyFiles.map((f, i) => (
+                            <div key={i} style={{ fontSize: 11, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                              <span style={{ color: 'var(--fg-3)', fontFamily: 'monospace', fontSize: 10.5, flexShrink: 0, paddingTop: 1 }}>{f.path}</span>
+                              <span style={{ color: 'var(--fg-2)' }}>— {f.purpose}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={{ padding: '12px 18px', borderTop: '1px solid var(--line)', flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => void handleUpdate()}
+                disabled={updating || !openrouterKey || !brain}
+                title={!openrouterKey ? 'OpenRouter Key fehlt' : !brain ? 'Kein Brain vorhanden' : 'Brain jetzt mit KI aktualisieren'}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 6, border: '1px solid var(--line-strong)', background: updating ? 'var(--bg-2)' : 'var(--accent)', color: updating ? 'var(--fg-3)' : 'var(--accent-fg)', cursor: updating || !openrouterKey || !brain ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: !openrouterKey || !brain ? 0.5 : 1 }}
+              >
+                <ISpinner size={12} spin={updating} />
+                {updating ? 'Aktualisiere…' : 'Jetzt aktualisieren'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function AiSearchTab({ projectId, isOrbitSession }: { projectId: string; isOrbitSession: boolean }) {
   const { aiFunctionMap, supabaseUrl, supabaseAnonKey, currentUser, setInputValue, docTemplates } = useAppStore()
   const [query, setQuery]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -2829,6 +3399,54 @@ function AiSearchTab({ projectId }: { projectId: string }) {
   )
 }
 
+// ── Session Info card — shared by right panel and left sidebar ────────────────
+
+export function SessionInfoCard() {
+  const { projects, activeProjectId, activeSessionId } = useAppStore()
+  const project = projects.find(p => p.id === activeProjectId)
+  const session = project?.sessions.find(s => s.id === activeSessionId)
+  const isOrbit = session?.kind === 'orbit'
+  const startedLabel = session?.startedAt
+    ? `${formatTime(session.startedAt)} · ${formatElapsed(Date.now() - session.startedAt)}`
+    : null
+
+  if (!project) return null
+  return (
+    <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {isOrbit
+          ? <IOrbit style={{ width: 13, height: 13, color: 'var(--orbit)', flexShrink: 0 }} />
+          : session
+            ? session.kind === 'openrouter-claude'
+              ? <ISpark style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
+              : <ITerminal style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
+            : <IFolder style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
+        }
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+          {session?.name ?? project.name}
+        </span>
+        {session && (
+          <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+            background: session.status === 'active' ? 'var(--ok)' : session.status === 'error' ? 'var(--err)' : 'var(--fg-3)',
+            ...(session.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}) }} />
+        )}
+      </div>
+      <FieldPath label="Pfad" path={project.path} />
+      {startedLabel && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', fontSize: 11.5 }}>
+          <span style={{ width: 60, color: 'var(--fg-3)', flexShrink: 0 }}>Aktiv seit</span>
+          <span style={{ color: 'var(--fg-1)' }}>{startedLabel}</span>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('cc:clear-agent-session', { detail: session!.id }))}
+            style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--line-strong)', padding: '2px 8px', borderRadius: 4, fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
+            title="Chat leeren & Kontext zurücksetzen"
+          >clear</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function UtilityPanel() {
   const [tab, setTab] = useState(0)
   const [exporting, setExporting]  = useState(false)
@@ -2843,6 +3461,14 @@ export function UtilityPanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [tabConfigOpen])
   const { aliases, activeSessionId, projects, activeProjectId, createOrbitChat } = useAppStore()
+  const utilitySections  = useAppStore(s => s.utilitySections ?? DEFAULT_UTILITY_SECTIONS)
+  const setUtilitySections = useAppStore(s => s.setUtilitySections)
+  const layoutSections    = useAppStore(s => s.layoutSections ?? DEFAULT_LAYOUT_SECTIONS)
+  const setLayoutSections = useAppStore(s => s.setLayoutSections)
+  const templates         = useAppStore(s => s.templates)
+  const setInputValue     = useAppStore(s => s.setInputValue)
+  const inputValue        = useAppStore(s => s.inputValue)
+  const rightSections: LayoutSection[] = layoutSections.filter(s => s.panel === 'right')
   const project = projects.find(p => p.id === activeProjectId)
   const session = project?.sessions.find(s => s.id === activeSessionId)
   const activeAlias = aliases.find(a => a.name === session?.alias)
@@ -3007,12 +3633,15 @@ export function UtilityPanel() {
     if (hidden) setTab(0)
   }, [tabConfig, tab, ghIdx, gitAdvIdx, filesIdx, researchIdx])
   const terminalTabIdx = terminalOpen ? tabs.length - 1 : -1
-  // tabs with no padding (full-bleed): Chat, Files, Data, Terminal
-  const noPaddingBase = isOrbitSession ? [0, 4, 5] : [3, 4]
+  // tabs with no padding (full-bleed): Chat, Files, Data, Terminal + gitAdv
+  const noPaddingBase = isOrbitSession ? [0, gitAdvIdx, 4, 5] : [gitAdvIdx, 3, 4]
   const noPadding = terminalOpen ? [...noPaddingBase, terminalTabIdx] : noPaddingBase
+  // tabs that use their own internal scroll — outer wrapper must be overflow:hidden
+  const noScrollBase = isOrbitSession ? [0, gitAdvIdx, 4, 5] : [gitAdvIdx, 3, 4]
+  const noScroll = terminalOpen ? [...noScrollBase, terminalTabIdx] : noScrollBase
 
   return (
-    <aside style={{ width: '100%', flexShrink: 0, background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <aside style={{ width: '100%', flex: 1, minHeight: 0, background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid var(--line)', position: 'relative' }}>
         {tabs.map((t, i) => {
           if (t === 'Data' && dataFiles.length === 0) return null
@@ -3064,61 +3693,68 @@ export function UtilityPanel() {
           </button>
 
           {tabConfigOpen && (
-            <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 8, padding: '12px 14px', minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', marginBottom: 2 }}>Tabs anzeigen</div>
+            <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 200, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 10, padding: '8px', minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)', padding: '0 4px 4px' }}>Tabs anpassen</div>
 
-              {/* Files toggle */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)' }}>
-                <input type="checkbox" checked={tabConfig.showFiles} onChange={e => setTabConfig(c => ({ ...c, showFiles: e.target.checked }))}
-                  style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
-                Dateien
-              </label>
+              {/* Dateien */}
+              {(['Dateien', 'Research'] as const).map(label => {
+                const key = label === 'Dateien' ? 'showFiles' : 'showResearch'
+                const on = tabConfig[key]
+                return (
+                  <div key={label} onClick={() => setTabConfig(c => ({ ...c, [key]: !c[key] }))}
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: on ? 'var(--bg-2)' : 'transparent', border: `0.5px solid ${on ? 'var(--line-strong)' : 'var(--line)'}`, opacity: on ? 1 : 0.5, transition: 'all 0.1s' }}>
+                    <span style={{ flex: 1, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6, color: on ? 'var(--fg-2)' : 'var(--fg-3)' }}>{label}</span>
+                    <span style={{ color: on ? 'var(--ok)' : 'var(--fg-3)', display: 'flex', alignItems: 'center' }}>
+                      {on
+                        ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                        : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      }
+                    </span>
+                  </div>
+                )
+              })}
 
-              <div style={{ height: 1, background: 'var(--line)', margin: '2px 0' }} />
-
-              {/* GitHub — mutually exclusive */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)' }}>GitHub</div>
-                {(['github', 'advanced', 'none'] as const).map(mode => (
-                  <label key={mode} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)' }}>
-                    <input type="radio" name="githubMode" checked={tabConfig.githubMode === mode}
-                      onChange={() => setTabConfig(c => ({ ...c, githubMode: mode }))}
-                      style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
-                    {mode === 'github' ? 'GitHub' : mode === 'advanced' ? 'Git Advanced' : 'Keines'}
-                  </label>
-                ))}
+              {/* GitHub mode — 3 options as card group */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '4px 0 2px' }}>
+                <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 600, padding: '0 4px 2px' }}>GitHub-Tab</div>
+                {(['github', 'advanced', 'none'] as const).map(mode => {
+                  const on = tabConfig.githubMode === mode
+                  const label = mode === 'github' ? 'GitHub' : mode === 'advanced' ? 'Git Advanced' : 'Keines'
+                  return (
+                    <div key={mode} onClick={() => setTabConfig(c => ({ ...c, githubMode: mode }))}
+                      style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: on ? 'var(--accent-soft)' : 'var(--bg-2)', border: `0.5px solid ${on ? 'var(--accent-line)' : 'var(--line)'}`, transition: 'all 0.1s' }}>
+                      <span style={{ flex: 1, fontSize: 10, fontWeight: on ? 700 : 400, textTransform: 'uppercase', letterSpacing: 0.6, color: on ? 'var(--accent)' : 'var(--fg-3)' }}>{label}</span>
+                      {on && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
+                    </div>
+                  )
+                })}
               </div>
 
-              <div style={{ height: 1, background: 'var(--line)', margin: '2px 0' }} />
-
-              {/* Research toggle */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)' }}>
-                <input type="checkbox" checked={tabConfig.showResearch} onChange={e => setTabConfig(c => ({ ...c, showResearch: e.target.checked }))}
-                  style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
-                Research
-              </label>
-
-              {/* Terminal toggle */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)' }}>
-                <input type="checkbox" checked={terminalOpen}
-                  onChange={e => {
-                    if (e.target.checked) {
-                      setTerminalOpen(true)
-                      setTimeout(() => setTab(isOrbitSession ? 7 : 6), 0)
-                    } else {
-                      if (tab === terminalTabIdx) setTab(0)
-                      setTerminalOpen(false)
-                    }
+              {/* Terminal */}
+              {(() => {
+                const on = terminalOpen
+                return (
+                  <div onClick={() => {
+                    if (!on) { setTerminalOpen(true); setTimeout(() => setTab(isOrbitSession ? 7 : 6), 0) }
+                    else { if (tab === terminalTabIdx) setTab(0); setTerminalOpen(false) }
                   }}
-                  style={{ accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer' }} />
-                Terminal
-              </label>
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: on ? 'var(--bg-2)' : 'transparent', border: `0.5px solid ${on ? 'var(--line-strong)' : 'var(--line)'}`, opacity: on ? 1 : 0.5, transition: 'all 0.1s' }}>
+                    <span style={{ flex: 1, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6, color: on ? 'var(--fg-2)' : 'var(--fg-3)' }}>Terminal</span>
+                    <span style={{ color: on ? 'var(--ok)' : 'var(--fg-3)', display: 'flex', alignItems: 'center' }}>
+                      {on
+                        ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                        : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      }
+                    </span>
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: noPadding.includes(tab) ? 'hidden' : 'auto', padding: noPadding.includes(tab) ? 0 : 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: noScroll.includes(tab) ? 'hidden' : 'auto', padding: noPadding.includes(tab) ? 0 : 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
         {/* ── Tab 0: Chat (orbit only) ── */}
         {isOrbitSession && tab === 0 && project && session && <ChatTab projectId={project.id} sessionId={session.id} />}
@@ -3126,57 +3762,48 @@ export function UtilityPanel() {
         {/* ── Tab Session ── */}
         {tab === (isOrbitSession ? 1 : 0) && (
           <>
-            <div style={{ marginBottom: 20, paddingTop: 14 }}>
-              {/* ── Session-Header card ── */}
-              <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                {/* Name row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  {isOrbitSession
-                    ? <IOrbit style={{ width: 13, height: 13, color: 'var(--orbit)', flexShrink: 0 }} />
-                    : session
-                      ? session.kind === 'openrouter-claude'
-                        ? <ISpark style={{ width: 13, height: 13, color: 'var(--accent)', flexShrink: 0 }} />
-                        : <ITerminal style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
-                      : <IFolder style={{ width: 13, height: 13, color: 'var(--fg-2)', flexShrink: 0 }} />
-                  }
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                    {session?.name ?? project?.name ?? '—'}
-                  </span>
-                  {session && (
-                    <span style={{
-                      width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                      background: session.status === 'active' ? 'var(--ok)' : session.status === 'error' ? 'var(--err)' : 'var(--fg-3)',
-                      ...(session.status === 'active' ? { animation: 'cc-pulse 1.4s ease-in-out infinite' } : {}),
-                    }} />
-                  )}
+            {/* ── Configurable sections in stored order (driven by layoutSections) ── */}
+            {rightSections.filter(s => s.visible).map(s => {
+              if (s.id === 'projekt-terminal') return (
+                <div key="projekt-terminal" style={{ marginBottom: 8, paddingTop: 14 }}>
+                  <SessionInfoCard />
                 </div>
-                {/* ── Info-Felder ── */}
-                <FieldPath label="Pfad" path={project?.path ?? '—'} />
-                {session?.startedAt && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', fontSize: 11.5 }}>
-                    <span style={{ width: 60, color: 'var(--fg-3)', flexShrink: 0 }}>Aktiv seit</span>
-                    <span style={{ color: 'var(--fg-1)' }}>{startedLabel}</span>
-                    <button
-                      onClick={() => window.dispatchEvent(new CustomEvent('cc:clear-agent-session', { detail: session.id }))}
-                      style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--line-strong)', padding: '2px 8px', borderRadius: 4, fontSize: 10, color: 'var(--fg-3)', cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
-                      title="Chat leeren & Kontext zurücksetzen"
-                    >clear</button>
+              )
+              if (s.id === 'kontextlog') return (
+                <div key="kontextlog">
+                  {project && !isOrbitSession && <div style={{ marginBottom: 12 }}><CtxLogButton projectId={project.id} /></div>}
+                  {project && isOrbitSession  && <div style={{ marginBottom: 12 }}><ProjectBrainButton projectId={project.id} /></div>}
+                </div>
+              )
+              if (s.id === 'github') return (
+                <div key="github">
+                  {project?.path && <div style={{ marginBottom: 20 }}><CompactGitCard projectPath={project.path} onOpenGitTab={() => setTab(ghIdx)} /></div>}
+                </div>
+              )
+              if (s.id === 'quicklinks') return <div key="quicklinks"><QuickLinksWidget /></div>
+              if (s.id === 'tasks') return <div key="tasks"><UserStoriesCard projectId={project?.id} sessionId={session?.id ?? ''} /></div>
+              if (s.id === 'workspaces') return (
+                <div key="workspaces" style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, padding: '0 4px', marginBottom: 6 }}>
+                    Workspaces <span style={{ fontWeight: 400, letterSpacing: 0 }}>({projects.length})</span>
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── GitHub Kompakt-Kachel ── */}
-            {project?.path && (
-              <div style={{ marginBottom: 20 }}>
-                <CompactGitCard projectPath={project.path} onOpenGitTab={() => setTab(ghIdx)} />
-              </div>
-            )}
-
-            {/* ── Quick Links ── */}
-            <QuickLinksWidget />
-
-            <UserStoriesCard projectId={project?.id} sessionId={session?.id ?? ''} />
+                  <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden' }}>
+                    {projects.map((p, i) => (
+                      <div key={p.id} onClick={() => useAppStore.getState().setActiveProject(p.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', cursor: 'pointer', borderTop: i > 0 ? '0.5px solid var(--line)' : 'none', background: p.id === activeProjectId ? 'var(--accent-soft)' : 'transparent' }}>
+                        <IFolder style={{ width: 12, height: 12, color: p.id === activeProjectId ? 'var(--accent)' : 'var(--fg-3)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, color: p.id === activeProjectId ? 'var(--accent)' : 'var(--fg-1)', fontWeight: p.id === activeProjectId ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{p.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+              if (s.id === 'prompts') return (
+                <PromptsSectionWidget key="prompts" templates={templates}
+                  onPick={(body) => setInputValue(inputValue ? inputValue + '\n' + body : body)} />
+              )
+              return null
+            })}
           </>
         )}
 
@@ -3209,7 +3836,7 @@ export function UtilityPanel() {
         )}
 
         {/* ── Tab AI Search ── */}
-        {tab === researchIdx && project && <AiSearchTab projectId={project.id} />}
+        {tab === researchIdx && project && <AiSearchTab projectId={project.id} isOrbitSession={isOrbitSession} />}
         {tab === researchIdx && !project && (
           <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
         )}
@@ -3247,6 +3874,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
   onSelect: (i: number) => void
   onClose: (i: number) => void
 }) {
+  const { addToast } = useAppStore()
   const [content, setContent]       = useState<string | null>(null)
   const [error, setError]           = useState('')
   const [mtime, setMtime]           = useState(0)
@@ -3307,8 +3935,8 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
       })
       const d = await r.json() as { ok: boolean; error?: string }
       if (d.ok) { setDirty(false); setContent(editText) }
-      else alert(`Fehler: ${d.error}`)
-    } catch (e) { alert(String(e)) }
+      else addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: d.error })
+    } catch (e) { addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: String(e) }) }
     finally { setSaving(false) }
   }
 
@@ -3738,6 +4366,47 @@ const chip: React.CSSProperties = {
   color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)',
 }
 
+// ── Prompts section widget (used when prompts section is on the right panel) ──
+
+type Template = { id: string; name: string; hint?: string; body: string; favorite?: boolean }
+
+function PromptsSectionWidget({ templates, onPick }: { templates: Template[]; onPick: (body: string) => void }) {
+  const [open, setOpen] = useState(true)
+  const [expanded, setExpanded] = useState(false)
+  const COLLAPSED = 4
+  const visible = expanded ? templates : templates.slice(0, COLLAPSED)
+  if (templates.length === 0) return null
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', paddingBottom: open ? 6 : 0, cursor: 'pointer', userSelect: 'none' }}>
+        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1 }}>
+          Prompts <span style={{ fontWeight: 400, letterSpacing: 0 }}>({templates.length})</span>
+        </span>
+        {open ? <IChevUp style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
+               : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />}
+      </div>
+      {open && (
+        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', padding: '4px 0' }}>
+          {visible.map(t => (
+            <div key={t.id} onClick={() => onPick(t.body)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t.name}
+            </div>
+          ))}
+          {templates.length > COLLAPSED && (
+            <div onClick={() => setExpanded(e => !e)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '3px 0', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 11 }}>
+              {expanded ? <IChevUp style={{ width: 8, height: 8 }} /> : <IChevDown style={{ width: 8, height: 8 }} />}
+              {expanded ? 'Weniger' : `${templates.length - COLLAPSED} weitere`}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── QuickLinks widget ─────────────────────────────────────────────────────────
 
 function QuickLinksModal({ onClose }: { onClose: () => void }) {
@@ -3863,7 +4532,7 @@ function QuickLinksModal({ onClose }: { onClose: () => void }) {
 
 const QL_LIMIT = 5
 
-function QuickLinksWidget() {
+export function QuickLinksWidget() {
   const quickLinks    = useAppStore(s => s.quickLinks)
   const [showModal, setShowModal] = useState(false)
   const [open, setOpen]           = useState(true)
@@ -3935,8 +4604,8 @@ function QuickLinksWidget() {
                     <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=32`}
                       style={{ width: 14, height: 14, borderRadius: 3, flexShrink: 0 }}
                       onError={e => { (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23888"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12">${encodeURIComponent(link.title.charAt(0).toUpperCase())}</text></svg>` }} />
-                    <span style={{ flex: 1, fontSize: 11.5, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.title}</span>
-                    <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120, flexShrink: 0 }}>{link.url.replace(/^https?:\/\//, '').split('/')[0]}</span>
+                    <span style={{ flex: 1, fontSize: 11.5, color: 'var(--fg-0)' }}>{link.title}</span>
+                    <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', maxWidth: 120, flexShrink: 0 }}>{link.url.replace(/^https?:\/\//, '').split('/')[0]}</span>
                   </button>
                 ))}
               </div>

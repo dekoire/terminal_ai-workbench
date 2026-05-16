@@ -13,6 +13,7 @@
 
 import type { ProjectBrainEntry } from '../store/useAppStore'
 import type { OrbitMessage } from '../store/useAppStore'
+import { sanitizeKey } from '../utils/orProvider'
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,34 @@ export function estimateBrainTokens(text: string): number {
 
 // ── AI Update ────────────────────────────────────────────────────────────────
 
+// Default brain-update prompt template.
+// Placeholders: {brain}, {messages}, {n}, {date}, {projectName}
+export const DEFAULT_BRAIN_UPDATE_PROMPT =
+`Du bist ein Projekt-Dokumentations-Assistent. Aktualisiere den Project Brain basierend auf der neuen Konversation.
+
+Aktueller Project Brain:
+{brain}
+
+Neue Konversation (letzte {n} Nachrichten):
+{messages}
+
+Aktuelles Datum: {date}
+
+Gib NUR ein JSON-Objekt zurück (kein Markdown, keine Erklärungen):
+{
+  "summary": "2 Sätze max — was macht das Projekt",
+  "architecture": "Schlüsselkomponenten, 1–2 Sätze",
+  "recent_work": [{"date": "{date}", "item": "was wurde gemacht/besprochen"}],
+  "open_tasks": ["Aufgabe 1", "Aufgabe 2"],
+  "key_files": [{"path": "src/foo.ts", "purpose": "macht X"}]
+}
+
+Regeln:
+- recent_work: maximal 10 Einträge, neueste zuerst, behalte alte die noch relevant sind
+- open_tasks: nur was wirklich offen ist, abgeschlossenes entfernen
+- key_files: maximal 8 wichtige Dateien mit kurzem Zweck
+- Antworte NUR mit dem JSON, kein weiterer Text`
+
 interface UpdateBrainParams {
   openrouterKey: string
   currentBrain?: ProjectBrainEntry
@@ -68,6 +97,7 @@ interface UpdateBrainParams {
   projectName: string
   projectId: string
   compressModel: string
+  customPrompt?: string  // overrides DEFAULT_BRAIN_UPDATE_PROMPT; same placeholders apply
 }
 
 interface BrainJson {
@@ -79,7 +109,7 @@ interface BrainJson {
 }
 
 export async function updateBrainWithAI(params: UpdateBrainParams): Promise<ProjectBrainEntry> {
-  const { openrouterKey, currentBrain, recentMessages, projectName, projectId, compressModel } = params
+  const { openrouterKey, currentBrain, recentMessages, projectName, projectId, compressModel, customPrompt } = params
 
   const currentBrainText = currentBrain ? renderBrain(currentBrain, projectName) : '(kein bisheriger Kontext)'
 
@@ -89,37 +119,21 @@ export async function updateBrainWithAI(params: UpdateBrainParams): Promise<Proj
     .join('\n\n')
 
   const today = new Date().toISOString().split('T')[0]
+  const n = String(recentMessages.length)
 
-  const prompt = `Du bist ein Projekt-Dokumentations-Assistent. Aktualisiere den Project Brain basierend auf der neuen Konversation.
-
-Aktueller Project Brain:
-${currentBrainText}
-
-Neue Konversation (letzte ${recentMessages.length} Nachrichten):
-${recentText}
-
-Aktuelles Datum: ${today}
-
-Gib NUR ein JSON-Objekt zurück (kein Markdown, keine Erklärungen):
-{
-  "summary": "2 Sätze max — was macht das Projekt",
-  "architecture": "Schlüsselkomponenten, 1–2 Sätze",
-  "recent_work": [{"date": "${today}", "item": "was wurde gemacht/besprochen"}],
-  "open_tasks": ["Aufgabe 1", "Aufgabe 2"],
-  "key_files": [{"path": "src/foo.ts", "purpose": "macht X"}]
-}
-
-Regeln:
-- recent_work: maximal 10 Einträge, neueste zuerst, behalte alte die noch relevant sind
-- open_tasks: nur was wirklich offen ist, abgeschlossenes entfernen
-- key_files: maximal 8 wichtige Dateien mit kurzem Zweck
-- Antworte NUR mit dem JSON, kein weiterer Text`
+  const template = customPrompt && customPrompt.trim() ? customPrompt : DEFAULT_BRAIN_UPDATE_PROMPT
+  const prompt = template
+    .replace(/\{brain\}/g, currentBrainText)
+    .replace(/\{messages\}/g, recentText)
+    .replace(/\{date\}/g, today)
+    .replace(/\{n\}/g, n)
+    .replace(/\{projectName\}/g, projectName)
 
   try {
     const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openrouterKey}`,
+        'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': window.location.origin,
         'X-Title': 'Codera AI · Brain',
@@ -134,8 +148,10 @@ Regeln:
 
     if (!resp.ok) throw new Error(`${resp.status}`)
 
-    const json = await resp.json() as { choices?: { message?: { content?: string } }[] }
+    const json = await resp.json() as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } }
     const raw = json.choices?.[0]?.message?.content?.trim() ?? ''
+    const inputTokens  = json.usage?.prompt_tokens     ?? 0
+    const outputTokens = json.usage?.completion_tokens ?? 0
 
     // Strip potential markdown fences
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
@@ -155,8 +171,11 @@ Regeln:
       recentWork:    mergedWork,
       openTasks:     parsed.open_tasks    ?? currentBrain?.openTasks     ?? [],
       keyFiles:      parsed.key_files     ?? currentBrain?.keyFiles      ?? [],
-      brainTokens:   0,
-      lastUpdatedAt: new Date().toISOString(),
+      brainTokens:            0,
+      lastUpdatedAt:          new Date().toISOString(),
+      generationModel:        compressModel,
+      generationInputTokens:  inputTokens,
+      generationOutputTokens: outputTokens,
     }
     updated.brainTokens = estimateBrainTokens(renderBrain(updated, projectName))
     return updated
@@ -243,7 +262,7 @@ Regeln:
   const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${openrouterKey}`,
+      'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': window.location.origin,
       'X-Title': 'Codera AI · Brain Scan',

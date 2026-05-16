@@ -5,8 +5,10 @@ import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ISpark, IBolt, ISe
 import { useFileAttachments, useDragDrop, usePasteFiles, FileAttachmentBar, DragOverlay } from '../primitives/FileAttachmentArea'
 import { ImageAnnotator } from '../primitives/ImageAnnotator'
 import { TERMINAL_THEMES } from '../../theme/presets'
-import { updateDocsWithAI, refreshProjectDocs } from '../../utils/updateDocs'
+import { refreshProjectDocs } from '../../utils/updateDocs'
 import { aiDetectStartCmd } from '../../utils/aiDetect'
+import { useAppLauncher } from '../../hooks/useAppLauncher'
+import { SmartLaunchModal } from '../modals/SmartLaunchModal'
 import { getOrModel } from '../../utils/orProvider'
 import { Pill } from '../primitives/Pill'
 import { Kbd } from '../primitives/Kbd'
@@ -163,70 +165,18 @@ function useGitInfo(projectPath: string | undefined): GitInfo | null {
   return info
 }
 
-interface DevConfig { port?: number; startCmd?: string; appUrl?: string }
-
-function useProjectConfig(projectPath: string | undefined): DevConfig | null {
-  const [cfg, setCfg] = useState<DevConfig | null>(null)
-  useEffect(() => {
-    if (!projectPath) { setCfg(null); return }
-    const load = async () => {
-      // 1. Try project.config.json first
-      try {
-        const r = await fetch(`/api/file-read?path=${encodeURIComponent(projectPath + '/project.config.json')}`)
-        const d = await r.json() as { ok: boolean; content?: string }
-        if (d.ok && d.content) { setCfg(JSON.parse(d.content) as DevConfig); return }
-      } catch { /* fall through */ }
-      // 2. Fallback: detect from package.json
-      try {
-        const r = await fetch(`/api/file-read?path=${encodeURIComponent(projectPath + '/package.json')}`)
-        const d = await r.json() as { ok: boolean; content?: string }
-        if (d.ok && d.content) {
-          const pkg = JSON.parse(d.content) as { scripts?: Record<string, string> }
-          const key = ['dev', 'start', 'serve', 'preview'].find(k => pkg.scripts?.[k])
-          if (key) { setCfg({ startCmd: `npm run ${key}` }); return }
-        }
-      } catch { /* ignore */ }
-      setCfg(null)
-    }
-    load()
-  }, [projectPath])
-  return cfg
-}
 
 function ProjectHeader() {
-  const { projects, activeProjectId, activeSessionId, docApplying, updateProject, openrouterKey, aiFunctionMap } = useAppStore()
+  const { projects, activeProjectId, activeSessionId, docApplying, openrouterKey, aiFunctionMap } = useAppStore()
   const project = projects.find(p => p.id === activeProjectId)
-  const git = useGitInfo(project?.path)
-  const [launching, setLaunching] = useState(false)
-  const [started, setStarted] = useState(false)
+  const { state, showModal, triggerDetect, launch, retryWithAI, dismissModal, setManualConfig } = useAppLauncher(activeProjectId)
   const [configOpen, setConfigOpen] = useState(false)
   const [cfgPort, setCfgPort] = useState('')
   const [cfgCmd, setCfgCmd] = useState('')
   const [detecting, setDetecting] = useState(false)
   const [refreshingDocs, setRefreshingDocs] = useState(false)
-  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null)
-  const gearRef = useRef<HTMLButtonElement>(null)
-  const fileCfg = useProjectConfig(project?.path)
 
-  const noGit  = git !== null && !git?.hasGit
-  const branch = git?.branch    ?? project?.branch ?? '…'
-  const dirty  = git?.dirty     ?? 0
-  const lastCommit = git?.lastCommit ?? ''
-  const isDocApplying = project ? (docApplying[project.id] ?? false) : false
-
-  const devPort = project?.appPort    ?? fileCfg?.port    ?? undefined
-  const devCmd  = project?.appStartCmd ?? fileCfg?.startCmd ?? undefined
-  const hasDevServer = !!devCmd
-
-  // Sync file config back to store once
-  useEffect(() => {
-    if (!project || !fileCfg) return
-    if (!project.appPort && fileCfg.port) updateProject(project.id, { appPort: fileCfg.port })
-    if (!project.appStartCmd && fileCfg.startCmd) updateProject(project.id, { appStartCmd: fileCfg.startCmd })
-  }, [project?.id, fileCfg?.port, fileCfg?.startCmd]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Reset started state when switching projects
-  useEffect(() => { setStarted(false) }, [activeProjectId])
+  void docApplying; void activeSessionId
 
   const detectWithAI = async () => {
     if (!project?.path || detecting) return
@@ -238,102 +188,6 @@ function ProjectHeader() {
     } finally { setDetecting(false) }
   }
 
-  // ── Port heuristic from start command ──────────────────────────────────────
-  const guessPort = (cmd: string, knownPort?: number): number | undefined => {
-    if (knownPort) return knownPort
-    const m = cmd.match(/(?:--port[= ]|PORT=|:)(\d{4,5})/)
-    if (m) return parseInt(m[1])
-    if (/vite|npm run dev|yarn dev|pnpm dev/.test(cmd)) return 5173
-    if (/next(js)?|next dev/.test(cmd)) return 3000
-    if (/react-scripts|react-app/.test(cmd)) return 3000
-    if (/flask/.test(cmd)) return 5000
-    if (/manage\.py|django/.test(cmd)) return 8000
-    if (/uvicorn|fastapi/.test(cmd)) return 8000
-    if (/rails/.test(cmd)) return 3000
-    if (/cargo run/.test(cmd)) return 3000
-    return undefined
-  }
-
-  // ── Detect extra ports (backend) from package.json proxy field ──────────────
-  const detectExtraPorts = async (projectPath: string): Promise<number[]> => {
-    const extras: number[] = []
-    try {
-      const r = await fetch(`/api/file-read?path=${encodeURIComponent(projectPath + '/package.json')}`)
-      const d = await r.json() as { ok: boolean; content?: string }
-      if (d.ok && d.content) {
-        const pkg = JSON.parse(d.content) as Record<string, unknown>
-        // CRA proxy: "proxy": "http://localhost:3001"
-        if (typeof pkg.proxy === 'string') {
-          const m = pkg.proxy.match(/:(\d{4,5})/)
-          if (m) extras.push(parseInt(m[1]))
-        }
-      }
-    } catch { /* ignore */ }
-    // Also check vite.config for proxy targets
-    try {
-      for (const cfgFile of ['vite.config.ts', 'vite.config.js', 'vite.config.mjs']) {
-        const r = await fetch(`/api/file-read?path=${encodeURIComponent(projectPath + '/' + cfgFile)}`)
-        const d = await r.json() as { ok: boolean; content?: string }
-        if (d.ok && d.content) {
-          // Extract ports from proxy targets: 'http://localhost:3001' or 'http://127.0.0.1:8000'
-          const matches = d.content.matchAll(/['"]https?:\/\/(?:localhost|127\.0\.0\.1):(\d{4,5})['"]/g)
-          for (const m of matches) extras.push(parseInt(m[1]))
-          break
-        }
-      }
-    } catch { /* ignore */ }
-    return [...new Set(extras)]
-  }
-
-  const runLaunch = async (cmd: string, port: number | undefined) => {
-    if (!project?.path) return
-    setLaunching(true)
-    try {
-      const extraPorts = await detectExtraPorts(project.path)
-      const r = await fetch('/api/start-app', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath: project.path, port, startCmd: cmd, extraPorts }),
-      })
-      const d = await r.json() as { ok: boolean; pid?: number }
-      if (d.ok) setStarted(true)
-      // server already does exec('open http://...') via macOS 'open' — window.open fallback for non-macOS
-      if (d.ok && port && !navigator.userAgent.includes('Electron')) {
-        setTimeout(() => window.open(`http://localhost:${port}`, '_blank'), 3000)
-      }
-    } finally {
-      setLaunching(false)
-    }
-  }
-
-  const launchDevServer = async () => {
-    if (!devCmd || launching) return
-    await runLaunch(devCmd, devPort)
-  }
-
-  // ── Smart launch: auto-detect if no cmd configured ──────────────────────────
-  const smartLaunch = async () => {
-    if (launching || detecting) return
-    if (!project?.path) return
-
-    // Already configured — launch directly
-    if (devCmd) { await runLaunch(devCmd, devPort); return }
-
-    // Auto-detect via AI
-    setDetecting(true)
-    try {
-      const cmd = await aiDetectStartCmd(project.path, project.appPort)
-      if (!cmd) { openConfig(); return }
-
-      const port = guessPort(cmd, project.appPort)
-      // Persist so next click is instant
-      updateProject(project.id, { appStartCmd: cmd, ...(port ? { appPort: port } : {}) })
-      await runLaunch(cmd, port)
-    } finally {
-      setDetecting(false)
-    }
-  }
-
   const doRefreshDocs = async () => {
     if (!project?.path || refreshingDocs) return
     setRefreshingDocs(true)
@@ -342,12 +196,8 @@ function ProjectHeader() {
   }
 
   const openConfig = () => {
-    setCfgPort(String(devPort ?? ''))
-    setCfgCmd(devCmd ?? '')
-    if (gearRef.current) {
-      const r = gearRef.current.getBoundingClientRect()
-      setPopoverPos({ top: r.bottom + 6, left: r.left })
-    }
+    setCfgPort(String(project?.appPort ?? ''))
+    setCfgCmd(project?.appStartCmd ?? '')
     setConfigOpen(true)
   }
 
@@ -355,7 +205,7 @@ function ProjectHeader() {
     if (!project) return
     const port = parseInt(cfgPort, 10) || undefined
     const cmd  = cfgCmd.trim() || undefined
-    updateProject(project.id, { appPort: port, appStartCmd: cmd })
+    setManualConfig(cmd ?? '', port)
     if (port || cmd) {
       const cfg = { port: port ?? null, startCmd: cmd ?? null, appUrl: port ? `http://localhost:${port}` : null }
       await fetch('/api/file-write', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: `${project.path}/project.config.json`, content: JSON.stringify(cfg, null, 2) }) })
@@ -365,7 +215,7 @@ function ProjectHeader() {
 
   // Listen to events from Workspace titlebar buttons
   useEffect(() => {
-    const onPlay   = () => { smartLaunch() }
+    const onPlay   = () => { triggerDetect() }
     const onConfig = () => openConfig()
     const onDocs   = () => doRefreshDocs()
     window.addEventListener('cc:hdr-play',   onPlay)
@@ -376,13 +226,20 @@ function ProjectHeader() {
       window.removeEventListener('cc:hdr-config', onConfig)
       window.removeEventListener('cc:hdr-docs',   onDocs)
     }
-  }, [launching, detecting, devCmd, devPort, project, openrouterKey, aiFunctionMap]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [triggerDetect, openrouterKey, aiFunctionMap]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  void activeSessionId
-
-  // Render nothing visible — just the config modal when open
   return (
     <>
+      {showModal && project && (
+        <SmartLaunchModal
+          projectName={project.name}
+          state={state}
+          onStart={launch}
+          onRetryWithAI={retryWithAI}
+          onClose={dismissModal}
+        />
+      )}
+
       {/* Config modal — centered on screen */}
       {configOpen && (
         <>
@@ -973,6 +830,9 @@ function SessionWrapper({ isActive, isOrbit, isAgent, hasMounted, s, project, se
 function InputAreaWrapper() {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(9999)
+  const { activeProjectId, activeSessionId, projects } = useAppStore()
+  const hasSession = !!projects.find(p => p.id === activeProjectId)?.sessions.find(s => s.id === activeSessionId)
+
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
@@ -983,6 +843,9 @@ function InputAreaWrapper() {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  if (!hasSession) return null
+
   return (
     <div ref={wrapRef} style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
       <InputArea containerWidth={width} />
@@ -1039,6 +902,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
   const project       = projects.find(p => p.id === activeProjectId)
   const activeSession = project?.sessions.find(s => s.id === activeSessionId)
   const isTerminal    = !!activeSession
+  const isPtyTerminal = isTerminal && (activeSession?.kind === 'single' || activeSession?.kind == null) && !isOrbit
 
   // ── Orbit reference detection ──────────────────────────────────────────────
   type RefStatus = 'checking' | 'found' | 'missing'
@@ -1379,7 +1243,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     if (!orP) { setAiError('OpenRouter API-Key fehlt. Bitte unter Einstellungen → API Credentials konfigurieren.'); return }
     setAiAnalysing(true)
     setAiError('')
-    const analysePrompt = docTemplates.find(t => t.id === 'user-story-analyse')?.content
+    const analysePrompt = docTemplates.find(t => t.id === 'prompt-support')?.content
     try {
       let userMsg = inputValue
       if (project?.path) {
@@ -1412,6 +1276,17 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       return
     }
 
+    // Check server-side key availability first
+    if (!groqApiKey) {
+      try {
+        const check = await fetch('/api/config').then(r => r.json() as Promise<{ hasGroqKey?: boolean }>)
+        if (!check.hasGroqKey) {
+          setInputValue('⚠️ Kein Groq-API-Key konfiguriert. Bitte unter Einstellungen → Stimme eintragen.')
+          return
+        }
+      } catch { /* server might not have /api/config — proceed anyway */ }
+    }
+
     // Whisper via Groq (server-side key) or user-provided key
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -1420,29 +1295,48 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       const recorder = new MediaRecorder(stream, { mimeType })
       chunksRef.current = []
       recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop())
-        setTranscribing(true)
-        try {
-          const blob = new Blob(chunksRef.current, { type: mimeType })
-          const headers: Record<string, string> = {
-            'x-provider': groqApiKey ? voiceProvider : 'groq',
-            'x-language': 'de',
-            'Content-Type': mimeType,
+      recorder.onstop = () => {
+        // Defer off MediaRecorder stack; stop tracks AFTER React state settles
+        setTimeout(() => {
+          try { stream.getTracks().forEach(t => t.stop()) } catch { /* ignore */ }
+        }, 300)
+
+        setTimeout(async () => {
+          try {
+            setTranscribing(true)
+            const blob = new Blob(chunksRef.current, { type: mimeType })
+            const headers: Record<string, string> = {
+              'x-provider': groqApiKey ? voiceProvider : 'groq',
+              'x-language': 'de',
+              'Content-Type': mimeType,
+            }
+            if (groqApiKey) headers['x-api-key'] = groqApiKey
+            const r = await fetch('/api/transcribe', { method: 'POST', body: blob, headers })
+            const d = await r.json() as { ok: boolean; text?: string; error?: string }
+            if (d.ok && d.text) {
+              const current = useAppStore.getState().inputValue
+              setInputValue(current ? current + ' ' + d.text : d.text!)
+            } else if (!d.ok) {
+              const msg = d.error === 'no api key'
+                ? '⚠️ Kein Groq-API-Key. Bitte unter Einstellungen → Stimme eintragen.'
+                : `⚠️ Transkription fehlgeschlagen: ${d.error ?? 'Unbekannter Fehler'}`
+              setInputValue(msg)
+            }
+          } catch (err) {
+            try { setInputValue(`⚠️ Mikrofon-Fehler: ${String(err)}`) } catch { /* ignore */ }
+          } finally {
+            try { setTranscribing(false) } catch { /* ignore */ }
           }
-          if (groqApiKey) headers['x-api-key'] = groqApiKey
-          const r = await fetch('/api/transcribe', { method: 'POST', body: blob, headers })
-          const d = await r.json() as { ok: boolean; text?: string }
-          if (d.ok && d.text) setInputValue(prev => prev ? prev + ' ' + d.text : d.text!)
-        } catch {}
-        setTranscribing(false)
-        setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
+        }, 50)
       }
       recorder.start()
       mediaRef.current = recorder
       setRecording(true)
       setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 100)
-    } catch { setRecording(false) }
+    } catch (err) {
+      setRecording(false)
+      setInputValue(`⚠️ Mikrofon nicht verfügbar: ${String(err)}`)
+    }
     return
 
     // Fallback: Web Speech API
@@ -1779,13 +1673,15 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
               >
                 <IPaperclip style={{ width: 13, height: 13, flexShrink: 0 }} />
               </button>
-              <button
-                style={{ ...chip, background: showShortcuts ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${showShortcuts ? 'var(--accent)' : 'var(--line)'}`, color: showShortcuts ? 'var(--accent)' : 'var(--fg-2)', padding: '5px 8px' }}
-                onClick={() => setShowShortcuts(v => !v)}
-                title="Terminal-Tastenkürzel anzeigen"
-              >
-                <IKeyboard style={{ width: 13, height: 13, flexShrink: 0 }} />
-              </button>
+              {isPtyTerminal && (
+                <button
+                  style={{ ...chip, background: showShortcuts ? 'var(--accent-soft)' : 'var(--bg-2)', border: `1px solid ${showShortcuts ? 'var(--accent)' : 'var(--line)'}`, color: showShortcuts ? 'var(--accent)' : 'var(--fg-2)', padding: '5px 8px' }}
+                  onClick={() => setShowShortcuts(v => !v)}
+                  title="Terminal-Tastenkürzel anzeigen"
+                >
+                  <IKeyboard style={{ width: 13, height: 13, flexShrink: 0 }} />
+                </button>
+              )}
             </>
           ) : (
             <button
@@ -1953,6 +1849,7 @@ function TerminalShortcutsModal({ shortcuts, onClose }: { shortcuts: TerminalSho
 // ── File Tab Viewer ───────────────────────────────────────────────────────────
 
 function FileTabViewer({ path }: { path: string }) {
+  const { addToast } = useAppStore()
   const [content, setContent]       = useState<string | null>(null)
   const [error, setError]           = useState('')
   const [search, setSearch]         = useState('')
@@ -2029,9 +1926,9 @@ function FileTabViewer({ path }: { path: string }) {
       })
       const d = await r.json() as { ok: boolean; error?: string }
       if (d.ok) { setDirty(false); setContent(editText) }
-      else alert(`Fehler beim Speichern: ${d.error}`)
+      else addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: d.error })
     } catch (e) {
-      alert(`Fehler: ${String(e)}`)
+      addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: String(e) })
     } finally {
       setSaving(false)
     }

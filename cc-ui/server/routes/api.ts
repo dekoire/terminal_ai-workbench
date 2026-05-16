@@ -163,63 +163,135 @@ router.get('/api/git', (req, res) => {
   )
   run('git rev-parse --is-inside-work-tree').then(async check => {
     if (check !== 'true') { res.json({ hasGit: false, status: [], log: [], branches: [], remotes: [], diffStat: '', lastCommit: '' }); return }
-    const [status, log, branches, diffStat, remotes, lastCommit] = await Promise.all([
+    // Check if repo has any commits — empty repos need safe defaults
+    const hasCommits = await run('git rev-parse HEAD').then(r => !r.startsWith('fatal') && r.length > 0).catch(() => false)
+    const [status, remoteUrl] = await Promise.all([
       run('git status --short'),
+      run('git remote get-url origin 2>/dev/null || echo ""'),
+    ])
+    // Strip embedded token before sending to client
+    const remotes = remoteUrl ? [remoteUrl.replace(/https?:\/\/[^@]+@/, 'https://')] : []
+    const [log, branches, diffStat, lastCommit] = hasCommits ? await Promise.all([
       run('git log --oneline -20 --pretty=format:"%h|%s|%an|%ar|%ai"'),
       run('git branch -v --format="%(refname:short)|%(objectname:short)|%(subject)|%(HEAD)"'),
       run('git diff --stat HEAD 2>/dev/null | tail -1'),
-      run('git remote -v | head -2'),
       run('git log -1 --format="%ar"'),
-    ])
+    ]) : ['', 'main||||*', '', '']
+    const isFatal = (s: string) => s.startsWith('fatal') || s.startsWith('error')
     res.json({
       hasGit: true,
       status:   status.split('\n').filter(Boolean).map(l => ({ flag: l.slice(0,2).trim(), file: l.slice(3) })),
-      log:      log.split('\n').filter(Boolean).map(l => { const p = l.split('|'); return { hash: p[0], msg: p[1], author: p[2], when: p[3], date: p[4] } }),
-      branches: branches.split('\n').filter(Boolean).map(l => { const p = l.split('|'); return { name: p[0], hash: p[1], msg: p[2], current: p[3] === '*' } }),
-      diffStat, remotes: [...new Set(remotes.split('\n').filter(Boolean).map(l => l.split('\t')[0]))], lastCommit,
+      log:      log.split('\n').filter(l => Boolean(l) && !isFatal(l)).map(l => { const p = l.split('|'); return { hash: p[0], msg: p[1] ?? '', author: p[2] ?? '', when: p[3] ?? '', date: p[4] ?? '' } }).filter(e => e.hash && e.hash.length < 50),
+      branches: branches.split('\n').filter(l => Boolean(l) && !isFatal(l)).map(l => { const p = l.split('|'); return { name: p[0], hash: p[1] ?? '', msg: p[2] ?? '', current: p[3] === '*' } }).filter(b => b.name),
+      diffStat: isFatal(diffStat) ? '' : diffStat,
+      remotes,
+      lastCommit: isFatal(lastCommit) ? '' : lastCommit,
     })
   }).catch(e => res.json({ hasGit: false, error: String(e), status: [], log: [], branches: [], remotes: [], diffStat: '', lastCommit: '' }))
 })
 
 router.post('/api/git-action', async (req, res) => {
   try {
-    const { action, path: cwd, message, remote, branch } = JSON.parse(await readBody(req)) as { action: string; path: string; message?: string; remote?: string; branch?: string }
-    const resolved = tilde(cwd)
-    const run = (cmd: string) => new Promise<string>(ok =>
-      exec(cmd, { cwd: resolved }, (err, out, errOut) => ok(err ? errOut || err.message : out.trim()))
-    )
-    let result = { ok: false, out: 'unknown action' }
-    if (action === 'stage')      result = { ok: true, out: await run('git add -A') }
-    if (action === 'commit')     result = { ok: true, out: await run(`git commit -m ${JSON.stringify(message ?? 'Update')}`) }
-    if (action === 'push')       result = { ok: true, out: await run(`git push ${remote ?? 'origin'} ${branch ?? 'HEAD'}`) }
-    if (action === 'push-u')     result = { ok: true, out: await run(`git push -u origin ${JSON.stringify(branch ?? 'main')}`) }
-    if (action === 'pull')       result = { ok: true, out: await run('git pull') }
-    if (action === 'checkout')   result = { ok: true, out: await run(`git checkout ${JSON.stringify(branch ?? '')}`) }
-    if (action === 'new-branch') result = { ok: true, out: await run(`git checkout -b ${JSON.stringify(branch ?? '')}`) }
-    if (action === 'init') {
-      const o1 = await run('git init')
-      const o2 = await run(`git checkout -b ${JSON.stringify(branch ?? 'main')}`)
-      result = { ok: true, out: o1 + '\n' + o2 }
+    const { action, path: cwd, message, remote, branch, token } = JSON.parse(await readBody(req)) as {
+      action: string; path: string; message?: string; remote?: string; branch?: string; token?: string
     }
-    if (action === 'add-remote' && remote) result = { ok: true, out: await run(`git remote add origin ${JSON.stringify(remote)}`) }
-    if (action === 'clone' && remote) {
-      // clone into the path itself — use parent dir + folder name
-      const parentDir = path.dirname(resolved)
-      const folderName = path.basename(resolved)
-      const cloneRun = (cmd: string) => new Promise<string>(ok =>
-        exec(cmd, { cwd: parentDir }, (err, out, errOut) => ok(err ? errOut || err.message : out.trim()))
+    const resolved = tilde(cwd)
+
+    const run = (cmd: string, runCwd?: string) => new Promise<{ ok: boolean; out: string }>(resolve =>
+      exec(cmd, { cwd: runCwd ?? resolved }, (err, stdout, stderr) =>
+        resolve({ ok: !err, out: (err ? stderr || err.message : stdout).trim() })
       )
-      result = { ok: true, out: await cloneRun(`git clone ${JSON.stringify(remote)} ${JSON.stringify(folderName)}`) }
+    )
+
+    // Temporarily inject token into remote URL so pull/push can authenticate
+    const withToken = async (fn: () => Promise<{ ok: boolean; out: string }>) => {
+      if (!token) return fn()
+      const urlResult = await run('git remote get-url origin')
+      if (!urlResult.ok || !urlResult.out.includes('github.com') || urlResult.out.includes('@github.com')) return fn()
+      const authedUrl = urlResult.out.replace('https://github.com/', `https://${token}@github.com/`)
+      await run(`git remote set-url origin ${JSON.stringify(authedUrl)}`)
+      try { return await fn() } finally { await run(`git remote set-url origin ${JSON.stringify(urlResult.out)}`) }
+    }
+
+    let result = { ok: false, out: 'unknown action' }
+    if (action === 'stage')      result = await run('git add -A')
+    if (action === 'commit')     result = await run(`git commit -m ${JSON.stringify(message ?? 'Update')}`)
+    if (action === 'push')       result = await withToken(() => run(`git push -u ${remote ?? 'origin'} ${branch ?? 'HEAD'}`))
+    if (action === 'push-u')     result = await withToken(() => run(`git push -u origin ${JSON.stringify(branch ?? 'main')}`))
+    if (action === 'pull') {
+      let r = await withToken(() => run('git pull'))
+      if (!r.ok && r.out.includes('no tracking information')) {
+        const branchResult = await run('git rev-parse --abbrev-ref HEAD')
+        if (branchResult.ok) {
+          await run(`git branch --set-upstream-to=origin/${branchResult.out.trim()} ${branchResult.out.trim()}`)
+          r = await withToken(() => run(`git pull origin ${branchResult.out.trim()}`))
+        }
+      }
+      result = r
+    }
+    if (action === 'checkout')   result = await run(`git checkout ${JSON.stringify(branch ?? '')}`)
+    if (action === 'new-branch') result = await run(`git checkout -b ${JSON.stringify(branch ?? '')}`)
+    if (action === 'init') {
+      const r1 = await run('git init')
+      const r2 = await run(`git checkout -b ${JSON.stringify(branch ?? 'main')}`)
+      result = { ok: r1.ok && r2.ok, out: [r1.out, r2.out].filter(Boolean).join('\n') }
+    }
+    if (action === 'add-remote' && remote) {
+      // Always store clean URL — token injected at runtime by withToken
+      const cleanUrl = remote.replace(/https?:\/\/[^@]+@/, 'https://')
+      result = await run(`git remote add origin ${JSON.stringify(cleanUrl)}`)
+    }
+    if (action === 'clone' && remote) {
+      result = await (async () => {
+        const cleanUrl = remote.replace(/https?:\/\/[^@]+@/, 'https://')
+        const folderName = path.basename(resolved)
+        const parentDir  = path.dirname(resolved)
+        if (fs.existsSync(resolved)) {
+          // Folder already exists — init + fetch + reset (git clone refuses non-empty dirs)
+          await run('git init')
+          await run(`git remote add origin ${JSON.stringify(remote)}`)
+          const fetchR = await run('git fetch origin')
+          if (!fetchR.ok) {
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+            return fetchR
+          }
+          // Detect default branch via remote HEAD symref (no extra network call needed)
+          await run('git remote set-head origin --auto')
+          const headR = await run('git symbolic-ref refs/remotes/origin/HEAD')
+          // headR fails when the remote is empty (no commits pushed yet)
+          if (!headR.ok) {
+            // Empty remote repo — git init + remote set up, no checkout possible
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+            return { ok: true, out: 'empty' }
+          }
+          const defBranch = headR.out.replace('refs/remotes/origin/', '').trim()
+          // -B creates or resets branch (handles case where git init already made 'main')
+          const checkR = await run(`git checkout -B ${defBranch} origin/${defBranch}`)
+          await run(`git branch --set-upstream-to=origin/${defBranch} ${defBranch}`)
+          // Always strip token regardless of outcome
+          await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+          return checkR.ok ? { ok: true, out: `Geklont auf ${defBranch}` } : checkR
+        } else {
+          const cloneR = await run(`git clone ${JSON.stringify(remote)} ${JSON.stringify(folderName)}`, parentDir)
+          if (cloneR.ok && cleanUrl !== remote) await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+          // git clone on empty remote exits with error — treat as success (remote is set up)
+          if (!cloneR.ok && cloneR.out.includes('empty repository')) {
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`)
+            return { ok: true, out: 'empty' }
+          }
+          return cloneR
+        }
+      })()
     }
     if (action === 'discard-file' && message) {
-      const statusOut = await run(`git status --porcelain -- ${JSON.stringify(message)}`)
-      const flag = statusOut.trim().slice(0, 2)
+      const statusResult = await run(`git status --porcelain -- ${JSON.stringify(message)}`)
+      const flag = statusResult.out.slice(0, 2)
       if (flag === '??' || flag.startsWith('A')) {
         const fullPath = path.resolve(resolved, message)
         try { fs.unlinkSync(fullPath); result = { ok: true, out: '' } } catch (e) { result = { ok: false, out: String(e) } }
       } else {
-        const out = await run(`git checkout HEAD -- ${JSON.stringify(message)}`)
-        result = { ok: !out.includes('error:'), out }
+        const r = await run(`git checkout HEAD -- ${JSON.stringify(message)}`)
+        result = { ok: !r.out.includes('error:'), out: r.out }
       }
     }
     res.json(result)
@@ -243,6 +315,61 @@ router.get('/api/git-remote', (req, res) => {
   exec('git remote get-url origin', { cwd }, (err, out) => {
     if (err) res.json({ ok: false, url: null }); else res.json({ ok: true, url: out.trim() })
   })
+})
+
+// ── GitHub API — list repos ───────────────────────────────────────────────────
+router.get('/api/github/repos', async (req, res) => {
+  const { token } = req.query as { token?: string }
+  if (!token) return res.json({ ok: false, repos: [] })
+  try {
+    const headers: Record<string, string> = { Authorization: `token ${token}`, Accept: 'application/vnd.github+json' }
+    const [userRepos, orgs]: [unknown, { login: string }[]] = await Promise.all([
+      fetch('https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all', { headers }).then(r => r.json()),
+      fetch('https://api.github.com/user/orgs', { headers }).then(r => r.json()),
+    ])
+    const orgRepoArrays = await Promise.all(
+      orgs.map((o) =>
+        fetch(`https://api.github.com/orgs/${o.login}/repos?per_page=100&sort=updated`, { headers }).then(r => r.json())
+      )
+    )
+    const all = [...(userRepos as unknown[]), ...(orgRepoArrays as unknown[][]).flat()]
+      .filter((r: unknown) => r && typeof r === 'object' && 'clone_url' in r)
+      .map((r: unknown) => {
+        const repo = r as Record<string, unknown>
+        const owner = repo.owner as Record<string, unknown> | undefined
+        return {
+          fullName:    repo.full_name as string,
+          cloneUrl:    repo.clone_url as string,
+          private:     repo.private as boolean,
+          description: (repo.description as string) ?? '',
+          org:         owner?.type === 'Organization' ? owner.login as string : null,
+        }
+      })
+    res.json({ ok: true, repos: all })
+  } catch (e) {
+    res.json({ ok: false, repos: [], error: String(e) })
+  }
+})
+
+// ── GitHub API — create repo ──────────────────────────────────────────────────
+router.post('/api/github/create-repo', async (req, res) => {
+  const { token, name, private: isPrivate, org } = JSON.parse(await readBody(req)) as { token: string; name: string; private: boolean; org?: string }
+  if (!token || !name) return res.json({ ok: false, error: 'token and name required' })
+  try {
+    const url = org
+      ? `https://api.github.com/orgs/${org}/repos`
+      : 'https://api.github.com/user/repos'
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, private: isPrivate ?? true, auto_init: false }),
+    })
+    const data = await r.json() as Record<string, unknown>
+    if (!r.ok) return res.json({ ok: false, error: data.message as string })
+    res.json({ ok: true, cloneUrl: data.clone_url as string, htmlUrl: data.html_url as string })
+  } catch (e) {
+    res.json({ ok: false, error: String(e) })
+  }
 })
 
 // ── GET /api/scan-project ──────────────────────────────────────────────────────
@@ -626,6 +753,24 @@ router.get('/api/check-port', (req, res) => {
   })
 })
 
+// ── GET /api/process-status ───────────────────────────────────────────────────
+router.get('/api/process-status', (req, res) => {
+  const pid = parseInt(req.query.pid as string ?? '0', 10)
+  if (!pid) { res.json({ alive: false }); return }
+  try { process.kill(pid, 0); res.json({ alive: true }) }
+  catch { res.json({ alive: false }) }
+})
+
+// ── GET /api/app-log ──────────────────────────────────────────────────────────
+router.get('/api/app-log', (req, res) => {
+  const port = req.query.port as string ?? 'unknown'
+  const logFile = `/tmp/cc-app-${port}.log`
+  try {
+    const content = fs.readFileSync(logFile, 'utf8')
+    res.json({ ok: true, content: content.slice(-3000) })
+  } catch { res.json({ ok: true, content: '' }) }
+})
+
 // ── POST /api/kill-port ────────────────────────────────────────────────────────
 router.post('/api/kill-port', async (req, res) => {
   try {
@@ -659,11 +804,11 @@ router.post('/api/start-app', async (req, res) => {
       // Wait 400ms for processes to fully exit before spawning
       setTimeout(() => {
         const child = spawn('bash', ['-c', `cd ${JSON.stringify(projectPath)} && ${startCmd}`], {
-          detached: true, stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
+          detached: true,
+          stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
+          env: { ...process.env, BROWSER: 'none', OPEN_BROWSER: 'false' },
         })
         child.unref()
-        // Open the primary port in default browser (macOS: `open`, fallback: ignore)
-        if (port) setTimeout(() => exec(`open http://localhost:${port} 2>/dev/null || true`), 2500)
         res.json({ ok: true, pid: child.pid ?? 0, logFile })
       }, 400)
     })
@@ -680,15 +825,18 @@ router.post('/api/ai-refine', async (req, res) => {
     const sysMsg = systemPrompt ?? 'Verbessere den folgenden Text sprachlich und inhaltlich. Mache ihn klarer, präziser und professioneller. Gib nur den verbesserten Text zurück, ohne Erklärungen oder zusätzliche Kommentare.'
     console.log('\n[ai-refine] ▶ provider:', provider, '| model:', model)
 
+    type RefineUsage = { input_tokens?: number; output_tokens?: number; prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+
     if (provider === 'anthropic') {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({ model, max_tokens: 2048, system: sysMsg, messages: [{ role: 'user', content: text }] }),
       })
-      const d = await r.json() as { content?: { text: string }[]; error?: { message: string } }
+      const d = await r.json() as { content?: { text: string }[]; error?: { message: string }; usage?: RefineUsage }
       if (!r.ok) { res.json({ ok: false, error: d?.error?.message ?? 'API error' }); return }
-      res.json({ ok: true, text: d.content?.[0]?.text ?? text })
+      const u = d.usage ?? {}
+      res.json({ ok: true, text: d.content?.[0]?.text ?? text, inputTokens: u.input_tokens ?? 0, outputTokens: u.output_tokens ?? 0 })
     } else {
       const baseUrl = provider === 'deepseek'   ? 'https://api.deepseek.com/v1'
               : provider === 'openrouter' ? 'https://openrouter.ai/api/v1'
@@ -701,7 +849,7 @@ router.post('/api/ai-refine', async (req, res) => {
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...(provider === 'openrouter' ? { 'HTTP-Referer': 'https://codera.ai', 'X-Title': 'Codera AI' } : {}) },
         body: JSON.stringify({ model, messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: text }] }),
       })
-      const d = await r.json() as { choices?: { message: { content: string } }[]; error?: { message: string } }
+      const d = await r.json() as { choices?: { message: { content: string } }[]; error?: { message: string }; usage?: RefineUsage }
       if (!r.ok) {
         const rawErr = d?.error?.message ?? 'API error'
         console.error(`[ai-refine] ✗ ${provider} HTTP ${r.status}: ${rawErr}`)
@@ -714,7 +862,10 @@ router.post('/api/ai-refine', async (req, res) => {
           : rawErr
         res.json({ ok: false, error: userErr }); return
       }
-      res.json({ ok: true, text: d.choices?.[0]?.message?.content ?? text })
+      const u = d.usage ?? {}
+      const inputTokens  = u.input_tokens  ?? u.prompt_tokens  ?? 0
+      const outputTokens = u.output_tokens ?? u.completion_tokens ?? (u.total_tokens ? u.total_tokens - inputTokens : 0)
+      res.json({ ok: true, text: d.choices?.[0]?.message?.content ?? text, inputTokens, outputTokens })
     }
   } catch (e) { res.json({ ok: false, error: String(e) }) }
 })

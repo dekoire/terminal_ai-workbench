@@ -1,5 +1,5 @@
 {
-  "port": 3000,
-  "startCmd": "npm run dev",
-  "appUrl": "http://localhost:3000"
+  "port": 2005,
+  "startCmd": null,
+  "appUrl": "http://localhost:2005"
 }

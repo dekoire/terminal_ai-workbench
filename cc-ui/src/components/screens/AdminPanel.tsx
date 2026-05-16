@@ -298,6 +298,7 @@ function UsersTab({ currentUser, supabaseUrl, serviceRoleKey, adminEmails, addAd
   sectionLabel: React.CSSProperties
   card: React.CSSProperties
 }) {
+  const { addToast } = useAppStore()
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -313,8 +314,8 @@ function UsersTab({ currentUser, supabaseUrl, serviceRoleKey, adminEmails, addAd
       const r = await fetch(`/api/admin/users?supabaseUrl=${encodeURIComponent(supabaseUrl)}&serviceRoleKey=${encodeURIComponent(serviceRoleKey)}`)
       const d = await r.json() as { ok: boolean; users?: ManagedUser[]; error?: string }
       if (d.ok) setUsers(d.users ?? [])
-      else setError(d.error ?? 'Fehler beim Laden')
-    } catch (e) { setError(String(e)) }
+      else { const msg = d.error ?? 'Fehler beim Laden'; setError(msg); addToast({ type: 'error', title: 'Benutzer laden fehlgeschlagen', body: msg }) }
+    } catch (e) { const msg = String(e); setError(msg); addToast({ type: 'error', title: 'Benutzer laden fehlgeschlagen', body: msg }) }
     finally { setLoading(false) }
   }, [supabaseUrl, serviceRoleKey, hasCredentials])
 

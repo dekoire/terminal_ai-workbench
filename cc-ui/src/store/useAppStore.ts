@@ -78,8 +78,11 @@ export interface ProjectBrainEntry {
   recentWork: Array<{ date: string; item: string }>
   openTasks: string[]
   keyFiles: Array<{ path: string; purpose: string }>
-  brainTokens: number
+  brainTokens: number        // estimated tokens when injected as system prompt
   lastUpdatedAt: string
+  generationModel?: string   // model used for last AI update
+  generationInputTokens?: number   // tokens consumed reading messages
+  generationOutputTokens?: number  // tokens produced by the model
 }
 
 export type Theme = 'dark' | 'light'
@@ -109,6 +112,7 @@ export interface Project {
   sessions: Session[]
   appPort?: number
   appStartCmd?: string
+  githubTokenId?: string   // ID eines RepoToken aus tokens[] — per-Projekt-Token
 }
 
 export interface Alias {
@@ -191,7 +195,47 @@ export interface AIProvider {
   model: string
 }
 
-export type DocTemplateCategory = 'doc' | 'ai-prompt' | 'user-story'
+export type DocTemplateCategory = 'doc' | 'ai-prompt' | 'user-story' | 'prompt-support'
+
+export type SidebarSectionId = 'workspaces' | 'prompts' | 'github' | 'quicklinks' | 'tasks'
+export interface SidebarSection { id: SidebarSectionId; visible: boolean }
+export const DEFAULT_SIDEBAR_SECTIONS: SidebarSection[] = [
+  { id: 'workspaces', visible: true },
+  { id: 'prompts',    visible: true },
+  { id: 'github',     visible: true },
+  { id: 'quicklinks', visible: true },
+  { id: 'tasks',      visible: true },
+]
+
+export type UtilityPanelSectionId = 'kontextlog' | 'github' | 'quicklinks' | 'tasks'
+export interface UtilitySection { id: UtilityPanelSectionId; visible: boolean }
+export const DEFAULT_UTILITY_SECTIONS: UtilitySection[] = [
+  { id: 'kontextlog', visible: true },
+  { id: 'github',     visible: true },
+  { id: 'quicklinks', visible: true },
+  { id: 'tasks',      visible: true },
+]
+
+// ── Unified cross-panel layout sections ───────────────────────────────────────
+export type AllSectionId =
+  'workspaces' | 'prompts' | 'github' | 'quicklinks' | 'tasks' |
+  'kontextlog' | 'projekt-terminal'
+
+export interface LayoutSection {
+  id: AllSectionId
+  panel: 'left' | 'right'
+  visible: boolean
+}
+
+export const DEFAULT_LAYOUT_SECTIONS: LayoutSection[] = [
+  { id: 'workspaces',        panel: 'left',  visible: true },
+  { id: 'prompts',           panel: 'left',  visible: true },
+  { id: 'projekt-terminal',  panel: 'right', visible: true },
+  { id: 'kontextlog',        panel: 'right', visible: true },
+  { id: 'github',            panel: 'right', visible: true },
+  { id: 'quicklinks',        panel: 'right', visible: true },
+  { id: 'tasks',             panel: 'right', visible: true },
+]
 
 export interface DocTemplate {
   id: string
@@ -200,6 +244,17 @@ export interface DocTemplate {
   content: string        // for 'doc': file content; for 'ai-prompt': system prompt; for 'user-story': story template
   enabled: boolean
   category?: DocTemplateCategory  // defaults to 'doc' if absent
+}
+
+// ── Toast notifications ───────────────────────────────────────────────────────
+export interface ToastAction { label: string; variant?: 'primary' | 'ghost'; onClick: () => void }
+export interface Toast {
+  id: string
+  type: 'success' | 'error' | 'warning' | 'info'
+  title: string
+  body?: string
+  actions?: ToastAction[]
+  duration?: number  // ms — 0 = manual dismiss; defaults: success/info 4000, warning 6000, error 0
 }
 
 export type ShortcutCategory = 'control' | 'navigation' | 'editing'
@@ -513,6 +568,41 @@ Antworte AUSSCHLIESSLICH als gültiges JSON-Objekt (kein Markdown drumherum, nur
   "agentContext": "Englischer Kontext-Block für einen KI-Agenten. Format: TOPIC: ... | FILES: ... | HISTORY: ... (kompakt, nur das Wesentliche, max 400 Tokens)"
 }`,
   },
+  // ── Prompt Support ───────────────────────────────────────────────────────
+  {
+    id: 'prompt-support',
+    name: 'Prompt Support',
+    relativePath: '',
+    enabled: true,
+    category: 'prompt-support' as const,
+    content: `Du bist ein erfahrener Software-Architekt. Du formulierst Implementierungsaufträge für Claude Code — direkt, technisch und präzise.
+
+WICHTIG:
+- Kein klassisches User-Story-Format ("Als Nutzer möchte ich...").
+- Direkte Sprache, wie ein Senior Developer an Claude Code spricht.
+- Orientiere dich an den bestehenden Patterns und Architektur aus der Dokumentation.
+- Erkenne Abhängigkeiten zu anderen Komponenten.
+- Beachte UI-Konsistenz: neue Bereiche sollen so aussehen wie bestehende.
+
+ANTWORT-FORMAT (exakt so, kein Prolog/Epilog):
+
+**Titel:** [prägnanter Titel]
+
+## Aufgabe
+[Was genau implementiert werden soll — klar, direkt]
+
+## Betroffene Dateien & Komponenten
+[Basierend auf der Dokumentation: welche Dateien werden geändert/erstellt]
+
+## Implementierungsdetails
+[Technische Anforderungen, Patterns, Constraints — basierend auf der Doku-Architektur]
+
+## Abhängigkeiten
+[Andere Komponenten/Features/State die berücksichtigt werden müssen]
+
+## Akzeptanzkriterien
+- [ ] ...`,
+  },
   // ── User Stories ──────────────────────────────────────────────────────────
   {
     id: 'user-story-analyse',
@@ -607,10 +697,19 @@ export interface AppState {
   orbitCompressModel: string                       // OR model used for compression
   agentContextMsgCount: number                     // how many messages to compress (default 20)
   agentCompressPrompt: string                      // compression prompt for agent sessions
+  agentCompressModel: string                       // OR model for agent compression (default deepseek v4 flash)
+  agentAutoCompressOnStart: boolean                // trigger background compression when session starts and tail exists
+  agentTailMessageCount: number                    // how many raw tail messages to pass verbatim (0 = off)
+  brainUpdatePrompt: string                        // template prompt for updateBrainWithAI ({brain},{messages},{date},{n},{projectName})
   orbitFavorites: Record<string, OrbitFavorite[]>  // projectId → favorites
   quickLinks:     QuickLink[]
+  sidebarSections: SidebarSection[]
+  utilitySections: UtilitySection[]
+  layoutSections:  LayoutSection[]
   projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
   orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
+  dataLoaded: boolean                                // true once initial loadFromSupabase completes
+  toasts: Toast[]
   claudeProviders: ClaudeProvider[]
   setupWizardDone: boolean
   preferredOrModels: string[]
@@ -733,8 +832,18 @@ export interface AppState {
   setOrbitCompressModel: (s: string) => void
   setAgentContextMsgCount: (agentContextMsgCount: number) => void
   setAgentCompressPrompt: (agentCompressPrompt: string) => void
+  setAgentCompressModel: (agentCompressModel: string) => void
+  setAgentAutoCompressOnStart: (v: boolean) => void
+  setAgentTailMessageCount: (n: number) => void
+  setBrainUpdatePrompt: (brainUpdatePrompt: string) => void
   addOrbitFavorite:  (fav: OrbitFavorite) => void
   setQuickLinks:     (links: QuickLink[]) => void
+  setSidebarSections: (sections: SidebarSection[]) => void
+  setUtilitySections: (sections: UtilitySection[]) => void
+  setLayoutSections:  (sections: LayoutSection[]) => void
+  addToast: (t: Omit<Toast, 'id'>) => string
+  removeToast: (id: string) => void
+  clearToasts: () => void
   removeOrbitFavorite: (projectId: string, favId: string) => void
   addOrbitMessage: (chatId: string, msg: OrbitMessage) => void
   setOrbitMessages: (chatId: string, msgs: OrbitMessage[]) => void
@@ -745,9 +854,13 @@ export interface AppState {
   registerOrbitChats: (projectId: string, chatIds: string[]) => void
   removeOrbitChat: (projectId: string, chatId: string) => void
   setProjectBrain: (projectId: string, brain: ProjectBrainEntry) => void
+  setProjectGithubToken: (projectId: string, tokenId: string | undefined) => void
   setOrbitChatLoaded: (chatId: string) => void
+  setDataLoaded: (v: boolean) => void
   setSetupWizardDone: (v: boolean) => void
   setPreferredOrModels: (ids: string[]) => void
+  isOnline: boolean
+  setIsOnline: (v: boolean) => void
 }
 
 const DEMO_TURNS: TurnMessage[] = [
@@ -947,14 +1060,24 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   orbitCompressModel: 'deepseek/deepseek-chat-v3-0324',
   agentContextMsgCount: 20,
   agentCompressPrompt: 'Du bist ein Kontext-Kompressor für Coding-Sessions. Fasse die folgende Session kurz und präzise zusammen — nur was technisch relevant ist: was gebaut/gefixt wurde, aktuelle Stand, offene Probleme, wichtige Dateien und Entscheidungen. Kein Smalltalk. Bullet-Points. Max 15 Punkte.',
+  agentCompressModel: 'deepseek/deepseek-v4-flash:free',
+  agentAutoCompressOnStart: true,
+  agentTailMessageCount: 3,
+  brainUpdatePrompt: '',
   orbitFavorites: {},
   quickLinks: [],
+  sidebarSections: DEFAULT_SIDEBAR_SECTIONS,
+  utilitySections: DEFAULT_UTILITY_SECTIONS,
+  layoutSections:  DEFAULT_LAYOUT_SECTIONS,
   projectBrains: {},
   orbitChatsLoaded: {},
+  dataLoaded: false,
+  toasts: [],
   claudeProviders: [],
   setupWizardDone: false,
   preferredOrModels: [],
   deletedProjectIds: [],
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
 
   currentUser: null,
   adminEmails: ['admin@codera.com'],
@@ -974,22 +1097,40 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   removeAdminEmail: (email) => set(s => ({ adminEmails: s.adminEmails.filter(e => e !== email.toLowerCase()) })),
 
   resetUserData: () => set({
-    // Clear all user-specific data so a new user starts with a blank slate
-    projects:          [],
-    activeProjectId:   undefined,
-    activeSessionId:   undefined,
-    orbitMessages:     {},
-    orbitMeta:         {},
-    orbitChats:        {},
-    orbitChatsLoaded:  {},
-    activeOrbitChatId: {},
-    orbitFavorites:    {},
-    kanban:            {},
-    notes:             {},
-    projectBrains:     {},
-    tokens:            [],
-    aliases:           [],
-    templates:         [],
+    // Clear ALL user-specific data so the next user starts with a blank slate
+    projects:               [],
+    activeProjectId:        undefined,
+    activeSessionId:        undefined,
+    orbitMessages:          {},
+    orbitMeta:              {},
+    orbitChats:             {},
+    orbitChatsLoaded:       {},
+    dataLoaded:             false,
+    activeOrbitChatId:      {},
+    orbitFavorites:         {},
+    kanban:                 {},
+    notes:                  {},
+    projectBrains:          {},
+    tokens:                 [],
+    aliases:                [],
+    templates:              [],
+    docTemplates:           DEFAULT_DOC_TEMPLATES,
+    claudeProviders:        [],
+    quickLinks:             [],
+    sidebarSections:        DEFAULT_SIDEBAR_SECTIONS,
+    deletedProjectIds:      [],
+    // Credentials — must never bleed to another user
+    openrouterKey:          '',
+    groqApiKey:             '',
+    supabaseServiceRoleKey: '',
+    cloudflareAccountId:    '',
+    cloudflareR2AccessKeyId: '',
+    cloudflareR2SecretAccessKey: '',
+    cloudflareR2BucketName: '',
+    cloudflareR2Endpoint:   '',
+    cloudflareR2PublicUrl:  '',
+    aiFunctionMap:          { terminal: 'deepseek/deepseek-chat-v3-0324', kanban: 'deepseek/deepseek-chat-v3-0324', devDetect: 'deepseek/deepseek-chat-v3-0324', docUpdate: 'deepseek/deepseek-r1-0528', contextSearch: 'deepseek/deepseek-chat-v3-0324' },
+    codeReviewModel:        'deepseek/deepseek-chat-v3-0324',
   }),
 
   setSupabaseUrl: (v) => set({ supabaseUrl: v }),
@@ -1230,7 +1371,21 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setOrbitCompressModel: (orbitCompressModel) => set({ orbitCompressModel }),
   setAgentContextMsgCount: (agentContextMsgCount) => set({ agentContextMsgCount }),
   setAgentCompressPrompt: (agentCompressPrompt) => set({ agentCompressPrompt }),
+  setAgentCompressModel: (agentCompressModel) => set({ agentCompressModel }),
+  setAgentAutoCompressOnStart: (agentAutoCompressOnStart) => set({ agentAutoCompressOnStart }),
+  setAgentTailMessageCount: (agentTailMessageCount) => set({ agentTailMessageCount }),
+  setBrainUpdatePrompt: (brainUpdatePrompt) => set({ brainUpdatePrompt }),
   setQuickLinks: (links) => set({ quickLinks: links }),
+  setSidebarSections: (sections) => set({ sidebarSections: sections }),
+  setUtilitySections: (sections) => set({ utilitySections: sections }),
+  setLayoutSections:  (sections) => set({ layoutSections: sections }),
+  addToast: (t) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    set(s => ({ toasts: [{ ...t, id }, ...s.toasts] }))
+    return id
+  },
+  removeToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
+  clearToasts: () => set({ toasts: [] }),
   addOrbitFavorite: (fav) => set(s => ({
     orbitFavorites: { ...s.orbitFavorites, [fav.projectId]: [...(s.orbitFavorites[fav.projectId] ?? []), fav] },
   })),
@@ -1265,7 +1420,11 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     return { orbitChats: { ...s.orbitChats, [projectId]: chats }, orbitMessages: msgs, orbitMeta: meta, orbitChatsLoaded: loaded }
   }),
   setProjectBrain: (projectId, brain) => set(s => ({ projectBrains: { ...s.projectBrains, [projectId]: brain } })),
+  setProjectGithubToken: (projectId, tokenId) => set(s => ({
+    projects: s.projects.map(p => p.id === projectId ? { ...p, githubTokenId: tokenId } : p)
+  })),
   setOrbitChatLoaded: (chatId) => set(s => ({ orbitChatsLoaded: { ...s.orbitChatsLoaded, [chatId]: true } })),
+  setDataLoaded: (dataLoaded) => set({ dataLoaded }),
 }), {
   name: 'cc-app-state',
   storage: createJSONStorage(() => fileStorage),
@@ -1326,6 +1485,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (!state.orbitCompressModel) state.orbitCompressModel = 'deepseek/deepseek-chat-v3-0324'
     if (!state.agentContextMsgCount) state.agentContextMsgCount = 20
     if (!state.agentCompressPrompt) state.agentCompressPrompt = 'Du bist ein Kontext-Kompressor für Coding-Sessions. Fasse die folgende Session kurz und präzise zusammen — nur was technisch relevant ist: was gebaut/gefixt wurde, aktuelle Stand, offene Probleme, wichtige Dateien und Entscheidungen. Kein Smalltalk. Bullet-Points. Max 15 Punkte.'
+    if (!state.agentCompressModel) state.agentCompressModel = 'deepseek/deepseek-v4-flash:free'
+    if (state.agentAutoCompressOnStart === undefined) state.agentAutoCompressOnStart = true
+    if (state.agentTailMessageCount === undefined) state.agentTailMessageCount = 3
     if (state.projectBrains === undefined) state.projectBrains = {}
     if (state.orbitChatsLoaded === undefined) state.orbitChatsLoaded = {}
     if (!state.supabaseUrl) state.supabaseUrl = 'https://fpphqkuizptypeawclsx.supabase.co'
@@ -1338,6 +1500,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.cloudflareR2Endpoint === undefined) state.cloudflareR2Endpoint = ''
     if (state.cloudflareR2PublicUrl === undefined) state.cloudflareR2PublicUrl = ''
     if (state.currentUser === undefined) state.currentUser = null
+    if (!state.sidebarSections || state.sidebarSections.length === 0) state.sidebarSections = DEFAULT_SIDEBAR_SECTIONS
+    if (!state.utilitySections || state.utilitySections.length === 0) state.utilitySections = DEFAULT_UTILITY_SECTIONS
+    if (!state.layoutSections  || state.layoutSections.length === 0)  state.layoutSections  = DEFAULT_LAYOUT_SECTIONS
     // Flush migrated values back to file storage so they persist across restarts
     // Use setTimeout(0) to let Zustand finish rehydration before triggering a set
     setTimeout(() => {
@@ -1399,6 +1564,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     setupWizardDone:     s.setupWizardDone,
     preferredOrModels:   s.preferredOrModels,
     quickLinks:          s.quickLinks,
+    sidebarSections:     s.sidebarSections,
+    utilitySections:     s.utilitySections,
+    layoutSections:      s.layoutSections,
     deletedProjectIds:   s.deletedProjectIds,
     currentUser:         s.currentUser,
     adminEmails:         s.adminEmails,

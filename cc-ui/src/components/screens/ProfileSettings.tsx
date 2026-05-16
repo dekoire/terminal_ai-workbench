@@ -63,7 +63,7 @@ export function ProfileSettings() {
           {/* Ausloggen */}
           <div style={{ margin: '0 16px 4px', height: 1, background: 'var(--line)' }} />
           <div
-            onClick={() => { setActiveStorageUser(''); setCurrentUser(null); setScreen('login') }}
+            onClick={() => { setActiveStorageUser(''); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
             style={{
               padding: '6px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
               color: 'var(--err)', fontSize: 11.5,
@@ -139,6 +139,7 @@ function ProfilPanel({
   const [firstName, setFirstName] = useState(currentUser?.firstName ?? '')
   const [lastName,  setLastName]  = useState(currentUser?.lastName ?? '')
   const [email,     setEmail]     = useState(currentUser?.email ?? '')
+  const addToast = useAppStore(s => s.addToast)
   const [avatarSrc, setAvatarSrc] = useState(currentUser?.avatarDataUrl ?? avatarDefault)
   const [infoSaved, setInfoSaved] = useState(false)
   const [infoError, setInfoError] = useState('')
@@ -173,8 +174,9 @@ function ProfilPanel({
     const sb = getSupabase(supabaseUrl, supabaseAnonKey)
     if (!sb) { setCurrentUser({ ...currentUser, firstName, lastName, email }); setInfoSaved(true); return }
     const { error } = await sb.auth.updateUser({ email: email !== currentUser.email ? email : undefined, data: { first_name: firstName, last_name: lastName } })
-    if (error) { setInfoError(error.message); return }
+    if (error) { addToast({ type: 'error', title: 'Speichern fehlgeschlagen', body: error.message }); return }
     setCurrentUser({ ...currentUser, firstName, lastName, email })
+    addToast({ type: 'success', title: 'Profil gespeichert', duration: 3000 })
     setInfoSaved(true); setTimeout(() => setInfoSaved(false), 2500)
   }
 
@@ -239,6 +241,7 @@ function ProfilPanel({
 
 // ── Passwort panel ────────────────────────────────────────────────────────────
 function PasswortPanel({ supabaseUrl, supabaseAnonKey }: { supabaseUrl: string; supabaseAnonKey: string }) {
+  const addToast = useAppStore(s => s.addToast)
   const [newPwd,  setNewPwd]  = useState('')
   const [confPwd, setConfPwd] = useState('')
   const [pwdSaved, setPwdSaved] = useState(false)
@@ -252,7 +255,8 @@ function PasswortPanel({ supabaseUrl, supabaseAnonKey }: { supabaseUrl: string; 
     const sb = getSupabase(supabaseUrl, supabaseAnonKey)
     if (!sb) { setPwdError('Supabase nicht konfiguriert.'); return }
     const { error } = await sb.auth.updateUser({ password: newPwd })
-    if (error) { setPwdError(error.message); return }
+    if (error) { addToast({ type: 'error', title: 'Passwort ändern fehlgeschlagen', body: error.message }); return }
+    addToast({ type: 'success', title: 'Passwort erfolgreich geändert', duration: 3000 })
     setPwdSaved(true); setNewPwd(''); setConfPwd('')
     setTimeout(() => setPwdSaved(false), 2500)
   }

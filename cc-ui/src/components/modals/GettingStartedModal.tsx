@@ -1,7 +1,28 @@
 import { useState } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { IExternalLink, ICheck, IChevDown, IChevUp, IClose, IGit } from '../primitives/Icons'
+import { IExternalLink, ICheck, IChevDown, IChevUp, IClose, IGit, ISpinner } from '../primitives/Icons'
 import simpleLogo from '../../assets/simple_logo.svg'
+import heroEmber    from '../../assets/onboarding-hero_ember.webp'
+import heroCobalt   from '../../assets/onboarding-hero_cobalt.webp'
+import heroMidnight from '../../assets/onboarding-hero_midnight.webp'
+import heroForest   from '../../assets/onboarding-hero_forest.webp'
+import heroRose     from '../../assets/onboarding-hero_rose.webp'
+import heroCrimson  from '../../assets/onboarding-hero_crimson.webp'
+
+const HERO_MAP: Record<string, string> = {
+  ember:          heroEmber,
+  'ember-light':  heroEmber,
+  cobalt:         heroCobalt,
+  'cobalt-light': heroCobalt,
+  midnight:       heroMidnight,
+  'midnight-light': heroMidnight,
+  forest:         heroForest,
+  'forest-light': heroForest,
+  rose:           heroRose,
+  'rose-light':   heroRose,
+  crimson:        heroCrimson,
+  'crimson-light': heroCrimson,
+}
 
 interface Props {
   onClose: () => void
@@ -27,10 +48,11 @@ export function GettingStartedModal({ onClose }: Props) {
     setSetupWizardDone,
     githubToken: storedGhToken, setGithubToken,
     tokens: repoTokens, addToken, updateToken,
-    theme,
+    theme, preset,
   } = useAppStore()
 
-  const existingGhToken = repoTokens.find(t => t.host === 'github.com')?.token || storedGhToken
+  const existingGhTokenEntry = repoTokens.find(t => t.host === 'github.com')
+  const existingGhToken = existingGhTokenEntry?.token || storedGhToken
 
   const [step, setStep] = useState(0)
   const [localKey, setLocalKey] = useState(openrouterKey)
@@ -42,8 +64,10 @@ export function GettingStartedModal({ onClose }: Props) {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [advancedText, setAdvancedText] = useState('')
   const [ghToken, setGhToken] = useState(existingGhToken)
+  const [ghLabel, setGhLabel] = useState(existingGhTokenEntry?.label ?? 'GitHub')
 
   const isDark = theme === 'dark'
+  const heroImg = HERO_MAP[preset] ?? heroEmber
 
   const toggleModel = (id: string) =>
     setSelectedModels(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id])
@@ -54,8 +78,9 @@ export function GettingStartedModal({ onClose }: Props) {
     setPreferredOrModels([...new Set([...selectedModels, ...extra])])
     if (ghToken.trim()) {
       const existing = repoTokens.find(t => t.host === 'github.com')
-      if (existing) updateToken(existing.id, { token: ghToken.trim() })
-      else addToken({ id: `tok${Date.now()}`, label: 'GitHub', host: 'github.com', token: ghToken.trim() })
+      const label = ghLabel.trim() || 'GitHub'
+      if (existing) updateToken(existing.id, { token: ghToken.trim(), label })
+      else addToken({ id: `tok${Date.now()}`, label, host: 'github.com', token: ghToken.trim() })
       setGithubToken(ghToken.trim())
     }
     setSetupWizardDone(true)
@@ -95,8 +120,8 @@ export function GettingStartedModal({ onClose }: Props) {
       <div style={{ padding: '48px 40px', display: 'flex', flexDirection: 'column', gap: 24, overflowY: 'auto' }}>
         <img src={simpleLogo} alt="Codera AI" style={{ width: 40, height: 40 }} />
         <div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2, letterSpacing: -0.5, marginBottom: 12, whiteSpace: 'pre-line' }}>
-            {'KI-Coding.\nZentral gesteuert.'}
+          <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2, letterSpacing: -0.5, marginBottom: 12 }}>
+            Codera AI
           </div>
           <div style={{ fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.65, maxWidth: 320 }}>
             Richte Codera AI in wenigen Schritten ein — verbinde dein KI-Modell und lege dein erstes Projekt an.
@@ -111,11 +136,18 @@ export function GettingStartedModal({ onClose }: Props) {
           ))}
         </div>
       </div>
-      <div style={{ background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 40, right: 40, width: 120, height: 80, borderRadius: 10, background: 'var(--accent)', opacity: 0.08 }} />
-        <div style={{ position: 'absolute', bottom: 60, left: 30, width: 80, height: 120, borderRadius: 10, background: isDark ? '#4285f4' : '#1d4ed8', opacity: 0.07 }} />
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 160, height: 40, borderRadius: 6, background: 'var(--line)', opacity: 0.4 }} />
-        <img src={simpleLogo} alt="" style={{ width: 80, height: 80, opacity: 0.15, position: 'relative', zIndex: 1 }} />
+      <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--bg-2)' }}>
+        <img
+          src={heroImg}
+          alt="Codera AI"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }}
+        />
+        {/* Overlay gradient + logo/slogan */}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: 24, right: 24, display: 'flex', alignItems: 'center', gap: 9 }}>
+          <ISpinner size={22} spin={false} style={{ color: '#ffffff', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.5))' }} />
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1, textShadow: '0 1px 6px rgba(0,0,0,0.5)' }}>Codera</span>
+        </div>
       </div>
     </div>
   )
@@ -212,10 +244,17 @@ export function GettingStartedModal({ onClose }: Props) {
           <IExternalLink style={{ width: 12, height: 12 }} />
           github.com/settings/tokens
         </a>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 12, color: 'var(--fg-3)', fontWeight: 500 }}>Personal Access Token</label>
-          <input type="password" value={ghToken} onChange={e => setGhToken(e.target.value)}
-            placeholder="ghp_..." style={inputStyle} autoFocus />
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 140, flexShrink: 0 }}>
+            <label style={{ fontSize: 12, color: 'var(--fg-3)', fontWeight: 500 }}>Bezeichnung</label>
+            <input value={ghLabel} onChange={e => setGhLabel(e.target.value)}
+              placeholder="GitHub" style={inputStyle} autoFocus />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+            <label style={{ fontSize: 12, color: 'var(--fg-3)', fontWeight: 500 }}>Personal Access Token</label>
+            <input type="password" value={ghToken} onChange={e => setGhToken(e.target.value)}
+              placeholder="ghp_..." style={inputStyle} />
+          </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {[
@@ -263,7 +302,7 @@ export function GettingStartedModal({ onClose }: Props) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 720, maxWidth: '92vw', maxHeight: '88vh', borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+      <div style={{ width: 720, maxWidth: '92vw', height: 520, maxHeight: '88vh', borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         <button onClick={handleSkip} style={{ position: 'absolute', top: 14, right: 14, zIndex: 1, background: 'transparent', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 6 }} title="Schließen">
           <IClose style={{ width: 16, height: 16 }} />
         </button>

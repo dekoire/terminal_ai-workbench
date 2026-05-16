@@ -10,8 +10,8 @@ import {
   PanelLeftOpen, PanelLeftClose, PanelRightOpen, PanelRightClose,
   Database, Trophy, ShipWheel, CircleCheckBig, Globe, Globe2, FileDown, Users,
   Link2, Cloud, CloudUpload, CloudDownload, Camera, Lock, Bell, Paperclip, ChevronLeft, ChevronUp,
-  History, Eye, AlertCircle,
-  MousePointer2, MousePointerClick, MessageSquare, MessageSquareCode, MoveUpRight, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal, SlidersHorizontal, Bot, ArrowDownFromLine, ArrowUpFromLine, Tag,
+  History, Eye, EyeOff, AlertCircle,
+  MousePointer2, MousePointerClick, MessageSquare, MessageSquareCode, MoveUpRight, Save, Eraser, Undo2, RefreshCw, Compass, SquareTerminal, SlidersHorizontal, Bot, ArrowDownFromLine, ArrowUpFromLine, Tag, Layers, Brain, WifiOff, LayoutPanelLeft,
   type LucideProps,
 } from 'lucide-react'
 
@@ -109,6 +109,7 @@ export const ICloudUpload     = ic(CloudUpload)
 export const ICloudDownload   = ic(CloudDownload)
 export const IHistoryClock    = ic(History)
 export const IEye             = ic(Eye)
+export const IEyeOff          = ic(EyeOff)
 export const IAlertCircle     = ic(AlertCircle)
 export const ICamera          = ic(Camera)
 export const ILock            = ic(Lock)
@@ -131,6 +132,10 @@ export const IBot             = ic(Bot)
 export const IArrowDownLine   = ic(ArrowDownFromLine)
 export const IArrowUpLine     = ic(ArrowUpFromLine)
 export const ITag             = ic(Tag)
+export const ILayers          = ic(Layers)
+export const IBrain           = ic(Brain)
+export const IWifiOff         = ic(WifiOff)
+export const IAppLayout       = ic(LayoutPanelLeft)
 
 // ── Logo spinner (SVG from assets/spinner.html) ───────────────────────────────
 export function ISpinner({ size = 20, spin = true, style: extraStyle }: { size?: number; spin?: boolean; style?: React.CSSProperties }) {

@@ -205,12 +205,8 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
   const [snipData, setSnipData] = useState<string | null>(null)
   const [saving,   setSaving]   = useState(false)
 
-  // ── Inverted browser chrome colours ─────────────────────────────────────────
-  // Dark app theme → light browser chrome (so it looks like a real browser window)
-  // Light app theme → dark browser chrome
-  const bChrome: React.CSSProperties = theme === 'dark'
-    ? { background: '#f0f0f0', borderColor: '#d0d0d0', color: '#1a1a1a' }
-    : { background: '#1e1e1e', borderColor: '#3a3a3a', color: '#e0e0e0' }
+  // ── Browser chrome colours — always white toolbar with bg-1 text/icons ──────
+  const bChrome: React.CSSProperties = { background: '#ffffff', borderColor: '#e0e0e0', color: 'var(--bg-1)' }
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   const navigate = useCallback((target: string) => {
@@ -319,9 +315,9 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
 
   // ── Button style helpers ──────────────────────────────────────────────────────
   const btnBase: React.CSSProperties = {
-    background: 'none', border: 'none', padding: '4px 8px',
+    background: 'none', border: 'none', padding: '5px 9px',
     cursor: 'pointer', color: bChrome.color, display: 'flex',
-    alignItems: 'center', borderRadius: 5, fontSize: 11.5,
+    alignItems: 'center', borderRadius: 5, fontSize: 13,
     fontFamily: 'var(--font-ui)', transition: 'background 0.1s',
   }
   const hoverBg = theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.14)'
@@ -345,7 +341,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
         <button onClick={back}   style={btnBase} title="Zurück"
           onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-          <IChevLeft style={{ width: 15, height: 15, strokeWidth: 2.2 }} />
+          <IChevLeft style={{ width: 17, height: 17, strokeWidth: 2.2 }} />
         </button>
         <button onClick={fwd}    style={btnBase} title="Vorwärts"
           onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
@@ -355,29 +351,31 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
         <button onClick={reload} style={btnBase} title="Neu laden"
           onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-          <IRefresh style={{ width: 15, height: 15, strokeWidth: 2.2 }} />
+          <IRefresh style={{ width: 17, height: 17, strokeWidth: 2.2 }} />
         </button>
 
         <form onSubmit={e => { e.preventDefault(); navigate(inputUrl) }}
           style={{ flex: 1, display: 'flex', position: 'relative', alignItems: 'center',
             borderRadius: 6,
-            border: error ? '1px solid #ef4444' : `1px solid ${theme === 'dark' ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.1)'}`,
-            background: theme === 'dark' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)',
-            transition: 'border-color 0.12s, background 0.12s',
+            border: error ? '1px solid #ef4444' : '1px solid transparent',
+            background: '#ffffff',
+            transition: 'border-color 0.12s',
           }}
-          onMouseEnter={e => { const f = e.currentTarget; f.style.borderColor = theme === 'dark' ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.22)'; f.style.background = theme === 'dark' ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.13)' }}
-          onMouseLeave={e => { const f = e.currentTarget; f.style.borderColor = error ? '#ef4444' : theme === 'dark' ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.1)'; f.style.background = theme === 'dark' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)' }}
+          onFocus={e => { if (!error) e.currentTarget.style.borderColor = 'var(--bg-1)' }}
+          onBlur={e => { if (!error) e.currentTarget.style.borderColor = 'transparent' }}
+          onMouseEnter={undefined}
+          onMouseLeave={undefined}
         >
-          <IGlobe style={{ position: 'absolute', left: 9, width: 13, height: 13, color: theme === 'dark' ? 'rgba(26,26,26,0.4)' : 'rgba(224,224,224,0.45)', pointerEvents: 'none', flexShrink: 0 }} />
+          <IGlobe style={{ position: 'absolute', left: 10, width: 15, height: 15, color: 'rgba(0,0,0,0.35)', pointerEvents: 'none', flexShrink: 0 }} />
           <input
             value={inputUrl}
             onChange={e => setInputUrl(e.target.value)}
             placeholder="http://localhost:3000"
             style={{
-              flex: 1, padding: '4px 10px 4px 28px', borderRadius: 6,
+              flex: 1, padding: '5px 10px 5px 30px', borderRadius: 6,
               border: 'none', background: 'transparent',
               color: bChrome.color,
-              fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none',
+              fontSize: 13, fontFamily: 'var(--font-ui)', outline: 'none',
             }}
           />
         </form>
@@ -385,17 +383,17 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
         <button onClick={() => onModeChange('normal')} style={modeActive('normal')} title="Normal"
           onMouseEnter={e => { if (mode !== 'normal') e.currentTarget.style.background = hoverBg }}
           onMouseLeave={e => { if (mode !== 'normal') e.currentTarget.style.background = 'transparent' }}>
-          <IMousePointer style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Normal
+          <IMousePointer style={{ width: 16, height: 16, marginRight: 5, strokeWidth: 2.2 }} />Normal
         </button>
         <button onClick={() => onModeChange('draw')} style={modeActive('draw')} title="Zeichnen"
           onMouseEnter={e => { if (mode !== 'draw') e.currentTarget.style.background = hoverBg }}
           onMouseLeave={e => { if (mode !== 'draw') e.currentTarget.style.background = 'transparent' }}>
-          <IEdit style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Zeichnen
+          <IEdit style={{ width: 16, height: 16, marginRight: 5, strokeWidth: 2.2 }} />Zeichnen
         </button>
         <button onClick={() => onModeChange('inspect')} style={modeActive('inspect')} title="Inspect (Shift+Klick)"
           onMouseEnter={e => { if (mode !== 'inspect') e.currentTarget.style.background = hoverBg }}
           onMouseLeave={e => { if (mode !== 'inspect') e.currentTarget.style.background = 'transparent' }}>
-          <IMousePointerClick style={{ width: 14, height: 14, marginRight: 4, strokeWidth: 2.2 }} />Selektor
+          <IMousePointerClick style={{ width: 16, height: 16, marginRight: 5, strokeWidth: 2.2 }} />Selektor
         </button>
 
         <button
@@ -526,7 +524,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           <div style={{
             position: 'absolute', inset: 0, zIndex: 4,
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            gap: 10, background: 'var(--bg-1)',
+            gap: 10, background: '#ffffff',
           }}>
             <span style={{ fontSize: 36 }}>🌐</span>
             <span style={{ color: 'var(--fg-1)', fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-ui)' }}>

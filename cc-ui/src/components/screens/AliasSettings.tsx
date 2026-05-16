@@ -6,6 +6,7 @@ import { Pill } from '../primitives/Pill'
 import { ACCENT_PRESETS, TERMINAL_THEMES, applyPreset } from '../../theme/presets'
 import type { AIProvider, TerminalShortcut, ClaudeProvider } from '../../store/useAppStore'
 import { useOpenRouterModels } from '../../utils/useOpenRouterModels'
+import { sanitizeKey } from '../../utils/orProvider'
 import { saveGlobalTemplates, saveGlobalCliConfig, saveGlobalPrompts } from '../../lib/useSupabaseSync'
 import { getSupabase } from '../../lib/supabase'
 import { MultiCombobox } from '../primitives/MultiCombobox'
@@ -782,32 +783,52 @@ function TokensPanel() {
 
       {/* Token list */}
       {tokens.length === 0 && !adding ? (
-        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6 }}>
-          No tokens saved yet. Add one above.
+        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, border: '1px dashed var(--line)', borderRadius: 6, marginBottom: 20 }}>
+          Noch kein Token gespeichert.
         </div>
       ) : (
-        <div style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)', marginBottom: 20 }}>
-          {tokens.map((t, i) => (
-            <div key={t.id} style={{
-              display: 'grid', gridTemplateColumns: '1fr 120px 1fr 80px',
-              padding: '10px 14px', alignItems: 'center', gap: 12, fontSize: 12,
-              borderBottom: i < tokens.length - 1 ? '1px solid var(--line)' : 'none',
-              background: t.id === editId ? 'var(--accent-soft)' : 'transparent',
-            }}>
-              <span style={{ fontWeight: 600, color: 'var(--fg-0)' }}>{t.label}</span>
-              <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)' }}>{t.host}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', letterSpacing: showIds.has(t.id) ? 0 : 1 }}>
-                  {showIds.has(t.id) ? t.token : mask(t.token)}
-                </span>
-                <button onClick={() => toggleShow(t.id)} style={{ background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', fontSize: 10, padding: '1px 4px', fontFamily: 'inherit' }}>
-                  {showIds.has(t.id) ? 'hide' : 'show'}
-                </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+          {tokens.map((t) => (
+            <div key={t.id} style={{ border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-1)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, padding: '10px 14px', alignItems: 'center' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>{t.label}</span>
+                    <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)', background: 'var(--bg-3)', padding: '1px 6px', borderRadius: 4 }}>{t.host}</span>
+                  </div>
+                  <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)', letterSpacing: showIds.has(t.id) ? 0 : 1 }}>
+                    {showIds.has(t.id) ? t.token : mask(t.token)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  <button onClick={() => toggleShow(t.id)} style={{ ...btnGhost, fontSize: 11 }}>
+                    {showIds.has(t.id) ? 'Verbergen' : 'Anzeigen'}
+                  </button>
+                  <button onClick={() => openEdit(t)} style={{ ...btnGhost, fontSize: 11 }}>Bearbeiten</button>
+                  <button onClick={() => { if (confirm(`Token „${t.label}" löschen?`)) removeToken(t.id) }} style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--err)', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontFamily: 'var(--font-ui)' }}>Löschen</button>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <IEdit style={{ color: 'var(--fg-3)', cursor: 'pointer' }} onClick={() => openEdit(t)} />
-                <ITrash style={{ color: 'var(--err)', cursor: 'pointer' }} onClick={() => { if (confirm(`Delete token "${t.label}"?`)) removeToken(t.id) }} />
-              </div>
+              {t.id === editId && (
+                <div style={{ borderTop: '1px solid var(--line)', padding: '12px 14px', background: 'var(--bg-0)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={fieldLabel}>Bezeichnung</label>
+                    <input style={fieldInput} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={fieldLabel}>Git-Host</label>
+                    <input style={fieldInput} value={form.host} onChange={e => setForm(f => ({ ...f, host: e.target.value }))} list="host-list" />
+                    <datalist id="host-list">{HOSTS.map(h => <option key={h} value={h} />)}</datalist>
+                  </div>
+                  <div style={{ gridColumn: '1 / span 2' }}>
+                    <label style={fieldLabel}>Token</label>
+                    <input style={fieldInput} type="password" value={form.token} onChange={e => setForm(f => ({ ...f, token: e.target.value }))} autoComplete="new-password" />
+                  </div>
+                  <div style={{ gridColumn: '1 / span 2', display: 'flex', gap: 8 }}>
+                    <button onClick={save} style={btnPrimary}>Speichern</button>
+                    <button onClick={cancel} style={btnGhost}>Abbrechen</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1019,6 +1040,12 @@ function AussehenpPanel() {
 
   return (
     <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 680, margin: '0 auto' }}>
+      {/* Page header */}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Aussehen</div>
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Themes, Schrift, Farben</div>
+      </div>
+
       {/* Inner tab bar */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <div style={{ display: 'flex', gap: 2, padding: '3px', background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
@@ -1091,12 +1118,6 @@ function AussehenpPanel() {
 
           {/* UI Font + Size + Weight — compact 3-column dropdowns */}
           {(() => {
-            const sel: React.CSSProperties = {
-              width: '100%', padding: '5px 7px', borderRadius: 6,
-              border: '1px solid var(--line-strong)', background: 'var(--bg-2)',
-              color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)',
-              cursor: 'pointer', outline: 'none',
-            }
             const lbl: React.CSSProperties = {
               fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: 0.6,
               color: 'var(--fg-3)', fontWeight: 600, marginBottom: 4, display: 'block',
@@ -1105,24 +1126,35 @@ function AussehenpPanel() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px', gap: 8 }}>
                 <div>
                   <span style={lbl}>Schriftart</span>
-                  <select value={uiFont} onChange={e => setUiFont(e.target.value)} style={sel}>
-                    {UI_FONTS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-                  </select>
+                  <SingleCombobox
+                    value={uiFont}
+                    onChange={setUiFont}
+                    options={UI_FONTS.map(f => ({ value: f.id, label: f.label }))}
+                    placeholder="Schrift wählen…"
+                  />
                 </div>
                 <div>
                   <span style={lbl}>Größe</span>
-                  <select value={uiFontSize} onChange={e => setUiFontSize(Number(e.target.value))} style={sel}>
-                    {[10,11,12,13,14,15,16,17,18].map(n => <option key={n} value={n}>{n} px</option>)}
-                  </select>
+                  <SingleCombobox
+                    value={String(uiFontSize)}
+                    onChange={v => setUiFontSize(Number(v))}
+                    options={[10,11,12,13,14,15,16,17,18].map(n => ({ value: String(n), label: `${n} px` }))}
+                    placeholder="Größe…"
+                  />
                 </div>
                 <div>
                   <span style={lbl}>Dicke</span>
-                  <select value={uiFontWeight} onChange={e => setUiFontWeight(Number(e.target.value) as 300|400|500|600)} style={sel}>
-                    <option value={300}>Dünn</option>
-                    <option value={400}>Normal</option>
-                    <option value={500}>Mittel</option>
-                    <option value={600}>Fett</option>
-                  </select>
+                  <SingleCombobox
+                    value={String(uiFontWeight)}
+                    onChange={v => setUiFontWeight(Number(v) as 300|400|500|600)}
+                    options={[
+                      { value: '300', label: 'Dünn' },
+                      { value: '400', label: 'Normal' },
+                      { value: '500', label: 'Mittel' },
+                      { value: '600', label: 'Fett' },
+                    ]}
+                    placeholder="Dicke…"
+                  />
                 </div>
               </div>
             )
@@ -1797,7 +1829,7 @@ const PROVIDER_DEFAULTS: Record<string, { label: string; model: string; placehol
 const AI_FUNCTIONS: { key: string; label: string; description: string }[] = [
   { key: 'terminal',      label: 'Terminal Textbox',      description: 'KI-Überarbeitung im Eingabefeld der Terminalsitzung' },
   { key: 'kanban',        label: 'Kanban User Story',     description: 'User Story generieren & überarbeiten im Kanban-Board' },
-  { key: 'devDetect',     label: 'Dev Server Erkennung',  description: 'Start-Befehl automatisch aus Projektdateien ableiten (▶ AI-Button im Dev-Server-Dialog)' },
+  { key: 'devDetect',     label: 'App-Start Erkennung',   description: 'Start-Befehl & Port ermitteln wenn Heuristik versagt (Play ▶ → Fallback). Liest package.json, requirements.txt usw. lokal aus und sendet sie als Text-Kontext — kein Laufwerkszugriff durch das Modell.' },
   { key: 'docUpdate',     label: 'Docu Update',           description: 'Dokumentation mit AI aktualisieren (Rechtsklick → Docu aktualisieren)' },
   { key: 'contextSearch', label: 'AI Search',             description: 'KI durchsucht die komplette Projekt-Historie und erstellt Zusammenfassungen (Tab "AI Search" im rechten Panel)' },
 ]
@@ -1818,7 +1850,7 @@ const OR_REVIEW_MODELS = [
 ]
 
 function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
-  const { aiFunctionMap, setAiFunctionMap, openrouterKey, setOpenrouterKey, codeReviewModel, setCodeReviewModel, orbitCompressModel, setOrbitCompressModel } = useAppStore()
+  const { aiFunctionMap, setAiFunctionMap, openrouterKey, setOpenrouterKey, codeReviewModel, setCodeReviewModel, orbitCompressModel, setOrbitCompressModel, agentCompressModel, setAgentCompressModel } = useAppStore()
   const { models, loading: orLoading } = useOpenRouterModels()
   const ALL_TABS: AITab[] = ['keys', 'functions', 'provider']
   const visibleTabs = ALL_TABS.filter(t => !hideTabs.includes(t))
@@ -1871,7 +1903,6 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, padding: '10px 14px', alignItems: 'center' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                  <ISpark style={{ color: 'var(--accent)', width: 13, height: 13, flexShrink: 0 }} />
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>OpenRouter API-Key</span>
                   {openrouterKey && !editingOrKey && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1956,12 +1987,26 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
               {/* Kontext-Komprimierung row */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '10px 14px', alignItems: 'center', borderTop: '1px solid var(--line)' }}>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Kontext-Komprimierung</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>Verdichtet den Chat-Verlauf beim Neuen Chat automatisch auf das Wesentliche</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Kontext-Komprimierung (Chat)</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>Verdichtet den Orbit-Chat-Verlauf beim neuen Chat automatisch auf das Wesentliche</div>
                 </div>
                 <SingleCombobox
                   value={orbitCompressModel}
                   onChange={v => setOrbitCompressModel(v)}
+                  options={orLoading ? [{ value: '', label: 'Modelle laden…' }] : models.map(m => ({ value: m.value, label: m.label, desc: m.value }))}
+                  placeholder="OR-Modell wählen…"
+                  searchable
+                />
+              </div>
+              {/* Coding Agent Komprimierung row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '10px 14px', alignItems: 'center', borderTop: '1px solid var(--line)' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Kontext-Komprimierung (Coding Agent)</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 2 }}>Komprimiert Agent-Nachrichten beim Session-Neustart als Kontext — Standard: DeepSeek v4 Flash</div>
+                </div>
+                <SingleCombobox
+                  value={agentCompressModel}
+                  onChange={v => setAgentCompressModel(v)}
                   options={orLoading ? [{ value: '', label: 'Modelle laden…' }] : models.map(m => ({ value: m.value, label: m.label, desc: m.value }))}
                   placeholder="OR-Modell wählen…"
                   searchable
@@ -1986,7 +2031,7 @@ function AIPanel({ hideTabs = [] }: { hideTabs?: AITab[] } = {}) {
 // ── Claude Provider Tab ───────────────────────────────────────────────────────
 
 function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject<(() => void) | null> }) {
-  const { claudeProviders, addClaudeProvider, updateClaudeProvider, removeClaudeProvider, aliases, addAlias, updateAlias } = useAppStore()
+  const { claudeProviders, addClaudeProvider, updateClaudeProvider, removeClaudeProvider, aliases, addAlias, updateAlias, addToast } = useAppStore()
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
   const emptyForm = (): Omit<ClaudeProvider, 'id' | 'endpointOk'> => ({
@@ -2001,7 +2046,6 @@ function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject
   const [jsonDraft, setJsonDraft] = useState('')
   const [jsonError, setJsonError] = useState('')
   const [savedCmd, setSavedCmd] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
   const [homeDir, setHomeDir]   = useState<string>('')
 
   React.useEffect(() => {
@@ -2129,9 +2173,10 @@ function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject
       })
     }
 
-    setSavedCmd(`alias ${shellName}='${aliasCmd}'`)
+    const savedAliasCmd = `alias ${shellName}='${aliasCmd}'`
+    setSavedCmd(savedAliasCmd)
     setAdding(false); setEditId(null); setEndpointStatus(null); setJsonError('')
-    setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 3000)
+    addToast({ type: 'success', title: 'Provider gespeichert', body: savedAliasCmd, duration: 5000 })
   }
 
   const checkEndpoint = async () => {
@@ -2166,20 +2211,6 @@ function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject
       <div style={{ fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.55 }}>
         Definiere einen LLM-Provider mit eigenem API-Endpunkt. Die generierte <span className="mono">claude.json</span>-Config setzt Env-Vars, die claude CLI beim Start liest. Provider tauchen beim Erstellen einer Session als Modell-Option auf.
       </div>
-
-      {/* Success toast */}
-      {saveSuccess && (
-        <div style={{ padding: '10px 14px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13 }}>✓</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, color: 'var(--ok)', fontWeight: 600 }}>Provider gespeichert</div>
-            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 1 }}>Shell-Alias wurde automatisch in ~/.zshrc eingetragen.</div>
-          </div>
-          {savedCmd && (
-            <button onClick={() => navigator.clipboard.writeText(savedCmd)} style={{ ...btnGhost, padding: '3px 10px', fontSize: 10.5, flexShrink: 0 }}>Alias kopieren</button>
-          )}
-        </div>
-      )}
 
       {/* Provider list */}
       {!showForm && (
@@ -2332,6 +2363,7 @@ const TEMPLATE_USAGE: Record<string, { screen: string; element: string }> = {
   'ai-prompt-start-detect':      { screen: 'Workspace',  element: 'Play ▶ → AI erkennt Start-Befehl' },
   'user-story-analyse':          { screen: 'Kanban',     element: 'AI-Button „Mit Docs analysieren" ⚡' },
   'ai-prompt-context-search':    { screen: 'Utility-Panel', element: 'Tab „Research" → Suchen' },
+  'prompt-support':              { screen: 'Workspace',  element: 'AI ⚡ im Eingabefeld (Implementierungsauftrag)' },
 }
 
 const VORLAGEN_TABS: { key: VorlagenTab; label: string; hint: string; pathLabel: string; contentLabel: string; pathPlaceholder: string; contentPlaceholder: string; needsPath: boolean; defaultCategory: string; adminOnly?: boolean }[] = [
@@ -2341,7 +2373,11 @@ const VORLAGEN_TABS: { key: VorlagenTab; label: string; hint: string; pathLabel:
 ]
 
 function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
-  const { docTemplates, addDocTemplate, updateDocTemplate, removeDocTemplate, setDocTemplates, currentUser, supabaseUrl, supabaseAnonKey, templates, addTemplate, updateTemplate, removeTemplate } = useAppStore()
+  const { docTemplates, addDocTemplate, updateDocTemplate, removeDocTemplate, setDocTemplates, currentUser, supabaseUrl, supabaseAnonKey, templates, addTemplate, updateTemplate, removeTemplate,
+    orbitCompressPrompt, setOrbitCompressPrompt,
+    agentCompressPrompt, setAgentCompressPrompt,
+    brainUpdatePrompt, setBrainUpdatePrompt,
+  } = useAppStore()
   const [activeTab, setActiveTab] = useState<VorlagenTab>('docs')
   const [editId, setEditId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -2362,11 +2398,11 @@ function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
 
   const filtered = activeTab === 'docs'
     ? docTemplates.filter(t => (t.category ?? 'doc') === 'doc')
-    : docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story')
+    : docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story' || t.category === 'prompt-support')
 
   const tabCount = (tab: VorlagenTab) => {
     if (tab === 'docs') return docTemplates.filter(t => (t.category ?? 'doc') === 'doc').length
-    if (tab === 'prompts') return docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story').length
+    if (tab === 'prompts') return docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story' || t.category === 'prompt-support').length
     return templates.length
   }
 
@@ -2392,7 +2428,7 @@ function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
   const cancel   = () => { setAdding(false); setEditId(null); setTplAdding(false); setTplEditId(null) }
 
   const handleReset = () => {
-    const nonDocTemplates = docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story')
+    const nonDocTemplates = docTemplates.filter(t => t.category === 'ai-prompt' || t.category === 'user-story' || t.category === 'prompt-support')
     const defaultDocTemplates = DEFAULT_DOC_TEMPLATES.filter(t => (t.category ?? 'doc') === 'doc')
     const next = [...defaultDocTemplates, ...nonDocTemplates]
     setDocTemplates(next)
@@ -2470,6 +2506,70 @@ function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
                 )}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── System-Prompt-Editoren (nur Admin, nur prompts-Tab) ── */}
+      {isAdmin && activeTab === 'prompts' && (
+        <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--fg-3)', marginBottom: 2 }}>
+            System-Prompts — Komprimierung &amp; Brain
+          </div>
+
+          {/* Orbit Chat Komprimierung */}
+          <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 6, padding: '14px 16px' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Orbit Chat — Kontext-Komprimierung</div>
+            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 10, lineHeight: 1.5 }}>
+              Verdichtet den Chat-Verlauf beim Start eines neuen Orbit-Chats. Modell: <b>KI-Funktionen → Kontext-Komprimierung (Chat)</b>
+            </div>
+            <textarea
+              value={orbitCompressPrompt}
+              onChange={e => setOrbitCompressPrompt(e.target.value)}
+              rows={7}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', lineHeight: 1.55, outline: 'none', resize: 'vertical' }}
+            />
+          </div>
+
+          {/* Coding Agent Komprimierung */}
+          <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 6, padding: '14px 16px' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Coding Agent — Kontext-Komprimierung</div>
+            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 10, lineHeight: 1.5 }}>
+              Komprimiert Agent-Nachrichten beim Session-Neustart. Modell: <b>KI-Funktionen → Kontext-Komprimierung (Coding Agent)</b>
+            </div>
+            <textarea
+              value={agentCompressPrompt}
+              onChange={e => setAgentCompressPrompt(e.target.value)}
+              rows={5}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', lineHeight: 1.55, outline: 'none', resize: 'vertical' }}
+            />
+          </div>
+
+          {/* Project Brain Update */}
+          <div style={{ background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 6, padding: '14px 16px' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Project Brain — Update-Prompt</div>
+            <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginBottom: 6, lineHeight: 1.5 }}>
+              Wird alle 5 Orbit-Antworten aufgerufen um den Projekt-Kontext zu aktualisieren. Leer = Standard-Prompt.
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              {['{brain}', '{messages}', '{n}', '{date}', '{projectName}'].map(ph => (
+                <span key={ph} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 4, padding: '1px 6px', color: 'var(--accent)', cursor: 'pointer' }}
+                  title={`Platzhalter: ${ph}`}>{ph}</span>
+              ))}
+              <span style={{ fontSize: 10, color: 'var(--fg-3)', alignSelf: 'center' }}>→ Platzhalter die ersetzt werden</span>
+            </div>
+            <textarea
+              value={brainUpdatePrompt}
+              onChange={e => setBrainUpdatePrompt(e.target.value)}
+              rows={10}
+              placeholder="Leer lassen um den Standard-Prompt zu nutzen…"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line-strong)', borderRadius: 5, background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', lineHeight: 1.55, outline: 'none', resize: 'vertical' }}
+            />
+          </div>
+
+          <div style={{ height: 1, background: 'var(--line)', marginTop: 4 }} />
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--fg-3)', marginBottom: 2 }}>
+            Weitere System Prompts
           </div>
         </div>
       )}
@@ -2655,11 +2755,12 @@ function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
 function KontextMgmtPanel() {
   const {
     orbitCtxBefore, orbitCtxAfter, setOrbitCtxBefore, setOrbitCtxAfter,
-    orbitCompressPrompt, setOrbitCompressPrompt,
     orbitCompressModel, setOrbitCompressModel,
     openrouterKey, orbitMessages, activeOrbitChatId, setOrbitMessages,
     agentContextMsgCount, setAgentContextMsgCount,
-    agentCompressPrompt, setAgentCompressPrompt,
+    agentAutoCompressOnStart, setAgentAutoCompressOnStart,
+    agentTailMessageCount, setAgentTailMessageCount,
+    addToast: addToastKontext,
   } = useAppStore()
   const { models: orModels, loading: orLoading } = useOpenRouterModels()
 
@@ -2697,7 +2798,7 @@ function KontextMgmtPanel() {
       const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openrouterKey}`,
+          'Authorization': `Bearer ${sanitizeKey(openrouterKey)}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': window.location.origin,
         },
@@ -2715,7 +2816,9 @@ function KontextMgmtPanel() {
       if (!result) throw new Error('Leere Antwort vom Modell')
       setCompressResult(result)
     } catch (e) {
-      setCompressError(e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      setCompressError(msg)
+      addToastKontext({ type: 'error', title: 'Komprimierung fehlgeschlagen', body: msg })
     } finally {
       setCompressing(false)
     }
@@ -2733,27 +2836,44 @@ function KontextMgmtPanel() {
     setApplied(true)
   }
 
-  return (
-    <div style={{ padding: '28px 32px', maxWidth: 680, margin: '0 auto' }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-0)', marginBottom: 20 }}>Kontext Management</div>
+  const card: React.CSSProperties = {
+    background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 8,
+    padding: '16px 18px', marginBottom: 12,
+  }
+  const cardTitle: React.CSSProperties = {
+    fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 4,
+  }
+  const cardSub: React.CSSProperties = {
+    fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6, marginBottom: 14,
+  }
 
-      {/* Tab bar — centered, Aussehen-style */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 28 }}>
+  return (
+    <div style={{ padding: '16px 20px', maxWidth: 680, margin: '0 auto' }}>
+      {/* Page header — same as AgentsPanel */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 2 }}>Kontext Management</div>
+          <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Referenz-IDs, Kontext-Fenster</div>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 6, border: '1px solid var(--line)' }}>
-          <button style={tabBtn(tab === 'chat')} onClick={() => setTab('chat')}>Chat</button>
+          <button style={tabBtn(tab === 'chat')} onClick={() => setTab('chat')}>ID-Kontext</button>
           <button style={tabBtn(tab === 'agent')} onClick={() => setTab('agent')}>Coding Agent</button>
-          <button style={tabBtn(tab === 'verdichten')} onClick={() => setTab('verdichten')}>KI-Verdichtung</button>
+          <button style={tabBtn(tab === 'verdichten')} onClick={() => setTab('verdichten')}>Orbit Chat</button>
         </div>
       </div>
 
       {tab === 'chat' && (
         <>
-          <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 24, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginBottom: 16, lineHeight: 1.6 }}>
             Wenn du in einer Orbit-Nachricht eine Referenz-ID verwendest (<code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-2)', padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>#msg:om-…</code> oder <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-2)', padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>#chat:oc-…</code>), wird der Kontext automatisch an die KI mitgegeben.
           </div>
 
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 16 }}>Kontext-Fenster</div>
+          <div style={card}>
+            <div style={cardTitle}>Kontext-Fenster</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={fieldLabel}>Nachrichten davor</label>
@@ -2772,56 +2892,33 @@ function KontextMgmtPanel() {
             </div>
           </div>
 
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 4 }}>Komprimierungs-Prompt</div>
-            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 12, lineHeight: 1.5 }}>
-              Reduziert den Chat-Verlauf auf das Minimum das eine KI braucht um zu verstehen was davor passiert ist.
-            </div>
-            <textarea
-              value={orbitCompressPrompt}
-              onChange={e => setOrbitCompressPrompt(e.target.value)}
-              rows={8}
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '10px 12px',
-                border: '1px solid var(--line-strong)', borderRadius: 6,
-                background: 'var(--bg-1)', color: 'var(--fg-0)',
-                fontSize: 11.5, fontFamily: 'var(--font-mono)', lineHeight: 1.6,
-                outline: 'none', resize: 'vertical',
-              }}
-            />
-          </div>
-
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 12 }}>ID-Schema</div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Orbit</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 11, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', marginBottom: 16 }}>
+          <div style={card}>
+            <div style={cardTitle}>ID-Schema</div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--fg-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Orbit</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11, marginBottom: 14 }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
-                <span style={{ color: 'var(--orbit)', minWidth: 90 }}>#chat:oc-…</span>
-                <span style={{ fontFamily: 'var(--font-ui)', color: 'var(--fg-3)' }}>Orbit-Chat — kopierbar im Chat-Header oben rechts</span>
+                <code style={{ color: 'var(--orbit)', minWidth: 90, fontFamily: 'var(--font-mono)' }}>#chat:oc-…</code>
+                <span style={{ color: 'var(--fg-3)' }}>Orbit-Chat — kopierbar im Chat-Header oben rechts</span>
               </div>
               <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
-                <span style={{ color: 'var(--accent)', minWidth: 90 }}>#msg:om-…</span>
-                <span style={{ fontFamily: 'var(--font-ui)', color: 'var(--fg-3)' }}>Einzelne Nachricht — kopierbar unter jeder Antwort</span>
+                <code style={{ color: 'var(--accent)', minWidth: 90, fontFamily: 'var(--font-mono)' }}>#msg:om-…</code>
+                <span style={{ color: 'var(--fg-3)' }}>Einzelne Nachricht — kopierbar unter jeder Antwort</span>
               </div>
             </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Coding Agent</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 11, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--fg-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Coding Agent</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11 }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
-                <span style={{ color: 'var(--fg-1)', minWidth: 90 }}>#proj:pr-…</span>
-                <span style={{ fontFamily: 'var(--font-ui)', color: 'var(--fg-3)' }}>Workspace — kopierbar per Hover in der Sidebar</span>
+                <code style={{ color: 'var(--fg-2)', minWidth: 90, fontFamily: 'var(--font-mono)' }}>#proj:pr-…</code>
+                <span style={{ color: 'var(--fg-3)' }}>Workspace — kopierbar per Hover in der Sidebar</span>
               </div>
               <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
-                <span style={{ color: 'var(--fg-1)', minWidth: 90 }}>#sess:ss-…</span>
-                <span style={{ fontFamily: 'var(--font-ui)', color: 'var(--fg-3)' }}>Session — embeds projRand6, kopierbar per Hover</span>
+                <code style={{ color: 'var(--fg-2)', minWidth: 90, fontFamily: 'var(--font-mono)' }}>#sess:ss-…</code>
+                <span style={{ color: 'var(--fg-3)' }}>Session — embeds projRand6, kopierbar per Hover</span>
               </div>
               <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
-                <span style={{ color: 'var(--accent)', minWidth: 90 }}>#msg:am-…</span>
-                <span style={{ fontFamily: 'var(--font-ui)', color: 'var(--fg-3)' }}>Agent-Nachricht — embeds sessRand4 → O(1) tree lookup</span>
+                <code style={{ color: 'var(--accent)', minWidth: 90, fontFamily: 'var(--font-mono)' }}>#msg:am-…</code>
+                <span style={{ color: 'var(--fg-3)' }}>Agent-Nachricht — embeds sessRand4 → O(1) tree lookup</span>
               </div>
-            </div>
-            <div style={{ marginTop: 14, fontSize: 10.5, color: 'var(--fg-3)', lineHeight: 1.7 }}>
-              Die mittlere Komponente der Nachrichten-ID (<code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-1)', padding: '1px 4px', borderRadius: 3 }}>om-<b>chat6</b>-rand</code>) kodiert die Chat-ID.
-              Pfad: <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-1)', padding: '1px 4px', borderRadius: 3 }}>context/raw/chat/&lt;projektId&gt;/&lt;chatId&gt;.jsonl</code>
             </div>
           </div>
         </>
@@ -2829,69 +2926,86 @@ function KontextMgmtPanel() {
 
       {tab === 'agent' && (
         <>
-          <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 24, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginBottom: 16, lineHeight: 1.6 }}>
             Steuert wie viele Agent-Nachrichten pro Workspace gespeichert und beim Neustart einer Session als Kontext komprimiert übergeben werden.
           </div>
 
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 16 }}>Session-Gedächtnis</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 260 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-2)' }}>Nachrichten für Komprimierung</label>
-              <input
-                type="number" min={1} max={100} value={agentContextMsgCount}
-                onChange={e => setAgentContextMsgCount(Math.max(1, Math.min(100, Number(e.target.value))))}
+          <div style={card}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <div>
+                <div style={cardTitle}>Auto-Komprimierung beim Session-Start</div>
+                <div style={{ fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
+                  Wenn neue Nachrichten seit der letzten Komprimierung vorhanden sind, wird beim Start einer Session im Hintergrund neu komprimiert — damit der Kontext beim nächsten Start aktuell ist.
+                </div>
+              </div>
+              <button
+                onClick={() => setAgentAutoCompressOnStart(!agentAutoCompressOnStart)}
                 style={{
-                  width: 72, padding: '6px 10px', border: '1px solid var(--line-strong)',
-                  borderRadius: 6, background: 'var(--bg-1)', color: 'var(--fg-0)',
-                  fontSize: 13, fontFamily: 'var(--font-mono)', outline: 'none',
+                  flexShrink: 0, width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                  background: agentAutoCompressOnStart ? 'var(--accent)' : 'var(--bg-3)',
+                  position: 'relative', transition: 'background 0.2s',
+                  boxShadow: agentAutoCompressOnStart ? '0 0 0 1px var(--accent)' : '0 0 0 1px var(--line)',
                 }}
-              />
-              <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>
-                Die letzten N Nachrichten (user + assistant) werden beim Neustart komprimiert und als Kontext injiziert.
-              </span>
+              >
+                <span style={{
+                  position: 'absolute', top: 4, width: 14, height: 14, borderRadius: '50%',
+                  left: agentAutoCompressOnStart ? 22 : 4,
+                  background: agentAutoCompressOnStart ? 'var(--accent-fg, #fff)' : 'var(--fg-3)',
+                  transition: 'left 0.2s',
+                }} />
+              </button>
             </div>
           </div>
 
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)', marginBottom: 4 }}>Komprimierungs-Prompt</div>
-            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 12, lineHeight: 1.5 }}>
-              Wird an Haiku übergeben um die letzten Agent-Nachrichten auf das Wesentliche zu reduzieren.
+          <div style={card}>
+            <div style={cardTitle}>Session-Gedächtnis</div>
+            <div style={cardSub}>Die letzten N Nachrichten (user + assistant) werden beim Neustart komprimiert und als Kontext injiziert.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <input
+                type="number" min={1} max={100} value={agentContextMsgCount}
+                onChange={e => setAgentContextMsgCount(Math.max(1, Math.min(100, Number(e.target.value))))}
+                style={numInput}
+              />
+              <label style={{ fontSize: 11, color: 'var(--fg-2)' }}>Nachrichten für Komprimierung</label>
             </div>
-            <textarea
-              value={agentCompressPrompt}
-              onChange={e => setAgentCompressPrompt(e.target.value)}
-              rows={8}
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '10px 12px',
-                border: '1px solid var(--line-strong)', borderRadius: 6,
-                background: 'var(--bg-1)', color: 'var(--fg-0)',
-                fontSize: 11.5, fontFamily: 'var(--font-mono)', lineHeight: 1.6,
-                outline: 'none', resize: 'vertical',
-              }}
-            />
+          </div>
+
+          <div style={card}>
+            <div style={cardTitle}>Tail-Nachrichten (Klartext)</div>
+            <div style={cardSub}>Die letzten N Nachrichten nach der letzten Komprimierung werden zusätzlich ungekürzt mitgegeben (0 = deaktiviert, max 10).</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <input
+                type="number" min={0} max={10} value={agentTailMessageCount}
+                onChange={e => setAgentTailMessageCount(Math.max(0, Math.min(10, Number(e.target.value))))}
+                style={numInput}
+              />
+              <label style={{ fontSize: 11, color: 'var(--fg-2)' }}>Anzahl Klartext-Nachrichten</label>
+            </div>
           </div>
         </>
       )}
 
       {tab === 'verdichten' && (
         <>
-          <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 24, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginBottom: 16, lineHeight: 1.6 }}>
             Sendet den aktuellen Chat-Verlauf an das konfigurierte Modell und erhält eine komprimierte Zusammenfassung — nur entwicklungsrelevante Infos, stichpunktartig, ideal als Kontext für eine neue Session.
           </div>
 
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Aktuelles Modell</div>
+          <div style={card}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={cardTitle}>Aktuelles Modell</div>
+                <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>Modell wechseln unter dem Tab <b>Chat</b> → LLM für Komprimierung</div>
+              </div>
               <span style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{orbitCompressModel}</span>
             </div>
-            <div style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>Modell wechseln unter dem Tab <b>Chat</b> → LLM für Komprimierung</div>
           </div>
 
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={card}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: compressError || !openrouterKey ? 12 : 0 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Aktueller Chat</div>
-                <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 3 }}>
+                <div style={cardTitle}>Aktueller Chat</div>
+                <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 2 }}>
                   {chatMsgs.length} Nachrichten{activeChatId ? ` · ${activeChatId}` : ' · kein Chat aktiv'}
                 </div>
               </div>
@@ -2899,44 +3013,10 @@ function KontextMgmtPanel() {
                 onClick={runCompress}
                 disabled={compressing || !openrouterKey || chatMsgs.length === 0}
                 style={{
-                  padding: '7px 18px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  padding: '7px 16px', borderRadius: 6, border: 'none', cursor: 'pointer',
                   background: 'var(--orbit)', color: '#fff', fontSize: 12, fontWeight: 600,
                   opacity: (compressing || !openrouterKey || chatMsgs.length === 0) ? 0.5 : 1,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}
-              >
-                <ISpark style={{ width: 13, height: 13, ...(compressing ? { animation: 'cc-pulse 0.5s ease-in-out infinite' } : {}) }} />
-                {compressing ? 'Verdichtet…' : 'Jetzt verdichten'}
-              </button>
-            </div>
-            {!openrouterKey && (
-              <div style={{ fontSize: 11, color: 'var(--err)', padding: '8px 12px', background: 'color-mix(in srgb, var(--err) 10%, transparent)', borderRadius: 6 }}>
-                OpenRouter API-Key fehlt — unter Large Language Models hinterlegen.
-              </div>
-            )}
-            {compressError && (
-              <div style={{ fontSize: 11, color: 'var(--err)', padding: '8px 12px', background: 'color-mix(in srgb, var(--err) 10%, transparent)', borderRadius: 6 }}>
-                {compressError}
-              </div>
-            )}
-          </div>
-
-          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Aktueller Chat</div>
-                <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 3 }}>
-                  {chatMsgs.length} Nachrichten {activeChatId ? `· ${activeChatId}` : '· kein Chat aktiv'}
-                </div>
-              </div>
-              <button
-                onClick={runCompress}
-                disabled={compressing || !openrouterKey || chatMsgs.length === 0}
-                style={{
-                  padding: '7px 18px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  background: 'var(--orbit)', color: '#fff', fontSize: 12, fontWeight: 600,
-                  opacity: (compressing || !openrouterKey || chatMsgs.length === 0) ? 0.5 : 1,
-                  display: 'flex', alignItems: 'center', gap: 6,
+                  display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
                 }}
               >
                 <ISpark style={{ width: 13, height: 13, ...(compressing ? { animation: 'cc-pulse 0.5s ease-in-out infinite' } : {}) }} />
@@ -2956,13 +3036,13 @@ function KontextMgmtPanel() {
           </div>
 
           {compressResult && (
-            <div style={{ background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, padding: '20px 24px' }}>
+            <div style={card}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-0)' }}>Ergebnis</div>
+                <div style={cardTitle}>Ergebnis</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     onClick={() => navigator.clipboard.writeText(compressResult)}
-                    style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--line-strong)', background: 'var(--bg-1)', color: 'var(--fg-1)', fontSize: 11, cursor: 'pointer' }}
+                    style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 11, cursor: 'pointer' }}
                   >
                     Kopieren
                   </button>
@@ -2980,7 +3060,7 @@ function KontextMgmtPanel() {
                 </div>
               </div>
               <pre style={{
-                margin: 0, padding: '12px 14px', background: 'var(--bg-1)',
+                margin: 0, padding: '12px 14px', background: 'var(--bg-2)',
                 border: '1px solid var(--line)', borderRadius: 6,
                 fontSize: 11.5, fontFamily: 'var(--font-mono)', color: 'var(--fg-1)',
                 whiteSpace: 'pre-wrap', lineHeight: 1.65, maxHeight: 360, overflowY: 'auto',

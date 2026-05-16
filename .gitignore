@@ -19,3 +19,5 @@ doc-update
 text-refine
 user-story-format
 start-detect
+cc-ui/release/
+cc-ui/.env

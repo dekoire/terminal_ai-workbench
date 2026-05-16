@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { IShield, IGit, ITerminal, ISpark } from '../primitives/Icons'
+import { IShield, IGit, ITerminal, ISpark, ISpinner, IEye, IEyeOff } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
-import logoWhite from '../../assets/codera_logo_white.png'
-import logoBlack from '../../assets/codera_logo_black.png'
 
 export function RegisterScreen() {
   const [firstName, setFirstName] = useState('')
@@ -14,10 +12,13 @@ export function RegisterScreen() {
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState('')
   const [success,   setSuccess]   = useState(false)
+  const [showPw,    setShowPw]    = useState(false)
+  const [showPw2,   setShowPw2]   = useState(false)
 
   const setScreen      = useAppStore(s => s.setScreen)
   const setCurrentUser = useAppStore(s => s.setCurrentUser)
-  const theme          = useAppStore(s => s.theme)
+  const addToast       = useAppStore(s => s.addToast)
+
   const supabaseUrl    = useAppStore(s => s.supabaseUrl)
   const supabaseKey    = useAppStore(s => s.supabaseAnonKey)
 
@@ -45,7 +46,7 @@ export function RegisterScreen() {
           },
         },
       })
-      if (sbErr) { setError(sbErr.message); return }
+      if (sbErr) { addToast({ type: 'error', title: 'Registrierung fehlgeschlagen', body: sbErr.message }); return }
 
       // If session is returned immediately (no email confirmation required)
       if (data.session && data.user) {
@@ -63,6 +64,7 @@ export function RegisterScreen() {
       } else {
         // Email confirmation required
         setSuccess(true)
+        addToast({ type: 'success', title: 'Fast geschafft!', body: 'Bestätigungs-E-Mail wurde gesendet. Bitte E-Mail prüfen.', duration: 0 })
       }
     } finally {
       setLoading(false)
@@ -103,9 +105,11 @@ export function RegisterScreen() {
         position: 'relative', zIndex: 1, borderRight: '1px solid var(--line)',
       }}>
         <div style={{ marginBottom: 0 }}>
-          <img src={theme === 'light' ? logoBlack : logoWhite} alt="Codera AI" style={{ height: 60, width: 'auto', display: 'block' }} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <ISpinner spin={false} size={34} style={{ color: 'var(--accent)' }} />
+            <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1 }}>Codera</span>
+          </span>
         </div>
-        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, letterSpacing: 0.3, margin: '-16px 0 0', paddingLeft: 47 }}>AI Development IDE</span>
 
         <div style={{ flex: 1 }} />
         <div style={{ maxWidth: 380 }}>
@@ -206,14 +210,24 @@ export function RegisterScreen() {
               {/* Password */}
               <div>
                 <label style={fieldLabel}>Passwort</label>
-                <input
-                  style={fieldInput}
-                  type="password"
-                  placeholder="Mindestens 8 Zeichen"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...fieldInput, paddingRight: 36 }}
+                    type={showPw ? 'text' : 'password'}
+                    placeholder="Mindestens 8 Zeichen"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(v => !v)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', alignItems: 'center' }}
+                    tabIndex={-1}
+                  >
+                    {showPw ? <IEyeOff style={{ width: 15, height: 15 }} /> : <IEye style={{ width: 15, height: 15 }} />}
+                  </button>
+                </div>
               </div>
 
               {/* Password repeat */}
@@ -223,18 +237,29 @@ export function RegisterScreen() {
                   {pwMatch    && <span style={{ color: 'var(--ok)',  fontSize: 10, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>✓ Übereinstimmend</span>}
                   {pwMismatch && <span style={{ color: 'var(--err)', fontSize: 10, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>✗ Stimmt nicht überein</span>}
                 </label>
-                <input
-                  style={{
-                    ...fieldInput,
-                    borderColor: pwMismatch ? 'var(--err)' : pwMatch ? 'var(--ok)' : undefined,
-                    outline: 'none',
-                  }}
-                  type="password"
-                  placeholder="••••••••"
-                  value={password2}
-                  onChange={e => setPassword2(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{
+                      ...fieldInput,
+                      paddingRight: 36,
+                      borderColor: pwMismatch ? 'var(--err)' : pwMatch ? 'var(--ok)' : undefined,
+                      outline: 'none',
+                    }}
+                    type={showPw2 ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password2}
+                    onChange={e => setPassword2(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw2(v => !v)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', alignItems: 'center' }}
+                    tabIndex={-1}
+                  >
+                    {showPw2 ? <IEyeOff style={{ width: 15, height: 15 }} /> : <IEye style={{ width: 15, height: 15 }} />}
+                  </button>
+                </div>
               </div>
 
               {error && (
