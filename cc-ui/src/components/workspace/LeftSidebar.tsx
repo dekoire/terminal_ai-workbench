@@ -4,7 +4,7 @@ import type { Project, Session, SidebarSection, SidebarSectionId, LayoutSection,
 import { idAddress } from '../../lib/ids'
 import { triggerSupabaseSignOut } from '../../lib/useSupabaseSync'
 import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag, IExternalLink, IBrain, ILayers, IDrag } from '../primitives/Icons'
-import { CtxLogButton, CompactGitCard, QuickLinksWidget, UserStoriesCard, SessionInfoCard } from './UtilityPanel'
+import { CtxLogButton, CompactGitCard, QuickLinksWidget, UserStoriesCard, SessionInfoCard } from './RightSidebar'
 import { AdminPanel } from '../screens/AdminPanel'
 import avatarDefault from '../../assets/avatar.jpg'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
@@ -221,7 +221,7 @@ function PopMenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: s
 
 const PROJECTS_COLLAPSED = 5
 
-export function ProjectSidebar() {
+export function LeftSidebar() {
   const {
     projects, templates, activeProjectId, activeSessionId,
     setActiveProject, setActiveSession, setScreen, setNewProjectOpen, setNewSessionOpen,

@@ -1,11 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { ProjectSidebar } from './ProjectSidebar'
-import { CenterPane } from './CenterPane'
-import { UtilityPanel } from './UtilityPanel'
-import { IMoon, ISun, ILogout, ITerminal, IPlay, IBot, ICompass, ISquareTerminal, IKanban, IPanelLeftOpen, IPanelLeftClose, IPanelRightOpen, IPanelRightClose, ISpinner, IAppLayout } from '../primitives/Icons'
-import { ModelBrowserModal } from '../modals/ModelBrowserModal'
-import { LayoutEditorModal } from '../modals/LayoutEditorModal'
+import { LeftSidebar } from './LeftSidebar'
+import { CenterPanel } from './CenterPanel'
+import { RightSidebar } from './RightSidebar'
+import { TopBar } from './TopBar'
+import { IMoon, ISun, ILogout, ITerminal, IPanelLeftOpen, IPanelLeftClose, IPanelRightOpen, IPanelRightClose } from '../primitives/Icons'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
 // ── drag-to-resize hook ───────────────────────────────────────────────────────
@@ -65,10 +64,9 @@ function VDivider({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void 
 
 export function Workspace() {
   const {
-    theme, setTheme, setScreen, openWorkshop, preset, setPreset, setAccent, setAccentFg,
+    theme, setTheme, setScreen, preset, setPreset, setAccent, setAccentFg,
     terminalTheme, setTerminalTheme,
-    projects, activeProjectId, activeSessionId, setActiveSession, setNewSessionOpen, showTitleBar,
-    logoSize,
+    projects, activeProjectId, activeSessionId, setActiveSession, setNewSessionOpen,
   } = useAppStore()
 
   const isElectron = navigator.userAgent.includes('Electron')
@@ -89,7 +87,7 @@ export function Workspace() {
     if (!next.dark && terminalTheme === 'default') setTerminalTheme('github-light')
   }
 
-  // ── File tabs (lifted from CenterPane so SessionTabs can live here) ───────
+  // ── File tabs (lifted from CenterPanel so SessionTabs can live here) ────
   const [fileTabs, setFileTabs] = useState<string[]>([])
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
 
@@ -152,9 +150,6 @@ export function Workspace() {
   const [utilityW, setUtilityW] = useState(280)
   const savedSidebarW = useRef(248)
   const savedUtilityW = useRef(280)
-  const [playBlink, setPlayBlink] = useState(false)
-  const [modelBrowserOpen, setModelBrowserOpen] = useState(false)
-  const [layoutEditorOpen, setLayoutEditorOpen] = useState(false)
 
   const [winW, setWinW] = useState(window.innerWidth)
   const [leftOpen, setLeftOpen] = useState(true)
@@ -176,12 +171,6 @@ export function Workspace() {
   const showLeft  = !compact || leftOpen
   const showRight = !compact || rightOpen
 
-  const triggerPlay = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('cc:hdr-play'))
-    setPlayBlink(true)
-    setTimeout(() => setPlayBlink(false), 1200)
-  }, [])
-
   const dragLeft  = useResizeDrag(useCallback((dx: number) => {
     setSidebarW(w => {
       const next = Math.min(480, Math.max(0, w + dx))
@@ -199,77 +188,27 @@ export function Workspace() {
   }, []))
 
   // suppress unused-import warnings for theme toggle icons
-  void theme; void setScreen; void IMoon; void ISun; void ILogout; void ITerminal
+  void theme; void setScreen; void IMoon; void ISun; void ILogout; void ITerminal; void isElectron
 
   return (
     <div
       style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-0)' }}
     >
-      {/* Window chrome */}
-      {(showTitleBar ?? true) && (
-        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: isElectron ? '20px 12px 20px 88px' : '20px 12px', background: 'var(--bg-1)', borderBottom: '1px solid var(--line)', userSelect: 'none', WebkitAppRegion: 'drag' } as React.CSSProperties}>
-          {/* Logo — links, kein Drag */}
-          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: 10, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <ISpinner spin={false} size={Math.round(logoSize * 0.635)} style={{ color: 'var(--accent)' }} />
-                <span style={{ fontSize: Math.round(logoSize * 0.5), fontWeight: 700, color: 'var(--fg-0)', fontFamily: 'var(--font-ui)', letterSpacing: -0.3, lineHeight: 1 }}>Codera</span>
-              </span>
-          </div>
-
-          <div style={{ flex: 1 }} />
-
-          {/* Action icons — right (no-drag so buttons stay clickable) */}
-          {activeProject && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-              <button onClick={openWorkshop} title="UI Workshop — Browser, Inspect & Annotate"
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                <ICompass style={{ width: 15, height: 15 }} />
-              </button>
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent('cc:open-project-terminal'))}
-                title="Projekt-Terminal öffnen"
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                <ISquareTerminal style={{ width: 15, height: 15 }} />
-              </button>
-              <button onClick={triggerPlay} title="Dev Server starten"
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: playBlink ? '#22c55e' : 'var(--fg-2)', display: 'flex', alignItems: 'center', transition: 'color 0.15s', animation: playBlink ? 'cc-blink-green 0.4s ease-in-out 3' : 'none' }}>
-                <IPlay style={{ width: 15, height: 15 }} />
-              </button>
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent('cc:open-kanban'))}
-                title="Kanban Board"
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                <IKanban style={{ width: 15, height: 15 }} />
-              </button>
-              <button
-                onClick={() => setLayoutEditorOpen(true)}
-                title="Layout-Editor"
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                <IAppLayout style={{ width: 15, height: 15 }} />
-              </button>
-              <button onClick={() => setModelBrowserOpen(true)} title="Modell-Browser"
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                <IBot style={{ width: 15, height: 15 }} />
-              </button>
-            </div>
-          )}
-          {modelBrowserOpen && <ModelBrowserModal onClose={() => setModelBrowserOpen(false)} />}
-          {layoutEditorOpen && <LayoutEditorModal onClose={() => setLayoutEditorOpen(false)} />}
-        </div>
-      )}
+      {/* Window chrome — extracted to TopBar */}
+      <TopBar />
 
       {/* 3-pane body */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
         {/* Sidebar */}
         {showLeft && (
           <div style={{ width: sidebarW, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
-            <ProjectSidebar />
+            <LeftSidebar />
           </div>
         )}
         {showLeft && <VDivider onMouseDown={dragLeft} />}
 
         {/* Center — takes all remaining space */}
-        <CenterPane
+        <CenterPanel
           fileTabs={fileTabs}
           activeFilePath={activeFilePath}
           setActiveFilePath={setActiveFilePath}
@@ -281,7 +220,7 @@ export function Workspace() {
         {/* Utility panel — only visible when at least one workspace exists */}
         {showRight && projects.length > 0 && (
           <div style={{ width: utilityW, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <UtilityPanel />
+            <RightSidebar />
           </div>
         )}
 

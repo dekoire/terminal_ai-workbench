@@ -766,7 +766,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
         const enriched = d.chats.map(c => ({ ...c, title: orbitMeta[c.chatId]?.title }))
         setAvailableChats(enriched)
         registerOrbitChats(activeProjectId, d.chats.map(c => c.chatId))
-        // Store lastTs so UtilityPanel can sort chats even before messages are loaded
+        // Store lastTs so RightSidebar can sort chats even before messages are loaded
         d.chats.forEach(c => { if (c.lastTs) setOrbitMeta(c.chatId, { ...orbitMeta[c.chatId], lastTs: c.lastTs }) })
       })
       .catch(() => {})

@@ -207,9 +207,9 @@ export const DEFAULT_SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: 'tasks',      visible: true },
 ]
 
-export type UtilityPanelSectionId = 'kontextlog' | 'github' | 'quicklinks' | 'tasks'
-export interface UtilitySection { id: UtilityPanelSectionId; visible: boolean }
-export const DEFAULT_UTILITY_SECTIONS: UtilitySection[] = [
+export type RightSidebarSectionId = 'kontextlog' | 'github' | 'quicklinks' | 'tasks'
+export interface RightSidebarSection { id: RightSidebarSectionId; visible: boolean }
+export const DEFAULT_RIGHT_SIDEBAR_SECTIONS: RightSidebarSection[] = [
   { id: 'kontextlog', visible: true },
   { id: 'github',     visible: true },
   { id: 'quicklinks', visible: true },
@@ -707,7 +707,7 @@ export interface AppState {
   orbitFavorites: Record<string, OrbitFavorite[]>  // projectId → favorites
   quickLinks:     QuickLink[]
   sidebarSections: SidebarSection[]
-  utilitySections: UtilitySection[]
+  utilitySections: RightSidebarSection[]
   layoutSections:  LayoutSection[]
   projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
   orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
@@ -847,7 +847,7 @@ export interface AppState {
   addOrbitFavorite:  (fav: OrbitFavorite) => void
   setQuickLinks:     (links: QuickLink[]) => void
   setSidebarSections: (sections: SidebarSection[]) => void
-  setUtilitySections: (sections: UtilitySection[]) => void
+  setUtilitySections: (sections: RightSidebarSection[]) => void
   setLayoutSections:  (sections: LayoutSection[]) => void
   addToast: (t: Omit<Toast, 'id'>) => string
   removeToast: (id: string) => void
@@ -1077,7 +1077,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   orbitFavorites: {},
   quickLinks: [],
   sidebarSections: DEFAULT_SIDEBAR_SECTIONS,
-  utilitySections: DEFAULT_UTILITY_SECTIONS,
+  utilitySections: DEFAULT_RIGHT_SIDEBAR_SECTIONS,
   layoutSections:  DEFAULT_LAYOUT_SECTIONS,
   projectBrains: {},
   orbitChatsLoaded: {},
@@ -1130,7 +1130,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     claudeProviders:        [],
     quickLinks:             [],
     sidebarSections:        DEFAULT_SIDEBAR_SECTIONS,
-    utilitySections:        DEFAULT_UTILITY_SECTIONS,
+    utilitySections:        DEFAULT_RIGHT_SIDEBAR_SECTIONS,
     layoutSections:         DEFAULT_LAYOUT_SECTIONS,
     deletedProjectIds:      [],
     // Credentials — must never bleed to another user
@@ -1519,7 +1519,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.cloudflareR2PublicUrl === undefined) state.cloudflareR2PublicUrl = ''
     if (state.currentUser === undefined) state.currentUser = null
     if (!state.sidebarSections || state.sidebarSections.length === 0) state.sidebarSections = DEFAULT_SIDEBAR_SECTIONS
-    if (!state.utilitySections || state.utilitySections.length === 0) state.utilitySections = DEFAULT_UTILITY_SECTIONS
+    if (!state.utilitySections || state.utilitySections.length === 0) state.utilitySections = DEFAULT_RIGHT_SIDEBAR_SECTIONS
     if (!state.layoutSections  || state.layoutSections.length === 0)  state.layoutSections  = DEFAULT_LAYOUT_SECTIONS
     // Flush migrated values back to file storage so they persist across restarts
     // Use setTimeout(0) to let Zustand finish rehydration before triggering a set

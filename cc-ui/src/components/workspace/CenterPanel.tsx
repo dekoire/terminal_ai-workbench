@@ -22,14 +22,14 @@ import { getSupabase } from '../../lib/supabase'
 import { loadAgentMessageById } from '../../lib/agentSync'
 
 
-interface CenterPaneProps {
+interface CenterPanelProps {
   fileTabs: string[]
   activeFilePath: string | null
   setActiveFilePath: (p: string | null) => void
   closeFileTab: (p: string) => void
 }
 
-export function CenterPane({ fileTabs, activeFilePath, setActiveFilePath, closeFileTab }: CenterPaneProps) {
+export function CenterPanel({ fileTabs, activeFilePath, setActiveFilePath, closeFileTab }: CenterPanelProps) {
   const { dangerMode, projects, activeProjectId, activeSessionId, setActiveSession, setNewSessionOpen, aliases, terminalTheme, theme: appTheme } = useAppStore()
   const termBg = (TERMINAL_THEMES.find(t => t.id === terminalTheme)?.theme.background)
     ?? (appTheme === 'dark' ? '#0e0d0b' : '#faf8f4')

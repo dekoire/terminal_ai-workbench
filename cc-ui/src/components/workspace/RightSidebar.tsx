@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { getOrModel, sanitizeKey } from '../../utils/orProvider'
-import type { OrbitMessage, QuickLink, RepoToken, UtilitySection, UtilityPanelSectionId, AllSectionId, LayoutSection } from '../../store/useAppStore'
-import { DEFAULT_UTILITY_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
+import type { OrbitMessage, QuickLink, RepoToken, RightSidebarSection, RightSidebarSectionId, AllSectionId, LayoutSection } from '../../store/useAppStore'
+import { DEFAULT_RIGHT_SIDEBAR_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
 import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
@@ -3422,7 +3422,7 @@ export function SessionInfoCard() {
   )
 }
 
-export function UtilityPanel() {
+export function RightSidebar() {
   const [tab, setTab] = useState(0)
   const [exporting, setExporting]  = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -3436,7 +3436,7 @@ export function UtilityPanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [tabConfigOpen])
   const { aliases, activeSessionId, projects, activeProjectId, createOrbitChat } = useAppStore()
-  const utilitySections  = useAppStore(s => s.utilitySections ?? DEFAULT_UTILITY_SECTIONS)
+  const utilitySections  = useAppStore(s => s.utilitySections ?? DEFAULT_RIGHT_SIDEBAR_SECTIONS)
   const setUtilitySections = useAppStore(s => s.setUtilitySections)
   const layoutSections    = useAppStore(s => s.layoutSections ?? DEFAULT_LAYOUT_SECTIONS)
   const setLayoutSections = useAppStore(s => s.setLayoutSections)
