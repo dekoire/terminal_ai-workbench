@@ -1,6 +1,6 @@
 # Codera AI — Datei- und Seitenstruktur
 
-> Letzte Aktualisierung: Mai 2026  
+> Letzte Aktualisierung: Mai 2026 (nach Refaktorierung Tasks 1–8)  
 > Stack: React 19 · TypeScript · Vite 6 · Zustand 5 · xterm.js · node-pty · Supabase
 
 ---
@@ -36,6 +36,7 @@ cc-ui/
 │   │
 │   ├── utils/
 │   │   ├── aiDetect.ts          ← KI-Erkennung von Dev-Server-Befehlen im Projekt
+│   │   ├── highlight.ts         ← highlightSegments() — Suchtext-Hervorhebung (CenterPanel + RightSidebar)
 │   │   ├── launchUtils.ts       ← guessPort, readProjectConfig, writeProjectConfig
 │   │   ├── orProvider.ts        ← OpenRouter-Provider-Helfer
 │   │   ├── updateDocs.ts        ← Doc-Template-Update-Logik
@@ -112,27 +113,35 @@ Der Workspace bleibt **permanent gemountet** (auch wenn andere Screens aktiv sin
 
 | Datei | Beschreibung |
 |-------|-------------|
-| `Workspace.tsx` | Haupt-Layout: baut aus drei Spalten zusammen (`ProjectSidebar`, `CenterPane`, `UtilityPanel`) |
-| `ProjectSidebar.tsx` | **Linke Spalte** — Projektliste, Session-Liste, Play-Button, Gear-Icon |
-| `CenterPane.tsx` | **Mittlere Spalte** — Terminal (xterm.js via WebSocket), Agent-View-Umschalter, Session-Toolbar |
-| `UtilityPanel.tsx` | **Rechte Spalte** — Tabs: Chat, Session, GitHub, Git Pro, Dateien, Data, Research, Monitoring |
+| `Workspace.tsx` | Haupt-Layout: baut aus drei Spalten zusammen (`LeftSidebar`, `CenterPanel`, `RightSidebar`) |
+| `TopBar.tsx` | Top-Leiste mit Logo, Play-Button, Workshop-Button, Model-Browser, Layout-Editor |
+| `LeftSidebar.tsx` | **Linke Spalte** — Projektliste, Session-Liste, Gear-Icon |
+| `CenterPanel.tsx` | **Mittlere Spalte** — Terminal (xterm.js), Agent-View, OrbitView, FileTabViewer, ChatInput |
+| `ChatInput.tsx` | Chat-Eingabe (985 Zeilen, eigenständige Komponente) — Voice, AI-Refine, Attachments, Ref-Pills |
+| `RightSidebar.tsx` | **Rechte Spalte** — Tabs: Chat (Orbit), Session, GitHub, Git Pro, Dateien, Data, Research, Monitoring |
 | `KanbanBoard.tsx` | Kanban-Board (fullscreen-Modal, via `cc:open-kanban` Event) |
 | `MonitoringPanel.tsx` | Monitoring-Tab: Live-Logs, Port-Status, Log-Filter des laufenden Dev-Servers |
+| `tabs/AiSearchTab.tsx` | Research-Tab (AI-Suche via OpenRouter) — aus RightSidebar extrahiert |
+| `tabs/index.ts` | Re-Export aller Tab-Komponenten |
+| `widgets/QuickLinksWidget.tsx` | Schnellzugriff-Links-Widget (mit Modal) — aus RightSidebar extrahiert |
+| `widgets/index.ts` | Re-Export aller Widget-Komponenten (inkl. CompactGitCard, SessionInfoCard etc.) |
 
 ### Spalten-Layout
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ ProjectSidebar (240px) │   CenterPane (flex-1)   │ UtilityPanel │
-│                        │                         │   (320px)    │
-│  Projekte              │  Terminal / AgentView   │  Chat        │
-│  └ Sessions            │  oder OrbitView         │  Session     │
-│                        │                         │  GitHub      │
-│  [▶ Play]              │                         │  Git Pro     │
-│  [⚙ Gear]              │                         │  Dateien     │
-│                        │                         │  Data        │
-│                        │                         │  Research    │
-│                        │                         │  Monitoring  │
+│                         TopBar                                  │
+├─────────────────────────────────────────────────────────────────┤
+│ LeftSidebar (240px) │   CenterPanel (flex-1)  │ RightSidebar   │
+│                     │                         │   (320px)      │
+│  Projekte           │  Terminal / AgentView   │  Chat (Orbit)  │
+│  └ Sessions         │  oder OrbitView         │  Session       │
+│                     │                         │  GitHub        │
+│  [⚙ Gear]           │   [ChatInput unten]     │  Git Pro       │
+│                     │                         │  Dateien       │
+│                     │                         │  Data          │
+│                     │                         │  Research      │
+│                     │                         │  Monitoring    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -170,6 +179,8 @@ Wiederverwendbare, zustandslose UI-Bausteine.
 | Datei | Beschreibung |
 |-------|-------------|
 | `Icons.tsx` | Alle Icons (I-Prefix, z.B. `ISpinner`, `ICheck`, `IWarn`). **Einzige Icon-Quelle** — kein SVG inline in Komponenten |
+| `SectionCard.tsx` | Einheitliche, kollapsierbare Abschnitts-Karte (ersetzt CollapsibleSection + Card). Props: `label`, `count?`, `defaultOpen?`, `collapsible?`, `action?`, `noPadding?` |
+| `JsonTree.tsx` | Kollapsible JSON-Baumdarstellung (`JsonTreeNode`). Memoized, ersetzt FtvJson* und Json* Implementierungen |
 | `ToastContainer.tsx` | Globale Toast-Benachrichtigungen (oben rechts, gestapelt, Blur-Design) |
 | `Avatar.tsx` | Nutzer-Avatar (Initialen-Fallback oder data-URL-Bild) |
 | `MarkdownContent.tsx` | Markdown-Renderer für Chat-Nachrichten und Agent-Output |
@@ -362,10 +373,19 @@ Kein React-Router — Screen-Routing läuft über `useAppStore.screen` State:
 
 | Kategorie | Konvention | Beispiel |
 |-----------|-----------|---------|
-| Komponenten | PascalCase | `LoginScreen`, `ProjectSidebar` |
+| Komponenten | PascalCase | `LoginScreen`, `LeftSidebar` |
+| Panel-Namen | `*Panel` / `*Sidebar` | `CenterPanel`, `LeftSidebar`, `RightSidebar` |
 | Hooks | `use` + PascalCase | `useAppLauncher`, `useUserDataLoader` |
 | Store-Actions | `set` + PascalCase | `setScreen`, `addToast` |
 | Icons | `I` + PascalCase | `ISpinner`, `ICheck`, `IWarn` |
 | API-Endpunkte | `/api/kebab-case` | `/api/store-read`, `/api/check-port` |
 | CSS-Variablen | `--kebab-case` | `--bg-0`, `--accent-fg` |
 | Libs (rein funktional) | camelCase | `supabaseSync`, `devLogger` |
+
+## Store-Typen (wichtige Umbenennungen)
+
+| Alt (vor Refaktorierung) | Neu |
+|--------------------------|-----|
+| `UtilityPanelSectionId` | `RightSidebarSectionId` |
+| `UtilitySection` | `RightSidebarSection` |
+| `DEFAULT_UTILITY_SECTIONS` | `DEFAULT_RIGHT_SIDEBAR_SECTIONS` |
