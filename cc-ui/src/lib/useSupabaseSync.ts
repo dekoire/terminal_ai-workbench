@@ -20,6 +20,11 @@ let _signOutFn: (() => void) | null = null
 
 /** Fire-and-forget Supabase sign-out — safe to call from anywhere. */
 export function triggerSupabaseSignOut() { _signOutFn?.() }
+
+// Dev-only logger — tree-shaken by Vite in production builds.
+const devLog  = (...a: unknown[]) => { if (import.meta.env.DEV) console.info(...a) }
+const devWarn = (...a: unknown[]) => { if (import.meta.env.DEV) console.warn(...a) }
+
 import { getSupabase }        from './supabase'
 import {
   loadFromSupabase,
@@ -136,7 +141,8 @@ export function useSupabaseSync() {
         return
       }
       if (event === 'SIGNED_IN') {
-        // Sync currentUser metadata from Supabase (name/avatar may have changed)
+        // Sync currentUser display data from Supabase (name/avatar may have changed on another device).
+        // SECURITY: user_metadata is user-editable — used here for display only, never for authorization.
         const sbUser = session?.user
         if (sbUser && sbUser.id === useAppStore.getState().currentUser?.id) {
           const meta = sbUser.user_metadata ?? {}
@@ -228,7 +234,7 @@ export function useSupabaseSync() {
 
     const sb = getSb()
     if (!sb) {
-      console.warn('[supabaseSync] Supabase not configured — skipping load')
+      devWarn('[supabaseSync] Supabase not configured — skipping load')
       loadedRef.current  = true
       loadingRef.current = false
       useAppStore.getState().setDataLoaded(true)
@@ -239,7 +245,7 @@ export function useSupabaseSync() {
     // localStorage before making any authenticated requests.
     sb.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
-        console.warn('[supabaseSync] No active session — skipping load')
+        devWarn('[supabaseSync] No active session — skipping load')
         loadedRef.current  = true
         loadingRef.current = false
         useAppStore.getState().setDataLoaded(true)
@@ -271,7 +277,7 @@ export function useSupabaseSync() {
               const parsed = JSON.parse(backup)
               if (Array.isArray(parsed) && parsed.length > 0) {
                 settings.quickLinks = parsed
-                console.info('[supabaseSync] ℹ️ QuickLinks restored from localStorage backup')
+                devLog('[supabaseSync] ℹ️ QuickLinks restored from localStorage backup')
               }
             }
           } catch { /* non-fatal */ }
@@ -311,7 +317,7 @@ export function useSupabaseSync() {
           }
         } catch { /* non-fatal */ }
 
-        console.info('[supabaseSync] ✅ Settings loaded from Supabase')
+        devLog('[supabaseSync] ✅ Settings loaded from Supabase')
       }
 
       // Always merge projects from DB regardless of whether settings exist.
@@ -336,7 +342,7 @@ export function useSupabaseSync() {
           useAppStore.setState({ projects: merged })
         }
         const projCount = useAppStore.getState().projects.length
-        console.info(`[supabaseSync] ✅ ${projCount} project(s) loaded from Supabase`)
+        devLog(`[supabaseSync] ✅ ${projCount} project(s) loaded from Supabase`)
       }
 
       // Chat metadata: merge (local takes priority for active chats)
@@ -344,14 +350,14 @@ export function useSupabaseSync() {
       const mergedMeta = { ...orbitMeta, ...localMeta }
       if (Object.keys(orbitMeta).length > 0) {
         useAppStore.setState({ orbitMeta: mergedMeta })
-        console.info('[supabaseSync] ✅ Chat metadata loaded from Supabase')
+        devLog('[supabaseSync] ✅ Chat metadata loaded from Supabase')
       }
 
       // Project brains: Supabase is authoritative
       if (Object.keys(projectBrains).length > 0) {
         const localBrains = useAppStore.getState().projectBrains
         useAppStore.setState({ projectBrains: { ...projectBrains, ...localBrains } })
-        console.info('[supabaseSync] ✅ Project brains loaded from Supabase')
+        devLog('[supabaseSync] ✅ Project brains loaded from Supabase')
       }
 
       // Apply global admin templates: replace built-ins, keep user's personal templates
@@ -359,7 +365,7 @@ export function useSupabaseSync() {
         const globalIds = new Set(result.globalTemplates.map(t => t.id))
         const userPersonal = useAppStore.getState().docTemplates.filter(t => !globalIds.has(t.id) && !(t as { builtin?: boolean }).builtin)
         useAppStore.setState({ docTemplates: [...result.globalTemplates, ...userPersonal] })
-        console.info(`[supabaseSync] ✅ Global templates applied (${result.globalTemplates.length})`)
+        devLog(`[supabaseSync] ✅ Global templates applied (${result.globalTemplates.length})`)
       }
 
       // Apply global prompt templates — seed new users, merge for existing users
@@ -377,7 +383,7 @@ export function useSupabaseSync() {
             useAppStore.setState({ templates: [...currentTemplates, ...newOnes] })
           }
         }
-        console.info(`[supabaseSync] ✅ Global prompt templates applied (${result.globalPrompts.length})`)
+        devLog(`[supabaseSync] ✅ Global prompt templates applied (${result.globalPrompts.length})`)
       }
 
       // Apply global CLI config (tweakcc + system prompt) — fire-and-forget
@@ -388,7 +394,7 @@ export function useSupabaseSync() {
             await fetch('/api/tweakcc/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: tweakccConfig }) })
             await fetch('/api/tweakcc/system-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: systemPrompt }) })
             await fetch('/api/tweakcc/apply', { method: 'POST' })
-            console.info('[supabaseSync] ✅ Global CLI config applied')
+            devLog('[supabaseSync] ✅ Global CLI config applied')
           } catch { /* non-fatal */ }
         })()
       }
@@ -427,7 +433,7 @@ export function useSupabaseSync() {
             })
           } catch { /* non-fatal — user can re-save manually */ }
         }
-        console.info(`[supabaseSync] ✅ Shell aliases provisioned for ${providers.length} provider(s)`)
+        devLog(`[supabaseSync] ✅ Shell aliases provisioned for ${providers.length} provider(s)`)
       })()
 
       loadedRef.current  = true
@@ -441,7 +447,7 @@ export function useSupabaseSync() {
       if (allProjs.length > 0) {
         void saveProjectsToSupabase(sb, userId, allProjs)
         if (newLocal.length > 0)
-          console.info(`[supabaseSync] ✅ Synced ${newLocal.length} local project(s) to DB`)
+          devLog(`[supabaseSync] ✅ Synced ${newLocal.length} local project(s) to DB`)
       }
       // Push sessions for ALL projects that have local sessions.
       // This handles: (a) brand-new local projects, (b) existing DB projects whose
@@ -456,7 +462,7 @@ export function useSupabaseSync() {
         // Only push if local has more sessions than DB (avoids redundant writes)
         if (p.sessions.length > dbCount) {
           void saveSessionsToSupabase(sb, userId, p.id, p.sessions)
-          console.info(`[supabaseSync] ✅ Pushed ${p.sessions.length} session(s) for project ${p.id} (DB had ${dbCount})`)
+          devLog(`[supabaseSync] ✅ Pushed ${p.sessions.length} session(s) for project ${p.id} (DB had ${dbCount})`)
         }
       }
       // Migrate orbit favorites from JSON blob → table (one-time, if table was empty)
@@ -469,7 +475,7 @@ export function useSupabaseSync() {
         for (const fav of allFavs) {
           await upsertOrbitFavoriteToSupabase(sb, userId, fav)
         }
-        console.info(`[supabaseSync] ✅ Migrated ${allFavs.length} orbit favorite(s) to table`)
+        devLog(`[supabaseSync] ✅ Migrated ${allFavs.length} orbit favorite(s) to table`)
       })()
     }).catch(err => {
       console.error('[supabaseSync] load error:', err)
