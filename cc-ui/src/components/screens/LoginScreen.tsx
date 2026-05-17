@@ -30,12 +30,16 @@ export function LoginScreen() {
       const meta = user?.user_metadata ?? {}
       // Switch file storage to this user's personal file — all writes from here go there
       setActiveStorageUser(user!.id)
+      // Persist user ID in localStorage so the file-storage bootstrap can find the
+      // user-specific file on the next page reload (shared file may have null currentUser)
+      localStorage.setItem('cc-user-id', user!.id)
       // Re-hydrate the store from the user-specific file (Zustand only reads storage once on
       // startup, so without this the user's saved config is never applied after login)
       await useAppStore.persist.rehydrate()
       // Mark session active BEFORE setCurrentUser so the Supabase watcher
       // doesn't immediately sign us back out when it sees the new session
       sessionStorage.setItem('cc-active-session', '1')
+      localStorage.setItem('cc-active-session', '1')
       setCurrentUser({
         id: user!.id,
         email: user!.email ?? email,

@@ -962,10 +962,23 @@ const fileStorage = {
       const r = await fetch('/api/store-read')
       if (!r.ok) throw new Error()
       const sharedText = await r.text()
-      if (!sharedText || sharedText === 'null') return null
+      if (!sharedText || sharedText === 'null') {
+        // Shared file empty — check localStorage fallback for user ID (survives reload)
+        const lsUid = localStorage.getItem('cc-user-id')
+        if (lsUid) {
+          _activeStorageUserId = lsUid
+          const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(lsUid)}`)
+          if (r2.ok) {
+            const userText = await r2.text()
+            if (userText && userText !== 'null') return userText
+          }
+        }
+        return null
+      }
       try {
         const parsed = JSON.parse(sharedText) as { state?: { currentUser?: { id?: string } } }
-        const uid = parsed?.state?.currentUser?.id
+        // Also check localStorage as fallback when shared file has no currentUser (e.g. after logout)
+        const uid = parsed?.state?.currentUser?.id ?? localStorage.getItem('cc-user-id') ?? undefined
         if (uid) {
           _activeStorageUserId = uid
           const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(uid)}`)

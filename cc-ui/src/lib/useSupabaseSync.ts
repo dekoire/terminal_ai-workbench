@@ -16,6 +16,11 @@ import { useAppStore, setActiveStorageUser } from '../store/useAppStore'
 // Clears all user-specific local state on logout so the next user starts clean.
 function clearUserState() {
   setActiveStorageUser('')
+  // Clear the localStorage keys used for reload-persistence so the next
+  // page load doesn't try to restore a now-invalid session.
+  localStorage.removeItem('cc-user-id')
+  localStorage.removeItem('cc-active-session')
+  sessionStorage.removeItem('cc-active-session')
   // currentUser must be null BEFORE resetUserData so the doSave guard catches
   // the immediate save that fires when projects.length drops to 0.
   useAppStore.setState({
@@ -58,6 +63,8 @@ export function useSupabaseSync() {
   // Prevent React Strict Mode double-invoke from firing two parallel loads.
   // Set to true as soon as a load starts; reset only when the user changes.
   const loadingRef = useRef(false)
+  // Fix 1: Guard against SIGNED_OUT firing before Supabase INITIAL_SESSION.
+  const rehydratedRef = useRef(false)
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -65,11 +72,18 @@ export function useSupabaseSync() {
 
   // ── inactivity tracking (2-hour lock) ─────────────────────────────────────
 
-  const lastActivityRef = useRef(Date.now())
+  // Fix 3: Restore lastActivity from localStorage so inactivity check survives reload.
+  const lastActivityRef = useRef(
+    parseInt(localStorage.getItem('cc-last-activity') ?? String(Date.now()), 10)
+  )
   const INACTIVITY_MS   = 2 * 60 * 60 * 1000   // 2 hours
 
   useEffect(() => {
-    const touch = () => { lastActivityRef.current = Date.now() }
+    const touch = () => {
+      const now = Date.now()
+      lastActivityRef.current = now
+      localStorage.setItem('cc-last-activity', String(now))
+    }
     window.addEventListener('mousemove',  touch, { passive: true })
     window.addEventListener('keydown',    touch, { passive: true })
     window.addEventListener('mousedown',  touch, { passive: true })
@@ -110,8 +124,32 @@ export function useSupabaseSync() {
     const sb = getSb()
     if (!sb) return
     const { data: { subscription } } = sb.auth.onAuthStateChange((event) => {
+      // Fix 1: INITIAL_SESSION fires once during init — mark hydration complete.
+      if (event === 'INITIAL_SESSION') {
+        rehydratedRef.current = true
+        return
+      }
       if (event === 'SIGNED_OUT') {
+        // Fix 1: Ignore SIGNED_OUT events that fire before Supabase has finished
+        // rehydrating the persisted session (avoids false logout on page reload).
+        if (!rehydratedRef.current) return
+
+        // Fix 2: Check active-session flag (localStorage survives reload; sessionStorage as fallback)
+        const hasActiveFlag = localStorage.getItem('cc-active-session') === '1' || sessionStorage.getItem('cc-active-session') === '1'
         const inactive = Date.now() - lastActivityRef.current
+
+        if (hasActiveFlag && inactive < INACTIVITY_MS) {
+          // Session was active and user wasn't idle — this is a spurious SIGNED_OUT.
+          // Try to silently refresh the session.
+          sb.auth.refreshSession().catch(() => {
+            loadedRef.current  = false
+            loadingRef.current = false
+            userIdRef.current  = null
+            clearUserState()
+          })
+          return
+        }
+
         if (inactive >= INACTIVITY_MS) {
           // User was idle for ≥ 2 hours → force re-login
           loadedRef.current  = false

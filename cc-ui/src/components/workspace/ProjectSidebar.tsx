@@ -195,7 +195,7 @@ function AvatarPopoverBtn() {
           <PopMenuItem
             icon={<ILogout style={{ width: 13, height: 13 }} />}
             label="Ausloggen"
-            onClick={() => { setOpen(false); setActiveStorageUser(''); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
+            onClick={() => { setOpen(false); setActiveStorageUser(''); localStorage.removeItem('cc-user-id'); localStorage.removeItem('cc-active-session'); sessionStorage.removeItem('cc-active-session'); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
           />
           <div style={{ height: 6 }} />
         </div>
