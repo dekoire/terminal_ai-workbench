@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, nativeTheme, session, ipcMain, webContents, clipboard } from 'electron'
+import { app, BrowserWindow, shell, nativeTheme, session, ipcMain, webContents, clipboard, safeStorage } from 'electron'
 
 // Fix for Electron webview black screen on macOS — must be called before app.whenReady()
 app.commandLine.appendSwitch('in-process-gpu')
@@ -112,6 +112,29 @@ app.whenReady().then(async () => {
   // IPC: clipboard write (navigator.clipboard fails under contextIsolation)
   ipcMain.handle('clipboard:write', (_e, text: string) => {
     clipboard.writeText(text)
+  })
+
+  // IPC: credential encryption via Electron safeStorage
+  // macOS → Keychain, Windows → DPAPI, Linux → libsecret / kwallet
+  ipcMain.handle('credential:encrypt', (_e, plaintext: string): string => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      // safeStorage not available (e.g. headless CI) — return plaintext unchanged
+      // The renderer marks it as __enc__: false so it can detect this on read.
+      return plaintext
+    }
+    return safeStorage.encryptString(plaintext).toString('base64')
+  })
+
+  ipcMain.handle('credential:decrypt', (_e, ciphertext: string): string => {
+    if (!safeStorage.isEncryptionAvailable()) return ciphertext
+    try {
+      return safeStorage.decryptString(Buffer.from(ciphertext, 'base64'))
+    } catch {
+      // Decryption failed — could be a plaintext value from an old store.
+      // Return empty string; user will need to re-enter the credential.
+      console.warn('[main] credential:decrypt failed for value, returning empty')
+      return ''
+    }
   })
 
   // IPC: force-repaint a webview by its webContentsId

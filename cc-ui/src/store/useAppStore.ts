@@ -920,6 +920,8 @@ const DEMO_TEMPLATES: Template[] = [
 // Reads/writes ~/.cc-ui-data.json via the Vite dev-server API.
 // Active user ID for per-user file routing.
 // Set on login, cleared on logout.
+// Credentials (API keys, tokens) are encrypted at rest via Electron safeStorage.
+import { encryptCredentials, decryptCredentials } from '../utils/credentialStore'
 let _activeStorageUserId = ''
 export const setActiveStorageUser = (id: string) => {
   _activeStorageUserId = id
@@ -945,51 +947,79 @@ const fileStorage = {
       const lsUid = localStorage.getItem('cc-user-id')
       const activeUid = _activeStorageUserId || lsUid || ''
 
+      let rawText: string | null = null
+
       if (activeUid) {
         if (!_activeStorageUserId) _activeStorageUserId = activeUid
         const r = await fetch(`/api/store-read?userId=${encodeURIComponent(activeUid)}`)
         if (r.ok) {
           const text = await r.text()
-          if (text && text !== 'null' && text.trim() !== '') return text
+          if (text && text !== 'null' && text.trim() !== '') rawText = text
         }
       }
 
-      // Fallback: read shared file (for users who haven't logged in yet, or first-ever launch)
-      const r = await fetch('/api/store-read')
-      if (!r.ok) throw new Error()
-      const sharedText = await r.text()
-      if (!sharedText || sharedText === 'null' || sharedText.trim() === '') return null
+      if (!rawText) {
+        // Fallback: read shared file (for users who haven't logged in yet, or first-ever launch)
+        const r = await fetch('/api/store-read')
+        if (!r.ok) throw new Error()
+        const sharedText = await r.text()
+        if (!sharedText || sharedText === 'null' || sharedText.trim() === '') return null
 
-      // Legacy bootstrap: try to find userId in shared file for users upgrading from old version
-      try {
-        const parsed = JSON.parse(sharedText) as { state?: { currentUser?: { id?: string } } }
-        const uid = parsed?.state?.currentUser?.id
-        if (uid && !activeUid) {
-          // Migrate: save to localStorage so future reloads use the fast path
-          localStorage.setItem('cc-user-id', uid)
-          _activeStorageUserId = uid
-          const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(uid)}`)
-          if (r2.ok) {
-            const userText = await r2.text()
-            if (userText && userText !== 'null') return userText
-            // Seed user file from shared file
-            await fetch(`/api/store-write?userId=${encodeURIComponent(uid)}`, {
-              method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: sharedText,
-            })
+        // Legacy bootstrap: try to find userId in shared file for users upgrading from old version
+        try {
+          const parsed = JSON.parse(sharedText) as { state?: { currentUser?: { id?: string } } }
+          const uid = parsed?.state?.currentUser?.id
+          if (uid && !activeUid) {
+            // Migrate: save to localStorage so future reloads use the fast path
+            localStorage.setItem('cc-user-id', uid)
+            _activeStorageUserId = uid
+            const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(uid)}`)
+            if (r2.ok) {
+              const userText = await r2.text()
+              if (userText && userText !== 'null') {
+                rawText = userText
+              } else {
+                // Seed user file from shared file
+                await fetch(`/api/store-write?userId=${encodeURIComponent(uid)}`, {
+                  method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: sharedText,
+                })
+                rawText = sharedText
+              }
+            }
           }
+        } catch { /* shared file not parseable */ }
+        if (!rawText) rawText = sharedText
+      }
+
+      // Decrypt credential fields before returning to the store
+      try {
+        const parsed = JSON.parse(rawText) as { state?: Record<string, unknown> }
+        if (parsed?.state) {
+          parsed.state = await decryptCredentials(parsed.state)
+          return JSON.stringify(parsed)
         }
-      } catch { /* shared file not parseable */ }
-      return sharedText
+      } catch { /* not parseable — return as-is */ }
+      return rawText
     } catch {
       return localStorage.getItem(_name)
     }
   },
   setItem: async (_name: string, value: string): Promise<void> => {
     try {
+      // Encrypt credential fields before writing to disk
+      let toWrite = value
+      try {
+        const parsed = JSON.parse(value) as { state?: Record<string, unknown> }
+        if (parsed?.state) {
+          parsed.state = await encryptCredentials(parsed.state)
+          toWrite = JSON.stringify(parsed)
+        }
+      } catch { /* value not parseable — write as-is */ }
+
       await fetch(storeUrl('/api/store-write'), {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: value,
+        body: toWrite,
       })
     } catch {
       localStorage.setItem(_name, value)
