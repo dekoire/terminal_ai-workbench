@@ -940,7 +940,16 @@ const DEMO_TEMPLATES: Template[] = [
 // Active user ID for per-user file routing.
 // Set on login, cleared on logout.
 let _activeStorageUserId = ''
-export const setActiveStorageUser = (id: string) => { _activeStorageUserId = id }
+export const setActiveStorageUser = (id: string) => {
+  _activeStorageUserId = id
+  if (id) {
+    localStorage.setItem('cc-user-id', id)
+  } else {
+    localStorage.removeItem('cc-user-id')
+    localStorage.removeItem('cc-active-session')
+    sessionStorage.removeItem('cc-active-session')
+  }
+}
 
 const storeUrl = (base: string) =>
   _activeStorageUserId ? `${base}?userId=${encodeURIComponent(_activeStorageUserId)}` : base
@@ -951,48 +960,44 @@ const storeUrl = (base: string) =>
 const fileStorage = {
   getItem: async (_name: string): Promise<string | null> => {
     try {
-      // If userId already known, read user file directly
-      if (_activeStorageUserId) {
-        const r = await fetch(storeUrl('/api/store-read'))
-        if (!r.ok) throw new Error()
-        const text = await r.text()
-        return text === 'null' || text.trim() === '' ? null : text
+      // Primary: use cached userId from localStorage (set on login, cleared on logout)
+      const lsUid = localStorage.getItem('cc-user-id')
+      const activeUid = _activeStorageUserId || lsUid || ''
+
+      if (activeUid) {
+        if (!_activeStorageUserId) _activeStorageUserId = activeUid
+        const r = await fetch(`/api/store-read?userId=${encodeURIComponent(activeUid)}`)
+        if (r.ok) {
+          const text = await r.text()
+          if (text && text !== 'null' && text.trim() !== '') return text
+        }
       }
-      // Bootstrap: read shared file, detect currentUser, switch to user file
+
+      // Fallback: read shared file (for users who haven't logged in yet, or first-ever launch)
       const r = await fetch('/api/store-read')
       if (!r.ok) throw new Error()
       const sharedText = await r.text()
-      if (!sharedText || sharedText === 'null') {
-        // Shared file empty — check localStorage fallback for user ID (survives reload)
-        const lsUid = localStorage.getItem('cc-user-id')
-        if (lsUid) {
-          _activeStorageUserId = lsUid
-          const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(lsUid)}`)
-          if (r2.ok) {
-            const userText = await r2.text()
-            if (userText && userText !== 'null') return userText
-          }
-        }
-        return null
-      }
+      if (!sharedText || sharedText === 'null' || sharedText.trim() === '') return null
+
+      // Legacy bootstrap: try to find userId in shared file for users upgrading from old version
       try {
         const parsed = JSON.parse(sharedText) as { state?: { currentUser?: { id?: string } } }
-        // Also check localStorage as fallback when shared file has no currentUser (e.g. after logout)
-        const uid = parsed?.state?.currentUser?.id ?? localStorage.getItem('cc-user-id') ?? undefined
-        if (uid) {
+        const uid = parsed?.state?.currentUser?.id
+        if (uid && !activeUid) {
+          // Migrate: save to localStorage so future reloads use the fast path
+          localStorage.setItem('cc-user-id', uid)
           _activeStorageUserId = uid
           const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(uid)}`)
           if (r2.ok) {
             const userText = await r2.text()
-            // User file exists → use it; otherwise migrate shared file to user file
             if (userText && userText !== 'null') return userText
-            // First login ever: seed user file from shared file so nothing is lost
+            // Seed user file from shared file
             await fetch(`/api/store-write?userId=${encodeURIComponent(uid)}`, {
               method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: sharedText,
             })
           }
         }
-      } catch { /* shared file not parseable — use as-is */ }
+      } catch { /* shared file not parseable */ }
       return sharedText
     } catch {
       return localStorage.getItem(_name)
@@ -1462,12 +1467,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   // Migrate old sessions that were saved without cmd/args
   onRehydrateStorage: () => (state) => {
     if (!state) return
-    // Ensure screen is always valid — null/undefined causes a black screen
-    if (!state.screen) {
-      state.screen = state.currentUser ? 'workspace' : 'login'
-      // Force-persist the corrected screen back to storage so it doesn't revert on next reload
-      setTimeout(() => useAppStore.setState({ screen: state!.screen }), 0)
-    }
+    // Derive screen from currentUser — never restore 'login' from disk if user is set,
+    // and never land on a stale overlay screen.
+    state.screen = state.currentUser ? 'workspace' : 'login'
     // Migrate sessions missing cmd/args
     state.projects = state.projects.map(p => ({
       ...p,
@@ -1546,8 +1548,6 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }, 0)
   },
   partialize: (s) => ({
-    // Normalize overlay screens → workspace so we never restore a modal/settings on reload
-    screen: (s.screen === 'login' || s.screen === 'workspace') ? s.screen : 'workspace',
     projects:        s.projects,
     aliases:         s.aliases,
     templates:       s.templates,

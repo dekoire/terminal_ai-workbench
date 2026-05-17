@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore, setActiveStorageUser, DEFAULT_SIDEBAR_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
 import type { Project, Session, SidebarSection, SidebarSectionId, LayoutSection, AllSectionId } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
+import { triggerSupabaseSignOut } from '../../lib/useSupabaseSync'
 import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag, IExternalLink, IBrain, ILayers, IDrag } from '../primitives/Icons'
 import { CtxLogButton, CompactGitCard, QuickLinksWidget, UserStoriesCard, SessionInfoCard } from './UtilityPanel'
 import { AdminPanel } from '../screens/AdminPanel'
@@ -195,7 +196,7 @@ function AvatarPopoverBtn() {
           <PopMenuItem
             icon={<ILogout style={{ width: 13, height: 13 }} />}
             label="Ausloggen"
-            onClick={() => { setOpen(false); setActiveStorageUser(''); localStorage.removeItem('cc-user-id'); localStorage.removeItem('cc-active-session'); sessionStorage.removeItem('cc-active-session'); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
+            onClick={() => { setOpen(false); triggerSupabaseSignOut(); setActiveStorageUser(''); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
           />
           <div style={{ height: 6 }} />
         </div>

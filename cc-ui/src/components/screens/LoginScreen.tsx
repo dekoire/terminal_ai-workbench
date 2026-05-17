@@ -28,11 +28,9 @@ export function LoginScreen() {
       if (sbErr) { addToast({ type: 'error', title: 'Login fehlgeschlagen', body: sbErr.message }); return }
       const user = data.user
       const meta = user?.user_metadata ?? {}
-      // Switch file storage to this user's personal file — all writes from here go there
+      // Switch file storage to this user's personal file and persist the user ID
+      // in localStorage — setActiveStorageUser now handles both atomically.
       setActiveStorageUser(user!.id)
-      // Persist user ID in localStorage so the file-storage bootstrap can find the
-      // user-specific file on the next page reload (shared file may have null currentUser)
-      localStorage.setItem('cc-user-id', user!.id)
       // Re-hydrate the store from the user-specific file (Zustand only reads storage once on
       // startup, so without this the user's saved config is never applied after login)
       await useAppStore.persist.rehydrate()

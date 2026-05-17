@@ -13,14 +13,21 @@
 import { useEffect, useRef } from 'react'
 import { useAppStore, setActiveStorageUser } from '../store/useAppStore'
 
+// Module-level sign-out function, set by the auth-state effect so that
+// clearUserState() and external callers can fire a Supabase sign-out without
+// needing direct access to the Supabase client.
+let _signOutFn: (() => void) | null = null
+
+/** Fire-and-forget Supabase sign-out — safe to call from anywhere. */
+export function triggerSupabaseSignOut() { _signOutFn?.() }
+
 // Clears all user-specific local state on logout so the next user starts clean.
 function clearUserState() {
+  _signOutFn?.()   // fire-and-forget Supabase signOut
+  _signOutFn = null
+  // setActiveStorageUser('') now also removes cc-user-id, cc-active-session from
+  // localStorage and cc-active-session from sessionStorage.
   setActiveStorageUser('')
-  // Clear the localStorage keys used for reload-persistence so the next
-  // page load doesn't try to restore a now-invalid session.
-  localStorage.removeItem('cc-user-id')
-  localStorage.removeItem('cc-active-session')
-  sessionStorage.removeItem('cc-active-session')
   // currentUser must be null BEFORE resetUserData so the doSave guard catches
   // the immediate save that fires when projects.length drops to 0.
   useAppStore.setState({
@@ -106,12 +113,11 @@ export function useSupabaseSync() {
       const inactive = Date.now() - lastActivityRef.current
       if (inactive < INACTIVITY_MS) return
       // Idle ≥ 2 h → sign out proactively (don't wait for Supabase event)
-      const sb = getSb()
-      if (sb) sb.auth.signOut().catch(() => {})
+      // clearUserState() calls _signOutFn (which calls sb.auth.signOut()) and
+      // setActiveStorageUser('') (which removes cc-active-session from both storages).
       loadedRef.current  = false
       loadingRef.current = false
       userIdRef.current  = null
-      sessionStorage.removeItem('cc-active-session')
       clearUserState()
     }, 15 * 60 * 1000)   // check every 15 minutes
     return () => clearInterval(id)
@@ -123,10 +129,29 @@ export function useSupabaseSync() {
   useEffect(() => {
     const sb = getSb()
     if (!sb) return
-    const { data: { subscription } } = sb.auth.onAuthStateChange((event) => {
+    // Register the sign-out function so clearUserState() and external callers can use it.
+    _signOutFn = () => sb.auth.signOut().catch(() => {})
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
       // Fix 1: INITIAL_SESSION fires once during init — mark hydration complete.
       if (event === 'INITIAL_SESSION') {
         rehydratedRef.current = true
+        return
+      }
+      if (event === 'SIGNED_IN') {
+        // Sync currentUser metadata from Supabase (name/avatar may have changed)
+        const sbUser = session?.user
+        if (sbUser && sbUser.id === useAppStore.getState().currentUser?.id) {
+          const meta = sbUser.user_metadata ?? {}
+          useAppStore.setState({
+            currentUser: {
+              id: sbUser.id,
+              email: sbUser.email ?? useAppStore.getState().currentUser?.email ?? '',
+              firstName: (meta['first_name'] as string) ?? useAppStore.getState().currentUser?.firstName ?? '',
+              lastName: (meta['last_name'] as string) ?? useAppStore.getState().currentUser?.lastName ?? '',
+              avatarDataUrl: (meta['avatar_data_url'] as string) ?? useAppStore.getState().currentUser?.avatarDataUrl,
+            }
+          })
+        }
         return
       }
       if (event === 'SIGNED_OUT') {
@@ -168,7 +193,10 @@ export function useSupabaseSync() {
         }
       }
     })
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      _signOutFn = null
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabaseUrl, supabaseKey])
 
