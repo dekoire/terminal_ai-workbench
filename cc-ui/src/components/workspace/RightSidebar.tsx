@@ -5,13 +5,12 @@ import { getOrModel, sanitizeKey } from '../../utils/orProvider'
 import type { OrbitMessage, RepoToken, RightSidebarSection, RightSidebarSectionId, AllSectionId, LayoutSection } from '../../store/useAppStore'
 import { DEFAULT_RIGHT_SIDEBAR_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
 import { QuickLinksWidget } from './widgets/QuickLinksWidget'
-import { AiSearchTab } from './tabs/AiSearchTab'
+import { AiSearchTab, LogsTab } from './tabs'
 import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages, loadAllContextSummaries, type AgentContextSummary, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGit, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain, ITag, IDrag, IScrollText } from '../primitives/Icons'
-import { MonitoringPanel } from './MonitoringPanel'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
@@ -3515,7 +3514,7 @@ export function RightSidebar() {
         {/* ── Tab Logs ── */}
         {tab === monitoringIdx && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <MonitoringPanel projectId={activeProjectId} />
+            <LogsTab projectId={activeProjectId} />
           </div>
         )}
 

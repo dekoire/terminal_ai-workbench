@@ -5,6 +5,7 @@
 // once shared helper dependencies are resolved.
 
 export { AiSearchTab } from './AiSearchTab'
+export { LogsTab }    from './LogsTab'
 // TODO: extract these tabs from RightSidebar.tsx:
 // export { FilesTab }   from './FilesTab'
 // export { GitHubTab }  from './GitHubTab'
