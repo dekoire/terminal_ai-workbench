@@ -630,7 +630,7 @@ function ProjectRow({ project, active, open, onToggleOpen, activeSessionId, onSe
   )
 }
 
-function SessionRow({ session, active, project, onSelect, onClose }: { session: Session; active: boolean; project: Project; onSelect: () => void; onClose: () => void }) {
+const SessionRow = React.memo(function SessionRow({ session, active, project, onSelect, onClose }: { session: Session; active: boolean; project: Project; onSelect: () => void; onClose: () => void }) {
   const { aliases, updateSession } = useAppStore()
   const [hovered, setHovered] = useState(false)
   const [permPending, setPermPending] = useState(false)
@@ -731,7 +731,7 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
     </div>
     </div>
   )
-}
+})
 
 const TEMPLATES_COLLAPSED = 4
 

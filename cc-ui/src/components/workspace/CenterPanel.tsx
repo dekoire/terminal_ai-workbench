@@ -602,7 +602,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   )
 }
 
-function AliasCard({ alias, onStart }: { alias: { id: string; name: string; cmd: string; args: string }; onStart: () => void }) {
+const AliasCard = React.memo(function AliasCard({ alias, onStart }: { alias: { id: string; name: string; cmd: string; args: string }; onStart: () => void }) {
   const [hovered, setHovered] = useState(false)
   return (
     <div
@@ -632,10 +632,10 @@ function AliasCard({ alias, onStart }: { alias: { id: string; name: string; cmd:
       </div>
     </div>
   )
-}
+})
 
 
-function Turn({ turn, onAllow, onDeny }: { turn: TurnMessage; onAllow: (id: string) => void; onDeny: (id: string) => void }) {
+const Turn = React.memo(function Turn({ turn, onAllow, onDeny }: { turn: TurnMessage; onAllow: (id: string) => void; onDeny: (id: string) => void }) {
   if (turn.kind === 'user') {
     return (
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
@@ -708,7 +708,7 @@ function Turn({ turn, onAllow, onDeny }: { turn: TurnMessage; onAllow: (id: stri
   }
 
   return null
-}
+})
 
 // ── SessionWrapper — measures stable container width, passes to child ─────────
 function SessionWrapper({ isActive, isOrbit, isAgent, hasMounted, s, project, sessionCmd, sessionArgs }: {
