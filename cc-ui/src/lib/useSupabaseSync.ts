@@ -58,14 +58,12 @@ export function useSupabaseSync() {
 
   // ── clearUserState (defined inside hook for stable closure access) ─────────
 
-  const clearUserState = useCallback(() => {
-    _signOutFn?.()   // fire-and-forget Supabase signOut
+  // skipSignOut=true when called from the SIGNED_OUT handler — session is already
+  // terminated by Supabase, calling signOut() again would return 403.
+  const clearUserState = useCallback((skipSignOut = false) => {
+    if (!skipSignOut) _signOutFn?.()   // fire-and-forget Supabase signOut
     _signOutFn = null
-    // setActiveStorageUser('') removes cc-user-id, cc-active-session from
-    // localStorage and cc-active-session from sessionStorage.
     setActiveStorageUser('')
-    // currentUser must be null BEFORE resetUserData so the doSave guard catches
-    // the immediate save that fires when projects.length drops to 0.
     useAppStore.setState({
       currentUser: null,
       screen: 'login',
@@ -164,37 +162,31 @@ export function useSupabaseSync() {
         sb.auth.getSession().then(({ data: { session } }) => {
           if (session) return  // Session still alive — spurious event, ignore
 
-          // Session is genuinely gone
-          const inactive = Date.now() - lastActivityRef.current
-          if (inactive >= INACTIVITY_MS) {
-            // User was idle ≥ 2 h → log out
+          // Session is genuinely gone — skipSignOut=true because Supabase
+          // already terminated it (calling signOut() again would return 403)
+          const logout = () => {
             loadedRef.current  = false
             loadingRef.current = false
             userIdRef.current  = null
-            clearUserState()
+            clearUserState(true)
+          }
+          const inactive = Date.now() - lastActivityRef.current
+          if (inactive >= INACTIVITY_MS) {
+            // User was idle ≥ 2 h → log out
+            logout()
           } else {
             // User was active → attempt a silent token refresh
             sb.auth.refreshSession().then(({ data: { session: newSession } }) => {
-              if (!newSession) {
-                loadedRef.current  = false
-                loadingRef.current = false
-                userIdRef.current  = null
-                clearUserState()
-              }
+              if (!newSession) logout()
               // newSession present → token refreshed, all good
-            }).catch(() => {
-              loadedRef.current  = false
-              loadingRef.current = false
-              userIdRef.current  = null
-              clearUserState()
-            })
+            }).catch(logout)
           }
         }).catch(() => {
-          // getSession itself failed → log out to be safe
+          // getSession itself failed → log out to be safe (session already gone)
           loadedRef.current  = false
           loadingRef.current = false
           userIdRef.current  = null
-          clearUserState()
+          clearUserState(true)
         })
       }
     })
