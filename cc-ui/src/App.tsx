@@ -18,7 +18,28 @@ import { ISpinner } from './components/primitives/Icons'
 import { ToastContainer } from './components/primitives/ToastContainer'
 
 export default function App() {
-  const { screen: rawScreen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone, currentUser, dataLoaded, setScreen, addToast } = useAppStore()
+  // Split into focused selectors so each group re-renders only when its slice changes.
+  // A single useAppStore() destructure would re-render the whole App on any state change.
+  const rawScreen        = useAppStore(s => s.screen)
+  const currentUser      = useAppStore(s => s.currentUser)
+  const dataLoaded       = useAppStore(s => s.dataLoaded)
+  const setupWizardDone  = useAppStore(s => s.setupWizardDone)
+  const newProjectOpen   = useAppStore(s => s.newProjectOpen)
+  const newSessionOpen   = useAppStore(s => s.newSessionOpen)
+  const projects         = useAppStore(s => s.projects)
+  const activeProjectId  = useAppStore(s => s.activeProjectId)
+  const setScreen        = useAppStore(s => s.setScreen)
+  const addToast         = useAppStore(s => s.addToast)
+  // Theme/appearance — grouped because they always change together
+  const theme            = useAppStore(s => s.theme)
+  const accent           = useAppStore(s => s.accent)
+  const accentFg         = useAppStore(s => s.accentFg)
+  const preset           = useAppStore(s => s.preset)
+  const customUiColors   = useAppStore(s => s.customUiColors)
+  // Font/size — grouped because they always change together
+  const uiFont           = useAppStore(s => s.uiFont)
+  const uiFontSize       = useAppStore(s => s.uiFontSize)
+  const uiFontWeight     = useAppStore(s => s.uiFontWeight)
   // Guarantee screen is always a valid value — null/undefined causes a total black screen
   const screen = rawScreen || (currentUser ? 'workspace' : 'login')
 
