@@ -632,21 +632,6 @@ function AliasCard({ alias, onStart }: { alias: { id: string; name: string; cmd:
   )
 }
 
-function TerminalPane() {
-  const { turns, allowTool, denyTool } = useAppStore()
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [turns])
-
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px 22px', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.55, color: 'var(--fg-1)', minHeight: 0 }}>
-      {turns.map(turn => <Turn key={turn.id} turn={turn} onAllow={allowTool} onDeny={denyTool} />)}
-      <div ref={bottomRef} />
-    </div>
-  )
-}
 
 function Turn({ turn, onAllow, onDeny }: { turn: TurnMessage; onAllow: (id: string) => void; onDeny: (id: string) => void }) {
   if (turn.kind === 'user') {
