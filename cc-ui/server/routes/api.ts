@@ -479,9 +479,9 @@ router.post('/api/orbit/resolve', async (req, res) => {
   try {
     const body = JSON.parse(await readBody(req)) as {
       ref: string; ctxBefore?: number; ctxAfter?: number
-      supabaseUrl?: string; supabaseKey?: string; userId?: string
+      supabaseUrl?: string; supabaseKey?: string; userId?: string; supabaseJwt?: string
     }
-    const { ref, ctxBefore = 2, ctxAfter = 2, supabaseUrl, supabaseKey, userId } = body
+    const { ref, ctxBefore = 2, ctxAfter = 2, supabaseUrl, supabaseKey, userId, supabaseJwt } = body
     const baseDir = path.join(process.cwd(), 'context', 'raw', 'chat')
 
     const readJsonl = (filePath: string): unknown[] =>
@@ -529,7 +529,9 @@ router.post('/api/orbit/resolve', async (req, res) => {
         res.json({ ok: false, error: 'Supabase credentials required for amsg: refs' }); return
       }
       const { createClient } = await import('@supabase/supabase-js')
-      const sb = createClient(supabaseUrl, supabaseKey)
+      const sb = supabaseJwt
+        ? createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: `Bearer ${supabaseJwt}` } } })
+        : createClient(supabaseUrl, supabaseKey)
       // Find the target message
       const { data: target } = await sb
         .from('agent_messages').select('id,session_id,role,content,ts')

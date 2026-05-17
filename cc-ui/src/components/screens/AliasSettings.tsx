@@ -2802,6 +2802,7 @@ function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
 function KontextMgmtPanel() {
   const {
     orbitCtxBefore, orbitCtxAfter, setOrbitCtxBefore, setOrbitCtxAfter,
+    agentCtxBefore, agentCtxAfter, setAgentCtxBefore, setAgentCtxAfter,
     orbitCompressModel, setOrbitCompressModel,
     openrouterKey, orbitMessages, activeOrbitChatId, setOrbitMessages,
     agentContextMsgCount, setAgentContextMsgCount,
@@ -2918,7 +2919,7 @@ function KontextMgmtPanel() {
           </div>
 
           <div style={card}>
-            <div style={cardTitle}>Kontext-Fenster</div>
+            <div style={cardTitle}>Kontext-Fenster Orbit</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={fieldLabel}>Nachrichten davor</label>
@@ -2931,6 +2932,26 @@ function KontextMgmtPanel() {
                 <label style={fieldLabel}>Nachrichten danach</label>
                 <input type="number" min={0} max={20} value={orbitCtxAfter}
                   onChange={e => setOrbitCtxAfter(Math.max(0, Math.min(20, Number(e.target.value))))}
+                  style={numInput} />
+                <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>Nachrichten nach der Referenz-Nachricht</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={cardTitle}>Kontext-Fenster Agent Chat</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={fieldLabel}>Nachrichten davor</label>
+                <input type="number" min={0} max={20} value={agentCtxBefore}
+                  onChange={e => setAgentCtxBefore(Math.max(0, Math.min(20, Number(e.target.value))))}
+                  style={numInput} />
+                <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>Nachrichten vor der Referenz-Nachricht</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={fieldLabel}>Nachrichten danach</label>
+                <input type="number" min={0} max={20} value={agentCtxAfter}
+                  onChange={e => setAgentCtxAfter(Math.max(0, Math.min(20, Number(e.target.value))))}
                   style={numInput} />
                 <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>Nachrichten nach der Referenz-Nachricht</span>
               </div>

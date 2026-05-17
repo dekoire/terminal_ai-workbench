@@ -1,9 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import ReactDOM from 'react-dom'
 import { useAppStore } from '../../store/useAppStore'
 import type { OrbitMessage } from '../../store/useAppStore'
 import { useOpenRouterModels } from '../../utils/useOpenRouterModels'
 import { SingleCombobox } from '../primitives/SingleCombobox'
-import { IOrbit, IClose, ICopy, ITrash, IPlus, IStar, IBookmark } from '../primitives/Icons'
+import { IOrbit, IClose, ICopy, ITrash, IPlus, IStar, IBookmark, IBot } from '../primitives/Icons'
+import { CtxCard } from '../primitives/CtxCard'
+import { FileCard } from '../primitives/FileCard'
 import type { SingleOption } from '../primitives/SingleCombobox'
 import { renderBrain, updateBrainWithAI } from '../../lib/projectBrain'
 import { sanitizeKey } from '../../utils/orProvider'
@@ -117,16 +120,46 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   )
 }
 
+// ── Inline reference badge (renders #msg:... / #chat:... inside message text) ──
+function InlineRefBadge({ type, id }: { type: string; id: string }) {
+  const [copied, setCopied] = useState(false)
+  const short = id.slice(-6)
+  const typeColor = type === 'chat' ? 'var(--orbit)' : 'var(--accent)'
+  const copy = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    navigator.clipboard.writeText(`#${type}:${id}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }).catch(() => {})
+  }
+  return (
+    <span onClick={copy} title={copied ? 'Kopiert!' : `#${type}:${id} kopieren`} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: '1px 6px 3px', borderRadius: 6,
+      background: 'var(--bg-2)', border: '1px solid var(--line)',
+      fontSize: 9.5, fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace',
+      color: copied ? 'var(--ok)' : 'var(--fg-3)',
+      cursor: 'pointer', userSelect: 'none', opacity: 0.85,
+      verticalAlign: 'middle', margin: '0 2px',
+      transition: 'color 0.15s',
+    }}>
+      <span style={{ opacity: 0.5 }}>#</span>
+      <span style={{ color: typeColor, opacity: 0.85 }}>{type}:</span>
+      <span>{short}</span>
+    </span>
+  )
+}
+
 // ── Lightweight markdown renderer ─────────────────────────────────────────────
 function parseInline(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = []
-  // Regex: code, bold, italic
-  const re = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|(?<!\*)\*(?!\*)[^*]+\*(?!\*)(?<!\*)|(?<!_)_(?!_)[^_]+_(?!_))/g
+  // Regex: ref badges, code, bold, italic
+  const re = /(#(?:msg|chat|amsg):[a-z0-9-]{6,}|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|(?<!\*)\*(?!\*)[^*]+\*(?!\*)(?<!\*)|(?<!_)_(?!_)[^_]+_(?!_))/g
   let last = 0, m: RegExpExecArray | null, i = 0
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push(text.slice(last, m.index))
     const tok = m[0]
-    if (tok.startsWith('`'))
+    const refM = tok.match(/^#(msg|chat|amsg):(.+)$/)
+    if (refM)
+      parts.push(<InlineRefBadge key={i++} type={refM[1]} id={refM[2]} />)
+    else if (tok.startsWith('`'))
       parts.push(<code key={i++} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9em', background: 'var(--bg-2)', color: 'var(--accent)', padding: '1px 5px', borderRadius: 3 }}>{tok.slice(1, -1)}</code>)
     else if (tok.startsWith('**') || tok.startsWith('__'))
       parts.push(<strong key={i++}>{tok.slice(2, -2)}</strong>)
@@ -402,9 +435,7 @@ function AiAvatar({ pulsing = false }: { pulsing?: boolean; dark?: boolean }) {
 function IdBadge({ id }: { id: string }) {
   const [copied, setCopied] = useState(false)
   const type = idType(id)
-  // copy value includes type prefix so AI immediately knows what it is
   const copyVal = type ? `#${type}:${id}` : `#${id}`
-  // display: show type label + last 6 chars
   const short = id.slice(-6)
   const label = type === 'chat' ? 'chat' : type === 'msg' ? 'msg' : ''
   const copy = (e: React.MouseEvent) => {
@@ -412,21 +443,20 @@ function IdBadge({ id }: { id: string }) {
     e.stopPropagation()
     navigator.clipboard.writeText(copyVal).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }).catch(() => {})
   }
+  const typeColor = type === 'chat' ? 'var(--orbit)' : 'var(--accent)'
   return (
     <span
       onClick={copy}
       title={copied ? 'Kopiert!' : `Kopieren: ${copyVal}`}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 3,
-        padding: '2px 6px', borderRadius: 5,
+        padding: '2px 6px 4px', borderRadius: 6,
         background: 'var(--bg-2)', border: '1px solid var(--line)',
         fontSize: 9.5, fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace',
-        color: copied ? 'var(--ok)' : 'var(--fg-3)',
-        cursor: 'pointer', userSelect: 'none', opacity: 0.85,
+        color: copied ? 'var(--ok)' : typeColor, cursor: 'pointer', userSelect: 'none', opacity: 0.85,
         transition: 'color 0.15s',
       }}
     >
-      <ICopy style={{ width: 9, height: 9 }} />
       <span style={{ opacity: 0.5 }}>#</span>
       {label && <span style={{ color: type === 'chat' ? 'var(--orbit)' : 'var(--accent)', opacity: 0.85 }}>{label}:</span>}
       <span>{short}</span>
@@ -468,17 +498,26 @@ function extractImagesFromContent(content: string): { cleanText: string; urls: s
   return { cleanText: clean, urls }
 }
 
-type OrbitTextPart = { kind: 'text'; value: string } | { kind: 'fileref'; name: string; url: string }
+type OrbitTextPart = { kind: 'text'; value: string } | { kind: 'fileref'; name: string; url: string } | { kind: 'inlinefile'; name: string; lang: string; content: string }
 
 const ORBIT_FILEREF_RE = /\[Datei: ([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi
+const ORBIT_INLINEFILE_RE = /\n\n---[ \t]*([^\n]+?)[ \t]*---\n```([a-z0-9]*)\n([\s\S]*?)\n```/g
 
 function parseOrbitText(text: string): OrbitTextPart[] {
   const parts: OrbitTextPart[] = []
-  let last = 0
+  const combined: Array<{ index: number; len: number; part: OrbitTextPart }> = []
   for (const m of text.matchAll(ORBIT_FILEREF_RE)) {
-    if (m.index! > last) parts.push({ kind: 'text', value: text.slice(last, m.index!) })
-    parts.push({ kind: 'fileref', name: m[1], url: m[2] })
-    last = m.index! + m[0].length
+    combined.push({ index: m.index!, len: m[0].length, part: { kind: 'fileref', name: m[1], url: m[2] } })
+  }
+  for (const m of text.matchAll(ORBIT_INLINEFILE_RE)) {
+    combined.push({ index: m.index!, len: m[0].length, part: { kind: 'inlinefile', name: (m[1] ?? '').trim(), lang: m[2] ?? '', content: m[3] ?? '' } })
+  }
+  combined.sort((a, b) => a.index - b.index)
+  let last = 0
+  for (const { index, len, part } of combined) {
+    if (index > last) parts.push({ kind: 'text', value: text.slice(last, index) })
+    parts.push(part)
+    last = index + len
   }
   if (last < text.length) parts.push({ kind: 'text', value: text.slice(last) })
   return parts
@@ -493,6 +532,7 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
   const isUser = msg.role === 'user'
   const [copied, setCopied] = useState(false)
   const [hovered, setHovered] = useState(false)
+  const [ctxModal, setCtxModal] = useState(false)
 
   const copy = () => {
     navigator.clipboard.writeText(msg.content).then(() => {
@@ -506,7 +546,15 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
   ) : null
 
   // For user messages: extract image URLs embedded as markdown in content
-  const { cleanText, urls: extractedUrls } = isUser ? extractImagesFromContent(msg.content) : { cleanText: msg.content, urls: [] }
+  const { cleanText: rawCleanText, urls: extractedUrls } = isUser ? extractImagesFromContent(msg.content) : { cleanText: msg.content, urls: [] }
+  // Split off the Kontext-Referenzen block for card display
+  const ctxSplitIdx = rawCleanText.search(/\n\n---\n(?:Agent-)?Kontext-Referenzen:/)
+  const beforeCtx = ctxSplitIdx >= 0 ? rawCleanText.slice(0, ctxSplitIdx) : rawCleanText
+  const ctxBlock = ctxSplitIdx >= 0 ? rawCleanText.slice(ctxSplitIdx + 2) : null
+  // Extract ref tokens from text so they show in the card, not the bubble
+  const REF_TOKEN_RE = /#(?:msg|chat|amsg):[a-z0-9-]+/gi
+  const refTokens = ctxBlock ? (beforeCtx.match(REF_TOKEN_RE) ?? []) : []
+  const cleanText = ctxBlock ? beforeCtx.replace(REF_TOKEN_RE, '').replace(/\s{2,}/g, ' ').trim() : beforeCtx
   // Combine base64 images from msg.images + extracted URL images
   const allImages: string[] = [...(msg.images ?? []), ...extractedUrls]
 
@@ -520,7 +568,7 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
     </button>
   )
 
-  return (
+  return (<>
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -559,6 +607,9 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
               return (
                 <div style={{ fontSize: 13, lineHeight: 1.65, wordBreak: 'break-word', fontWeight: 300 }}>
                   {parts.map((p, i) => {
+                    if (p.kind === 'inlinefile') {
+                      return <span key={i}><FileCard name={p.name} content={p.content} ext={p.lang || undefined} /></span>
+                    }
                     if (p.kind === 'fileref') {
                       const ext = p.name.includes('.') ? p.name.split('.').pop()?.toUpperCase() ?? 'FILE' : 'FILE'
                       return (
@@ -575,12 +626,13 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
                     }
                     const trimmed = p.value.trim()
                     return trimmed ? (
-                      <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{trimmed}</span>
+                      <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{parseInline(trimmed)}</span>
                     ) : null
                   })}
                 </div>
               )
             })()}
+            {ctxBlock && <CtxCard onClick={() => setCtxModal(true)} refTokens={refTokens} />}
           </div>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             {starBtn}
@@ -632,6 +684,27 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
         </div>
       )}
     </div>
+    {ctxModal && ctxBlock && ReactDOM.createPortal(
+      <div
+        onClick={() => setCtxModal(false)}
+        style={{ position: 'fixed', inset: 0, zIndex: 100002, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ background: 'var(--bg-1)', borderRadius: 12, width: '78vw', maxWidth: 860, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--line)', boxShadow: '0 12px 48px rgba(0,0,0,0.5)' }}
+        >
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-1)' }}>Mitgeschickter Kontext</span>
+            <button onClick={() => setCtxModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 20, lineHeight: 1, padding: '0 4px' }}>×</button>
+          </div>
+          <div style={{ padding: '14px 18px', overflow: 'auto', flex: 1, fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.65 }}>
+            <MarkdownContent text={ctxBlock} />
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+  </>
   )
 }
 

@@ -18,6 +18,8 @@ import { AgentView } from '../agent/AgentView'
 import { OrbitView } from '../agent/OrbitView'
 import { XTermPane } from '../terminal/XTermPane'
 import { resolveRefs } from '../../lib/resolveRefs'
+import { getSupabase } from '../../lib/supabase'
+import { loadAgentMessageById } from '../../lib/agentSync'
 
 
 interface CenterPaneProps {
@@ -863,7 +865,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     terminalShortcuts, docTemplates,
     terminalTheme, theme: appTheme,
     currentUser,
-    orbitCtxBefore, orbitCtxAfter,
+    orbitCtxBefore, orbitCtxAfter, agentCtxBefore, agentCtxAfter,
     supabaseUrl, supabaseAnonKey,
     pendingWorkshopTransfer, clearWorkshopTransfer,
     addToast: addToastInput,
@@ -907,11 +909,18 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
   // ── Orbit reference detection ──────────────────────────────────────────────
   type RefStatus = 'checking' | 'found' | 'missing'
   const [orbitRefs, setOrbitRefs] = useState<Map<string, RefStatus>>(new Map())
+  // Refs promoted out of input text → shown as pills; cleared on send
+  const [confirmedRefs, setConfirmedRefs] = useState<Set<string>>(new Set())
   const refTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Stable ref to inputValue for use inside async callbacks
+  const inputValueRef = useRef(inputValue)
+  useEffect(() => { inputValueRef.current = inputValue }, [inputValue])
+
+  // Clear confirmed refs when session changes
+  useEffect(() => { setConfirmedRefs(new Set()); setOrbitRefs(new Map()) }, [activeSessionId])
 
   useEffect(() => {
-    // Ref detection runs for orbit and agent sessions — skip only for PTY terminal sessions
-    if (isTerminal && !isOrbit) return
+    // Ref detection runs for all session types
     const REF_RE = /#(msg|chat|amsg):([a-z0-9-]{6,})/gi
     const matches = [...inputValue.matchAll(REF_RE)]
     const found = matches.map(m => `${m[1]}:${m[2]}`)
@@ -930,23 +939,35 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       for (const ref of unique) {
         const [type, id] = ref.split(':')
         try {
-          const body: Record<string, unknown> = { ref: `${type}:${id}`, ctxBefore: 0, ctxAfter: 0 }
-          if (type === 'amsg' && supabaseUrl && supabaseAnonKey && currentUser?.id) {
-            body.supabaseUrl = supabaseUrl
-            body.supabaseKey = supabaseAnonKey
-            body.userId      = currentUser.id
+          let ok = false
+          if (type === 'amsg') {
+            // Resolve agent messages client-side (RLS requires authenticated Supabase client)
+            const sb = supabaseUrl && supabaseAnonKey ? getSupabase(supabaseUrl, supabaseAnonKey) : null
+            if (sb && currentUser?.id) {
+              const msg = await loadAgentMessageById(sb, currentUser.id, id).catch(() => null)
+              ok = msg !== null
+            }
+          } else {
+            const r = await fetch('/api/orbit/resolve', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ref: `${type}:${id}`, ctxBefore: 0, ctxAfter: 0 }),
+            })
+            const data = await r.json() as { ok: boolean }
+            ok = data.ok
           }
-          const r = await fetch('/api/orbit/resolve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          })
-          const data = await r.json() as { ok: boolean }
           setOrbitRefs(prev => {
             const next = new Map(prev)
-            next.set(ref, data.ok ? 'found' : 'missing')
+            next.set(ref, ok ? 'found' : 'missing')
             return next
           })
+          // Promote found refs: remove from text, keep as pill
+          if (ok) {
+            const token = `#${type}:${id}`
+            const next = inputValueRef.current.split(token).join('').replace(/\s{2,}/g, ' ').trim()
+            setInputValue(next)
+            setConfirmedRefs(prev => { const n = new Set(prev); n.add(ref); return n })
+          }
         } catch {
           setOrbitRefs(prev => { const n = new Map(prev); n.set(ref, 'missing'); return n })
         }
@@ -978,7 +999,8 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     const onInsertRef = (e: Event) => {
       const ref = (e as CustomEvent<string>).detail
       if (!ref) return
-      setInputValue(prev => prev ? prev + ' ' + ref : ref)
+      const curr = inputValueRef.current
+      setInputValue(curr ? curr + ' ' + ref : ref)
     }
     window.addEventListener('cc:insert-ref', onInsertRef)
     return () => window.removeEventListener('cc:insert-ref', onInsertRef)
@@ -1063,11 +1085,13 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
     r.readAsDataURL(file)
   })
 
-  const dispatchOrbit = (fullMsg: string, images: { dataUrl: string; mimeType: string }[]) => {
-    window.dispatchEvent(new CustomEvent('cc:orbit-send', { detail: { sessionId: activeSessionId, text: fullMsg, images } }))
+  const dispatchOrbit = async (fullMsg: string, images: { dataUrl: string; mimeType: string }[], jwt?: string) => {
+    const resolved = await resolveRefs(fullMsg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id, agentCtxBefore, agentCtxAfter, jwt)
+    window.dispatchEvent(new CustomEvent('cc:orbit-send', { detail: { sessionId: activeSessionId, text: resolved, images } }))
     setInputValue('')
     setAttachments([])
     clearFiles()
+    setConfirmedRefs(new Set())
   }
 
   const send = async () => {
@@ -1086,6 +1110,15 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
 
     let fullMsg = inputValue
     if (favBodies.length > 0) fullMsg += (fullMsg ? '\n\n' : '') + favBodies.join('\n\n')
+    // Prepend confirmed pill-refs so resolveRefs can expand them
+    if (confirmedRefs.size > 0) {
+      const refTokens = [...confirmedRefs].map(r => `#${r}`).join(' ')
+      fullMsg = refTokens + (fullMsg ? ' ' + fullMsg : '')
+    }
+    const clearConfirmedRefs = () => setConfirmedRefs(new Set())
+    // JWT for authenticated Supabase queries (amsg: refs need RLS bypass)
+    const _sbClient = getSupabase(supabaseUrl, supabaseAnonKey)
+    const jwt = _sbClient ? (await _sbClient.auth.getSession()).data.session?.access_token : undefined
 
     if (activeSession?.kind === 'openrouter-claude') {
       // Agent session (Kimi/custom provider via Claude Code CLI):
@@ -1119,10 +1152,11 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
           const valid = paths.filter(Boolean) as string[]
           if (valid.length > 0) msg += ' ' + valid.map(p => `--image "${p}"`).join(' ')
         }
-        const resolved = await resolveRefs(msg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id)
+        const resolved = await resolveRefs(msg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id, agentCtxBefore, agentCtxAfter, jwt)
         window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: { sessionId: activeSessionId, data: resolved } }))
         setInputValue('')
         clearFiles()
+        clearConfirmedRefs()
         setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
       }
       void sendAgentMsg()
@@ -1148,12 +1182,12 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       }
 
       if (imageFiles.length === 0) {
-        inlineDocContent(fullMsg).then(msg => dispatchOrbit(msg, []))
+        void inlineDocContent(fullMsg).then(msg => dispatchOrbit(msg, [], jwt))
       } else {
-        Promise.all([
+        void Promise.all([
           inlineDocContent(fullMsg),
           ...imageFiles.map(img => toBase64(img.file).then(dataUrl => ({ dataUrl, mimeType: img.mimeType }))),
-        ]).then(([msg, ...images]) => dispatchOrbit(msg as string, images as { dataUrl: string; mimeType: string }[]))
+        ]).then(([msg, ...images]) => dispatchOrbit(msg as string, images as { dataUrl: string; mimeType: string }[], jwt))
       }
     } else if (isTerminal) {
       // Terminal: images → local temp file → --image flag (Claude Code CLI reads it)
@@ -1177,7 +1211,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
       }
 
       const writeTempAndSend = async () => {
-        let msg = await resolveRefs(fullMsg, orbitCtxBefore, orbitCtxAfter)
+        let msg = await resolveRefs(fullMsg, orbitCtxBefore, orbitCtxAfter, undefined, undefined, undefined, agentCtxBefore, agentCtxAfter)
         if (imageFiles.length > 0) {
           const paths = await Promise.all(imageFiles.map(async f => {
             try {
@@ -1199,6 +1233,7 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
         window.dispatchEvent(new CustomEvent('cc:terminal-paste', { detail: { sessionId: activeSessionId, data: msg } }))
         setInputValue('')
         clearFiles()
+        clearConfirmedRefs()
         setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
       }
 
@@ -1241,10 +1276,11 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
           if (valid.length > 0) msg += ' ' + valid.map(p => `--image "${p}"`).join(' ')
         }
 
-        const resolved = await resolveRefs(msg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id)
+        const resolved = await resolveRefs(msg, orbitCtxBefore, orbitCtxAfter, supabaseUrl, supabaseAnonKey, currentUser?.id, agentCtxBefore, agentCtxAfter, jwt)
         sendMessage(pendingFiles.map(f => f.name), resolved)
         setInputValue('')
         clearFiles()
+        clearConfirmedRefs()
         setTimeout(() => window.dispatchEvent(new CustomEvent('cc:terminal-refresh')), 50)
       }
       void sendWithRefs()
@@ -1626,25 +1662,22 @@ function InputArea({ containerWidth = 9999 }: { containerWidth?: number }) {
         />
 
 
-        {/* ── Reference pills (orbit + agent sessions, not PTY terminal) ── */}
-        {!(isTerminal && !isOrbit) && orbitRefs.size > 0 && (
+        {/* ── Reference pills — confirmed refs removed from text, kept until send or × ── */}
+        {confirmedRefs.size > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '5px 0 2px' }}>
-            {[...orbitRefs.entries()].map(([ref, status]) => {
+            {[...confirmedRefs].map(ref => {
               const [type, id] = ref.split(':')
               const short = id.slice(-8)
-              const isChecking = status === 'checking'
-              const isFound    = status === 'found'
-              const color      = isChecking ? 'var(--fg-3)' : isFound ? 'var(--ok)' : 'var(--err)'
-              const bg         = isChecking ? 'var(--bg-3)' : isFound ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)'
-              const border     = isChecking ? 'var(--line-strong)' : isFound ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)'
-              const dot        = isChecking ? '···' : isFound ? '✓' : '✗'
-              const typeColor  = type === 'chat' ? 'var(--orbit)' : type === 'amsg' ? 'var(--fg-2)' : 'var(--accent)'
+              const color = type === 'chat' ? 'var(--orbit)' : 'var(--accent)'
+              const removeRef = () => setConfirmedRefs(prev => { const n = new Set(prev); n.delete(ref); return n })
               return (
-                <span key={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px 2px 7px', background: bg, border: `1px solid ${border}`, borderRadius: 99, fontSize: 10, fontFamily: 'var(--font-mono)', color, transition: 'background 0.2s, border-color 0.2s, color 0.2s', whiteSpace: 'nowrap' }}>
+                <span key={ref} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 6px', marginBottom: 3, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderRadius: 6, fontSize: 10, fontFamily: 'var(--font-mono)', color, whiteSpace: 'nowrap' }}>
                   <span style={{ opacity: 0.6 }}>#</span>
-                  <span style={{ color: typeColor, opacity: 0.9 }}>{type}:</span>
+                  <span style={{ opacity: 0.9 }}>{type}:</span>
                   <span>{short}</span>
-                  <span style={{ marginLeft: 2, fontFamily: 'var(--font-ui)', fontWeight: isChecking ? 400 : 600, opacity: isChecking ? 0.5 : 1 }}>{dot}</span>
+                  <span onClick={removeRef} title="Entfernen" style={{ marginLeft: 2, cursor: 'pointer', opacity: 0.45, fontSize: 11, lineHeight: 1, display: 'flex', alignItems: 'center', fontFamily: 'var(--font-ui)' }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.45')}>×</span>
                 </span>
               )
             })}

@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { useAppStore } from '../../store/useAppStore'
 import type { SessionKind } from '../../store/useAppStore'
-import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight, IRefresh, IWarn } from '../primitives/Icons'
+import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight, IRefresh, IWarn, IOrbit, IBot } from '../primitives/Icons'
+import { CtxCard } from '../primitives/CtxCard'
+import { FileCard } from '../primitives/FileCard'
 import { getSupabase } from '../../lib/supabase'
 import { saveAgentMessage, loadLastProjectMessages, loadLatestContextSummary, saveContextSummary, compressAgentHistory, loadAgentMessageById, loadMessagesSince, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { resolveRefs } from '../../lib/resolveRefs'
@@ -992,17 +994,15 @@ function OldMsgIdBadge({ id }: { id: string }) {
       title={copied ? 'Kopiert!' : `Kopieren: ${ref}`}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 3,
-        padding: '2px 6px', borderRadius: 5,
+        padding: '2px 6px 4px', borderRadius: 6,
         background: 'var(--bg-2)', border: '1px solid var(--line)',
         fontSize: 9.5, fontFamily: '"JetBrains Mono","Cascadia Code",Menlo,monospace',
-        color: copied ? 'var(--ok)' : 'var(--fg-3)',
-        cursor: 'pointer', userSelect: 'none', opacity: 0.85,
+        color: copied ? 'var(--ok)' : 'var(--accent)', cursor: 'pointer', userSelect: 'none', opacity: 0.85,
         transition: 'color 0.15s',
       }}
     >
-      <ICopy style={{ width: 9, height: 9 }} />
       <span style={{ opacity: 0.5 }}>#</span>
-      <span style={{ color: 'var(--accent)', opacity: 0.85 }}>amsg:</span>
+      <span style={{ opacity: 0.85 }}>amsg:</span>
       <span>{id.slice(-5)}</span>
     </span>
   )
@@ -1142,6 +1142,8 @@ function HistoryErrorCard({ data, ts }: { data: Record<string, unknown>; ts: num
 
 // ── Inline image rendering for user bubbles ───────────────────────────────────
 const IMAGE_FLAG_RE = /--image\s+"([^"]+)"|--image\s+'([^']+)'/g
+// Inlined file blocks: \n\n--- filename ---\n```lang\nCONTENT\n```
+const INLINE_FILE_RE = /\n\n---[ \t]*([^\n]+?)[ \t]*---\n```([a-z0-9]*)\n([\s\S]*?)\n```/g
 
 // Matches [Filename]: /api/... or [Filename]: https://...
 const FILE_REF_RE = /\[([^\]]+)\]:\s*((?:https?:\/\/|\/api\/)\S+)/g
@@ -1150,11 +1152,15 @@ type BubblePart =
   | { kind: 'text'; value: string }
   | { kind: 'image'; path: string }
   | { kind: 'fileref'; name: string; url: string }
+  | { kind: 'inlinefile'; name: string; lang: string; content: string }
 
 function parseBubble(text: string): BubblePart[] {
   const parts: BubblePart[] = []
-  // Build a combined regex — file refs first, then image flags
+  // Build a combined regex — inline file blocks, image flags, file refs
   const combined: Array<{ index: number; len: number; part: BubblePart }> = []
+  for (const m of text.matchAll(INLINE_FILE_RE)) {
+    combined.push({ index: m.index!, len: m[0].length, part: { kind: 'inlinefile', name: (m[1] ?? '').trim(), lang: m[2] ?? '', content: m[3] ?? '' } })
+  }
   for (const m of text.matchAll(IMAGE_FLAG_RE)) {
     combined.push({ index: m.index!, len: m[0].length, part: { kind: 'image', path: m[1] ?? m[2] } })
   }
@@ -1193,9 +1199,46 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
   )
 }
 
+function FileContentModal({ name, lang, content, onClose }: { name: string; lang: string; content: string; onClose: () => void }) {
+  const lines = content.split('\n').length
+  return ReactDOM.createPortal(
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 100001, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: 'var(--bg-1)', borderRadius: 12, width: '78vw', maxWidth: 860, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--line)', boxShadow: '0 12px 48px rgba(0,0,0,0.5)' }}
+      >
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: 'var(--accent-soft)', color: 'var(--accent)', letterSpacing: 0.4, fontFamily: 'var(--font-mono)' }}>
+              {lang.toUpperCase() || name.split('.').pop()?.toUpperCase() || 'FILE'}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--fg-1)' }}>{name}</span>
+            <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>{lines} Zeilen</span>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 20, lineHeight: 1, padding: '0 4px' }}>×</button>
+        </div>
+        <pre style={{ margin: 0, padding: '14px 16px', overflow: 'auto', flex: 1, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.6 }}>{content}</pre>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 function BubbleContent({ text }: { text: string }) {
   const [lightbox, setLightbox] = useState<string | null>(null)
-  const parts = parseBubble(text)
+  const [ctxModal, setCtxModal] = useState(false)
+  // Split off Kontext-Referenzen block for card display
+  const ctxSplitIdx = text.search(/\n\n---\n(?:Agent-)?Kontext-Referenzen:/)
+  const beforeCtx = ctxSplitIdx >= 0 ? text.slice(0, ctxSplitIdx) : text
+  const ctxBlock = ctxSplitIdx >= 0 ? text.slice(ctxSplitIdx + 2) : null
+  // Extract ref tokens so they appear in the card, not the bubble text
+  const BUBBLE_REF_RE = /#(?:msg|chat|amsg):[a-z0-9-]+/gi
+  const refTokens = ctxBlock ? (beforeCtx.match(BUBBLE_REF_RE) ?? []) : []
+  const displayText = ctxBlock ? beforeCtx.replace(BUBBLE_REF_RE, '').replace(/\s{2,}/g, ' ').trim() : beforeCtx
+  const parts = parseBubble(displayText)
 
   return (
     <>
@@ -1205,6 +1248,13 @@ function BubbleContent({ text }: { text: string }) {
           return trimmed ? (
             <span key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{trimmed}</span>
           ) : null
+        }
+        if (p.kind === 'inlinefile') {
+          return (
+            <span key={i}>
+              <FileCard name={p.name} content={p.content} ext={p.lang || undefined} />
+            </span>
+          )
         }
         if (p.kind === 'fileref') {
           const ext = p.name.includes('.') ? p.name.split('.').pop()?.toUpperCase() ?? 'FILE' : 'FILE'
@@ -1247,7 +1297,28 @@ function BubbleContent({ text }: { text: string }) {
           />
         )
       })}
+      {ctxBlock && <CtxCard onClick={() => setCtxModal(true)} refTokens={refTokens} />}
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      {ctxModal && ctxBlock && ReactDOM.createPortal(
+        <div
+          onClick={() => setCtxModal(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 100002, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-1)', borderRadius: 12, width: '78vw', maxWidth: 860, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--line)', boxShadow: '0 12px 48px rgba(0,0,0,0.5)' }}
+          >
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-1)' }}>Mitgeschickter Kontext</span>
+              <button onClick={() => setCtxModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 20, lineHeight: 1, padding: '0 4px' }}>×</button>
+            </div>
+            <div style={{ padding: '14px 18px', overflow: 'auto', flex: 1, fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.65 }}>
+              <BubbleContent text={ctxBlock} />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </>
   )
 }

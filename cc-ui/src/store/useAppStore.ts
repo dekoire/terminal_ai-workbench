@@ -692,8 +692,10 @@ export interface AppState {
   orbitMeta: Record<string, OrbitChatMeta>         // chatId → meta
   orbitChats: Record<string, string[]>             // projectId → [chatId, ...]
   activeOrbitChatId: Record<string, string>        // sessionId → chatId
-  orbitCtxBefore: number                           // context window — messages before ref
-  orbitCtxAfter: number                            // context window — messages after ref
+  orbitCtxBefore: number                           // context window — messages before ref (orbit)
+  orbitCtxAfter: number                            // context window — messages after ref (orbit)
+  agentCtxBefore: number                           // context window — messages before ref (agent chat)
+  agentCtxAfter: number                            // context window — messages after ref (agent chat)
   orbitCompressPrompt: string                      // prompt used to compress chat history
   orbitCompressModel: string                       // OR model used for compression
   agentContextMsgCount: number                     // how many messages to compress (default 20)
@@ -832,6 +834,8 @@ export interface AppState {
   setDefaultManagerModel: (model: string) => void
   setOrbitCtxBefore: (n: number) => void
   setOrbitCtxAfter: (n: number) => void
+  setAgentCtxBefore: (n: number) => void
+  setAgentCtxAfter: (n: number) => void
   setOrbitCompressPrompt: (s: string) => void
   setOrbitCompressModel: (s: string) => void
   setAgentContextMsgCount: (agentContextMsgCount: number) => void
@@ -1061,6 +1065,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   activeOrbitChatId: {},
   orbitCtxBefore: 2,
   orbitCtxAfter: 2,
+  agentCtxBefore: 2,
+  agentCtxAfter: 2,
   orbitCompressPrompt: `Du bist ein Kontext-Kompressor für Entwickler-Chats. Fasse den folgenden Chat-Verlauf in präzisen Stichpunkten zusammen.\n\nRegeln:\n- Nur entwicklungsrelevante Infos (Code, Dateipfade, Bugs, Entscheidungen, Architektur, Tools)\n- Kein Smalltalk, keine Begrüßungen, keine Wiederholungen, kein Lob\n- Bullet-Points (•), maximal 2–3 Zeilen pro Punkt\n- Technische Details (Dateinamen, Funktionsnamen, Fehlermeldungen) immer behalten\n- So kurz wie möglich — eine KI muss danach genau verstehen was besprochen und umgesetzt wurde\n- Max 25 Punkte`,
   orbitCompressModel: 'deepseek/deepseek-chat-v3-0324',
   agentContextMsgCount: 20,
@@ -1377,6 +1383,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setDefaultManagerModel: (defaultManagerModel) => set({ defaultManagerModel }),
   setOrbitCtxBefore: (orbitCtxBefore) => set({ orbitCtxBefore }),
   setOrbitCtxAfter: (orbitCtxAfter) => set({ orbitCtxAfter }),
+  setAgentCtxBefore: (agentCtxBefore) => set({ agentCtxBefore }),
+  setAgentCtxAfter: (agentCtxAfter) => set({ agentCtxAfter }),
   setOrbitCompressPrompt: (orbitCompressPrompt) => set({ orbitCompressPrompt }),
   setOrbitCompressModel: (orbitCompressModel) => set({ orbitCompressModel }),
   setAgentContextMsgCount: (agentContextMsgCount) => set({ agentContextMsgCount }),
@@ -1487,6 +1495,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.defaultManagerModel === undefined) state.defaultManagerModel = 'anthropic/claude-sonnet-4-6'
     if (state.orbitCtxBefore === undefined) state.orbitCtxBefore = 2
     if (state.orbitCtxAfter === undefined) state.orbitCtxAfter = 2
+    if (state.agentCtxBefore === undefined) state.agentCtxBefore = 2
+    if (state.agentCtxAfter === undefined) state.agentCtxAfter = 2
     if (state.orbitFavorites === undefined) state.orbitFavorites = {}
     if (state.setupWizardDone === undefined) state.setupWizardDone = false
     if (state.preferredOrModels === undefined) state.preferredOrModels = []
