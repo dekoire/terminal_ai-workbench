@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { TurnMessage, Template, TerminalShortcut } from '../../store/useAppStore'
-import { ISpark, IBolt, ISend, IWarn, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, IOrbit, IPaperclip, IEdit, ISpinner, ITerminal, IClose, IFile, IComponent } from '../primitives/Icons'
+import { ISpark, IBolt, ISend, IWarn, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, IOrbit, IPaperclip, IEdit, ISpinner, ITerminal, IClose, IFile } from '../primitives/Icons'
 import { useFileAttachments, useDragDrop, usePasteFiles, FileAttachmentBar, DragOverlay } from '../primitives/FileAttachmentArea'
 import { ImageAnnotator } from '../primitives/ImageAnnotator'
 import { TERMINAL_THEMES } from '../../theme/presets'
