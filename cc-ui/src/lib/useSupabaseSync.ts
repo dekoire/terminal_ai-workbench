@@ -705,11 +705,14 @@ export function useSupabaseSync() {
 
   // ── on orbitMessages change: immediate upsert for new messages ────────────
 
+  // Refs survive Effect re-fires (e.g. when supabaseUrl/Key change) without resetting,
+  // preventing stale-closure bugs where the subscriber sees prevMessages = {} on re-mount.
+  const prevMessagesRef = useRef<Record<string, unknown[]>>({})
+  const prevLengthsRef  = useRef<Record<string, number>>({})
+
   useEffect(() => {
     // per-chat debounce for full-sync safety-net
     const timers: Record<string, ReturnType<typeof setTimeout>> = {}
-    let prevMessages: Record<string, unknown[]> = {}
-    let prevLengths: Record<string, number> = {}
 
     const unsub = useAppStore.subscribe((state) => {
       if (!loadedRef.current) return
@@ -722,10 +725,10 @@ export function useSupabaseSync() {
 
       for (const chatId of Object.keys(messages)) {
         const msgs = messages[chatId]
-        const prev = prevMessages[chatId] as typeof msgs | undefined
+        const prev = prevMessagesRef.current[chatId] as typeof msgs | undefined
         if (msgs === prev) continue
 
-        const prevLen = prevLengths[chatId] ?? 0
+        const prevLen = prevLengthsRef.current[chatId] ?? 0
         const newLen  = msgs?.length ?? 0
 
         // Immediate upsert for any newly appended message
@@ -757,10 +760,10 @@ export function useSupabaseSync() {
           )
         }, 2000)
 
-        prevLengths[chatId] = newLen
+        prevLengthsRef.current[chatId] = newLen
       }
 
-      prevMessages = messages as Record<string, unknown[]>
+      prevMessagesRef.current = messages as Record<string, unknown[]>
     })
 
     return () => {
