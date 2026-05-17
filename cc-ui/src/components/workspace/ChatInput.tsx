@@ -22,7 +22,8 @@ import { loadAgentMessageById } from '../../lib/agentSync'
 // Used via ChatInputConnector in CenterPanel.tsx.
 
 // ── Shared style constants ─────────────────────────────────────────────────────
-const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+const chip: React.CSSProperties       = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
+const primaryBtn: React.CSSProperties = { background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 
 function TplCtxItem({ label, onClick }: { label: string; onClick: () => void }) {
   const [hov, setHov] = useState(false)
