@@ -10,7 +10,6 @@ export function RegisterScreen() {
   const [password,  setPassword]  = useState('')
   const [password2, setPassword2] = useState('')
   const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState('')
   const [success,   setSuccess]   = useState(false)
   const [showPw,    setShowPw]    = useState(false)
   const [showPw2,   setShowPw2]   = useState(false)
@@ -23,16 +22,15 @@ export function RegisterScreen() {
   const supabaseKey    = useAppStore(s => s.supabaseAnonKey)
 
   const handleRegister = async () => {
-    setError('')
-    if (!firstName.trim())             { setError('Bitte Vorname eingeben.'); return }
-    if (!lastName.trim())              { setError('Bitte Nachname eingeben.'); return }
-    if (!email.trim())                 { setError('Bitte E-Mail-Adresse eingeben.'); return }
-    if (!password)                     { setError('Bitte Passwort eingeben.'); return }
-    if (password.length < 8)           { setError('Passwort muss mindestens 8 Zeichen lang sein.'); return }
-    if (password !== password2)        { setError('Passwörter stimmen nicht überein.'); return }
+    if (!firstName.trim())             { addToast({ type: 'error', title: 'Bitte Vorname eingeben.' }); return }
+    if (!lastName.trim())              { addToast({ type: 'error', title: 'Bitte Nachname eingeben.' }); return }
+    if (!email.trim())                 { addToast({ type: 'error', title: 'Bitte E-Mail-Adresse eingeben.' }); return }
+    if (!password)                     { addToast({ type: 'error', title: 'Bitte Passwort eingeben.' }); return }
+    if (password.length < 8)           { addToast({ type: 'error', title: 'Passwort muss mindestens 8 Zeichen lang sein.' }); return }
+    if (password !== password2)        { addToast({ type: 'error', title: 'Passwörter stimmen nicht überein.' }); return }
 
     const sb = getSupabase(supabaseUrl, supabaseKey)
-    if (!sb) { setError('Supabase nicht konfiguriert.'); return }
+    if (!sb) { addToast({ type: 'error', title: 'Supabase nicht konfiguriert.' }); return }
 
     setLoading(true)
     try {
@@ -84,18 +82,102 @@ export function RegisterScreen() {
       <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
         <defs>
           <pattern id="dots-r" width="28" height="28" patternUnits="userSpaceOnUse">
-            <circle cx="1.5" cy="1.5" r="1.2" fill="var(--line)" opacity="0.6" />
+            <circle cx="1.5" cy="1.5" r="1.4" fill="var(--fg-3)" opacity="0.75" />
           </pattern>
-          <radialGradient id="fade-r" cx="50%" cy="50%" r="70%">
+          {/* Outer vignette — edges very dark */}
+          <radialGradient id="fade-r" cx="50%" cy="50%" r="65%">
             <stop offset="0%"   stopColor="var(--bg-0)" stopOpacity="0" />
+            <stop offset="60%"  stopColor="var(--bg-0)" stopOpacity="0.4" />
             <stop offset="100%" stopColor="var(--bg-0)" stopOpacity="1" />
           </radialGradient>
-          <pattern id="diag-r" width="60" height="60" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
-            <line x1="0" y1="0" x2="0" y2="60" stroke="var(--accent)" strokeWidth="0.3" opacity="0.18" />
-          </pattern>
+          {/* Inner shadow ring — darkens dots just around the content border */}
+          <radialGradient id="inner-r" cx="30%" cy="50%" r="45%">
+            <stop offset="50%"  stopColor="var(--bg-0)" stopOpacity="0" />
+            <stop offset="100%" stopColor="var(--bg-0)" stopOpacity="0.55" />
+          </radialGradient>
+          <filter id="glow-r" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
         </defs>
         <rect width="100%" height="100%" fill="url(#dots-r)" />
-        <rect width="100%" height="100%" fill="url(#diag-r)" />
+        {/* Accent dots */}
+        {([
+          { cx: 113.5,  cy: 169.5, dur: '3.4s', begin: '0.2s' },
+          { cx: 505.5,  cy: 113.5, dur: '2.7s', begin: '1.6s' },
+          { cx: 953.5,  cy: 505.5, dur: '3.8s', begin: '0.5s' },
+          { cx: 393.5,  cy: 617.5, dur: '2.4s', begin: '2.7s' },
+          { cx: 841.5,  cy: 393.5, dur: '3.5s', begin: '3.4s' },
+          { cx: 169.5,  cy: 505.5, dur: '4.4s', begin: '3.0s' },
+          { cx: 505.5,  cy: 841.5, dur: '5.3s', begin: '3.7s' },
+          { cx: 729.5,  cy: 85.5,  dur: '2.8s', begin: '1.8s' },
+          { cx: 281.5,  cy: 729.5, dur: '4.7s', begin: '4.7s' },
+          { cx: 1121.5, cy: 449.5, dur: '3.9s', begin: '1.0s' },
+          { cx: 617.5,  cy: 337.5, dur: '4.1s', begin: '5.5s' },
+        ] as const).map((d, i) => (
+          <circle key={`a${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="var(--accent)" opacity="0" filter="url(#glow-r)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {/* Blue dots */}
+        {([
+          { cx: 281.5,  cy: 393.5, dur: '4.3s', begin: '0.9s' },
+          { cx: 729.5,  cy: 281.5, dur: '5.1s', begin: '2.3s' },
+          { cx: 1177.5, cy: 169.5, dur: '4.6s', begin: '2.0s' },
+          { cx: 1065.5, cy: 617.5, dur: '3.0s', begin: '1.4s' },
+          { cx: 85.5,   cy: 281.5, dur: '4.2s', begin: '2.4s' },
+          { cx: 953.5,  cy: 841.5, dur: '4.0s', begin: '4.2s' },
+          { cx: 561.5,  cy: 561.5, dur: '3.4s', begin: '6.0s' },
+          { cx: 1233.5, cy: 701.5, dur: '4.8s', begin: '0.4s' },
+        ] as const).map((d, i) => (
+          <circle key={`b${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#3b82f6" opacity="0" filter="url(#glow-r)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {/* Orange dots */}
+        {([
+          { cx: 617.5,  cy: 729.5, dur: '4.9s', begin: '1.1s' },
+          { cx: 1289.5, cy: 393.5, dur: '3.9s', begin: '0.7s' },
+          { cx: 1401.5, cy: 617.5, dur: '3.2s', begin: '4.0s' },
+          { cx: 1065.5, cy: 281.5, dur: '4.3s', begin: '5.1s' },
+          { cx: 393.5,  cy: 169.5, dur: '3.5s', begin: '1.9s' },
+          { cx: 757.5,  cy: 701.5, dur: '5.4s', begin: '3.3s' },
+          { cx: 225.5,  cy: 841.5, dur: '3.0s', begin: '4.8s' },
+          { cx: 897.5,  cy: 225.5, dur: '4.5s', begin: '2.6s' },
+        ] as const).map((d, i) => (
+          <circle key={`o${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#f97316" opacity="0" filter="url(#glow-r)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {/* Red dots */}
+        {([
+          { cx: 197.5,  cy: 337.5, dur: '3.6s', begin: '1.3s' },
+          { cx: 673.5,  cy: 477.5, dur: '4.9s', begin: '3.7s' },
+          { cx: 1121.5, cy: 757.5, dur: '3.2s', begin: '0.6s' },
+          { cx: 449.5,  cy: 785.5, dur: '5.1s', begin: '2.9s' },
+          { cx: 897.5,  cy: 561.5, dur: '2.7s', begin: '5.8s' },
+          { cx: 1345.5, cy: 225.5, dur: '4.2s', begin: '1.5s' },
+          { cx: 337.5,  cy: 225.5, dur: '3.8s', begin: '4.3s' },
+        ] as const).map((d, i) => (
+          <circle key={`r${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#ef4444" opacity="0" filter="url(#glow-r)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {/* Green dots */}
+        {([
+          { cx: 449.5,  cy: 281.5, dur: '4.3s', begin: '2.0s' },
+          { cx: 785.5,  cy: 617.5, dur: '3.5s', begin: '0.8s' },
+          { cx: 1233.5, cy: 477.5, dur: '5.0s', begin: '3.1s' },
+          { cx: 561.5,  cy: 785.5, dur: '2.9s', begin: '5.4s' },
+          { cx: 1009.5, cy: 169.5, dur: '4.6s', begin: '1.7s' },
+          { cx: 141.5,  cy: 673.5, dur: '3.3s', begin: '4.6s' },
+          { cx: 1345.5, cy: 785.5, dur: '4.8s', begin: '6.2s' },
+        ] as const).map((d, i) => (
+          <circle key={`g${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#22c55e" opacity="0" filter="url(#glow-r)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        <rect width="100%" height="100%" fill="url(#inner-r)" />
         <rect width="100%" height="100%" fill="url(#fade-r)" />
       </svg>
 
@@ -262,11 +344,6 @@ export function RegisterScreen() {
                 </div>
               </div>
 
-              {error && (
-                <div style={{ fontSize: 11.5, color: 'var(--err)', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, padding: '8px 10px' }}>
-                  {error}
-                </div>
-              )}
 
               <button
                 onClick={handleRegister}

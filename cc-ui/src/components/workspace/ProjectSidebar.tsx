@@ -9,6 +9,7 @@ import avatarDefault from '../../assets/avatar.jpg'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
 import { Kbd } from '../primitives/Kbd'
 import { updateDocsWithAI } from '../../utils/updateDocs'
+import { writeClipboard } from '../../lib/clipboard'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
 // ── ContextMenu ───────────────────────────────────────────────────────────────
@@ -525,8 +526,8 @@ function ProjectRow({ project, active, open, onToggleOpen, activeSessionId, onSe
   const githubUrl = remoteUrl ? toRepoUrl(remoteUrl) : null
   const { open: openCtx, menu: ctxMenu } = useCtxMenu()
 
-  const copyPath = () => navigator.clipboard.writeText(project.path)
-  const copyName = () => navigator.clipboard.writeText(project.name)
+  const copyPath = () => writeClipboard(project.path)
+  const copyName = () => writeClipboard(project.name)
   const openFolder = () => fetch(`/api/open?path=${encodeURIComponent(project.path)}`)
 
   const handleContextMenu = (e: React.MouseEvent) => openCtx(e, [
@@ -568,7 +569,7 @@ function ProjectRow({ project, active, open, onToggleOpen, activeSessionId, onSe
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 8px',
+          display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px',
           margin: '1px 6px', borderRadius: 6, cursor: 'pointer',
           background: active ? 'var(--bg-2)' : hovered ? 'var(--bg-2)' : 'transparent',
           color: active ? 'var(--fg-0)' : 'var(--fg-1)',

@@ -10,6 +10,7 @@ import { sanitizeKey } from '../../utils/orProvider'
 import { saveGlobalTemplates, saveGlobalCliConfig, saveGlobalPrompts } from '../../lib/useSupabaseSync'
 import { getSupabase } from '../../lib/supabase'
 import { MultiCombobox } from '../primitives/MultiCombobox'
+import { writeClipboard } from '../../lib/clipboard'
 import { SingleCombobox } from '../primitives/SingleCombobox'
 
 // Predefined strength options for agent roles
@@ -2368,7 +2369,7 @@ function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
               <label style={{ ...fieldLabel, marginBottom: 0 }}>claude.json — direkt bearbeitbar</label>
               <button
-                onClick={() => navigator.clipboard.writeText(jsonDraft)}
+                onClick={() => writeClipboard(jsonDraft)}
                 style={{ ...btnGhost, padding: '2px 8px', fontSize: 9.5, marginLeft: 'auto' }}
               >Kopieren</button>
             </div>
@@ -3102,7 +3103,7 @@ function KontextMgmtPanel() {
                 <div style={cardTitle}>Ergebnis</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
-                    onClick={() => navigator.clipboard.writeText(compressResult)}
+                    onClick={() => writeClipboard(compressResult)}
                     style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 11, cursor: 'pointer' }}
                   >
                     Kopieren

@@ -1,132 +1,92 @@
 # Codera AI — Architecture
 
-## Zweck
-macOS GUI-Workbench für CLI-Coding-Agents (Claude Code, aider, DeepSeek, MiniMax etc.).
-Wrapper-GUI mit Multi-Session-Management, Permissions, Templates, Git, File-Browser, Kanban.
-
 ## Tech Stack
 
-| Layer | Technologie |
+| Layer | Technology |
 |-------|------------|
-| UI | React 19, TypeScript 5.8, Vite 6 |
+| Frontend | React 19, TypeScript 5.8, Vite 6 |
 | Styling | Tailwind CSS 4 (CSS-first) + CSS Custom Properties |
-| State | Zustand 5 (persist → `~/.cc-ui-data.json`) |
+| State Management | Zustand 5 (persist → `~/.cc-ui-data.json`) |
 | Terminal | xterm.js 6 + node-pty (server-side PTY via WebSocket) |
-| Backend | Vite dev-server Plugin mit inline API-Middleware |
+| Backend | Vite dev-server Plugin with inline API-Middleware |
 | Build | TypeScript 5.8, ESLint 9 |
 
-## Start / Build
-```bash
-cd cc-ui
-npm install
-npm run dev        # → http://localhost:4321
-npm run build      # tsc -b && vite build
-npm run lint       # eslint .
-```
-
-## Architektur-Entscheidungen
-- **Single-Page-App**: Screens via Zustand `screen` state, kein react-router
-- **Backend-in-Frontend**: Alle API-Routes in `vite.config.ts` als Vite-Middleware
-- **Terminal**: Jede Session spawnt einen `node-pty` Prozess. WebSocket (`ws://host/ws/terminal`) streamt I/O zwischen xterm.js und PTY.
-- **Persistenz**: File-basiert via `~/.cc-ui-data.json`, Fallback auf `localStorage`
-- **Theming**: CSS Custom Properties auf `:root`, dark/light Toggle
-- **Dev-Port**: 4321 (Hinweis: Chrome blockt Port 6000/X11)
-
-## PTY-Spawn-Logik (vite.config.ts)
-- Immer `zsh -li` starten (vollständig interaktive Login-Shell → .zshrc geladen)
-- Bei Alias-Sessions: nach 600ms den Befehl per `ptyProc.write(cmd + '\r')` eintippen
-- So funktionieren Shell-Aliases (cc-mini, cc-ds4pro etc.) zuverlässig
-
-## Persistenz
-- State-Key: `cc-app-state`
-- Datei: `~/.cc-ui-data.json`
-- Nur Felder in `partialize` (Zeile ~433 in `useAppStore.ts`) werden gespeichert
-
----
-
-## Datenmodelle (store/useAppStore.ts)
+## Data Models
 
 ```typescript
-Session:      { id, name, alias, cmd, args, status, permMode, startedAt }
-Project:      { id, name, path, branch, dirty?, sessions[] }
-Alias:        { id, name, cmd, args, permMode, status }
-Template:     { id, name, hint, body, tag, uses, favorite? }
-KanbanTicket: { id, ticketNumber, title, text, status, priority, type, createdAt, images? }
-RepoToken:    { id, label, host, token }
-AIProvider:   { id, name, provider, apiKey, model }
-TurnMessage:  { id, kind: 'user'|'agent'|'tool'|'status', ... }
+interface Session { 
+  id: string
+  name: string
+  alias: string
+  cmd: string 
+  args: string
+  status: string
+  permMode: 'normal' | 'dangerous'
+  startedAt: string
+}
+
+interface Project {
+  id: string
+  name: string
+  path: string
+  branch: string
+  dirty?: boolean
+  sessions: Session[]
+}
+
+interface Template {
+  id: string
+  name: string
+  hint: string
+  body: string
+  tag: string
+  uses: number
+  favorite?: boolean
+}
+
+interface KanbanTicket {
+  id: string
+  ticketNumber: string
+  title: string
+  text: string
+  status: 'backlog' | 'testing' | 'done'
+  priority: 'low' | 'medium' | 'high' | 'critical'
+  type: string
+  createdAt: string
+  images?: string[]
+}
 ```
 
-Types:
-- `Screen`: `'login' | 'workspace' | 'settings' | 'templates' | 'history'`
-- `PermMode`: `'normal' | 'dangerous'`
-- `KanbanStatus`: `'backlog' | 'testing' | 'done'`
-- `TicketPriority`: `'low' | 'medium' | 'high' | 'critical'`
-
----
-
-## API-Routes (alle in vite.config.ts, Zeile 17–396)
+## API Routes
 
 ### File System API
-| Route | Method | Params | Response |
-|-------|--------|--------|----------|
+| Route | Method | Body/Params | Response |
+|-------|--------|-------------|----------|
 | `/api/browse` | GET | `path` | `{ items: [{name, path, isDir}], currentPath }` |
-| `/api/file-read` | GET | `path` | `{ ok, content, size, mtime }` (max 2MB) |
+| `/api/file-read` | GET | `path` | `{ ok, content, size, mtime }` |
 | `/api/file-write` | POST | `{ path, content }` | `{ ok }` |
 | `/api/fs-create` | POST | `{ path, type: 'file'\|'dir' }` | `{ ok }` |
-| `/api/fs-delete` | POST | `{ path }` | `{ ok }` (rekursiv) |
-| `/api/pick-folder` | GET | `path` | `{ ok, path }` (macOS native) |
-| `/api/pick-file` | GET | `path` | `{ ok, path }` |
-| `/api/open` | GET | `path` | `{ ok }` |
-| `/api/open-with` | GET | `path, app` | `{ ok }` |
-| `/api/which` | GET | `cmd` | `{ ok, path }` (zsh -i, erkennt auch Shell-Aliases) |
+| `/api/fs-delete` | POST | `{ path }` | `{ ok }` |
 
 ### Git API
-| Route | Method | Params | Response |
-|-------|--------|--------|----------|
+| Route | Method | Body/Params | Response |
+|-------|--------|-------------|----------|
 | `/api/git` | GET | `path` | `{ hasGit, status, log, branches, diffStat, remotes, lastCommit }` |
 | `/api/git-action` | POST | `{ action, path, message?, remote?, branch? }` | `{ ok, out }` |
-| `/api/git-remote` | GET | `path` | `{ ok, url }` |
-
-Git actions: `stage`, `commit`, `push`, `pull`, `checkout`, `new-branch`
-
-### Persistenz API
-| Route | Method | Zweck |
-|-------|--------|-------|
-| `/api/store-read` | GET | `~/.cc-ui-data.json` lesen |
-| `/api/store-write` | POST | `~/.cc-ui-data.json` schreiben |
 
 ### AI API
-| Route | Method | Body | Response |
-|-------|--------|------|----------|
+| Route | Method | Body/Params | Response |
+|-------|--------|-------------|----------|
 | `/api/ai-refine` | POST | `{ provider, apiKey, model, text, systemPrompt? }` | `{ ok, text }` |
 
-Provider: `anthropic`, `openai`, `deepseek`
+## Key Architectural Decisions
+- **Single-Page-App**: Screens managed via Zustand `screen` state instead of react-router
+- **Backend-in-Frontend**: All API routes implemented in `vite.config.ts` as Vite middleware
+- **Terminal Communication**: Each session spawns a `node-pty` process. WebSocket (`ws://host/ws/terminal`) streams I/O between xterm.js and PTY
+- **Persistence**: File-based storage via `~/.cc-ui-data.json`, with localStorage fallback
+- **Theming**: Uses CSS Custom Properties on `:root` with dark/light toggle support
+- **Development Port**: Uses port 4321 (Note: Chrome blocks port 6000/X11)
 
-### WebSocket Terminal
-**Endpoint**: `ws://host/ws/terminal?sessionId=X`
-
-**Client → Server**:
-- `{ type: 'init', cmd, args, cwd, cols, rows }` — PTY starten
-- `{ type: 'input', data }` — Tastatureingabe
-- `{ type: 'resize', cols, rows }` — Terminal-Größe
-
-**Server → Client**:
-- `{ type: 'data', data }` — Terminal-Output
-- `{ type: 'exit', exitCode }` — Prozess beendet
-
----
-
-## Custom Events (Cross-Component-Kommunikation)
-
-| Event | Detail | Von → Nach |
-|-------|--------|-----------|
-| `cc:open-file-tab` | `path: string` | LiveTreeNode → CenterPane |
-| `cc:open-data-file` | `path: string` | LiveTreeNode → UtilityPanel |
-| `cc:terminal-paste` | `text: string` | InputArea → XTermPane |
-| `cc:terminal-send-raw` | `data: string` | InputArea → XTermPane |
-| `cc:terminal-export` | `sessionId: string` | UtilityPanel → XTermPane |
-| `cc:terminal-text` | `text: string` | XTermPane → UtilityPanel |
-| `cc:goto-git-tab` | — | ProjectSidebar → UtilityPanel |
-| `cc:fs-deleted` | `path: string` | DeleteModal → LiveTreeNode |
-| `cc:terminal-refresh` | — | Modals → XTermPane (Neurender) |
+## External Services
+- **Git**: Integrated for version control operations within projects
+- **AI Providers**: Supports Anthropic, OpenAI, and DeepSeek for AI refinement features

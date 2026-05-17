@@ -27,7 +27,7 @@ var __importMetaUrl = require("url").pathToFileURL(__filename).href;
 // electron/main.ts
 var import_electron = require("electron");
 var import_http = require("http");
-var import_child_process2 = require("child_process");
+var import_child_process3 = require("child_process");
 var import_path3 = __toESM(require("path"), 1);
 var import_express2 = __toESM(require("express"), 1);
 
@@ -36,7 +36,6 @@ var import_express = require("express");
 var import_child_process = require("child_process");
 var import_fs = __toESM(require("fs"), 1);
 var import_path = __toESM(require("path"), 1);
-var import_os = require("os");
 
 // server/state.ts
 var pendingPerms = /* @__PURE__ */ new Map();
@@ -47,8 +46,19 @@ var pendingPermsBySession = /* @__PURE__ */ new Map();
 
 // server/routes/api.ts
 var router = (0, import_express.Router)();
+router.get("/api/app-config", (_req, res) => {
+  res.json({
+    groqApiKey: process.env.GROQ_API_KEY || "",
+    hasGroqKey: !!process.env.GROQ_API_KEY
+  });
+});
 var home = () => process.env.HOME ?? "/Users/" + (process.env.USER ?? "");
 var tilde = (p) => p.replace(/^~/, home());
+function coderaVarDir() {
+  const dir = import_path.default.join(home(), "Documents", "Codera", "var");
+  if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
+  return dir;
+}
 function readBody(req) {
   return new Promise((resolve) => {
     let d = "";
@@ -115,8 +125,10 @@ alias ${aliasName}='${aliasCmd}'
     res.json({ ok: false, error: String(e) });
   }
 });
-router.get("/api/store-read", (_req, res) => {
-  const filePath = import_path.default.join(home(), ".cc-ui-data.json");
+router.get("/api/store-read", (req, res) => {
+  const userId = typeof req.query.userId === "string" && req.query.userId ? req.query.userId : "";
+  const suffix = userId ? `-${userId}` : "";
+  const filePath = import_path.default.join(home(), `.cc-ui-data${suffix}.json`);
   try {
     res.send(import_fs.default.readFileSync(filePath, "utf-8") || "null");
   } catch {
@@ -124,7 +136,9 @@ router.get("/api/store-read", (_req, res) => {
   }
 });
 router.post("/api/store-write", async (req, res) => {
-  const filePath = import_path.default.join(home(), ".cc-ui-data.json");
+  const userId = typeof req.query.userId === "string" && req.query.userId ? req.query.userId : "";
+  const suffix = userId ? `-${userId}` : "";
+  const filePath = import_path.default.join(home(), `.cc-ui-data${suffix}.json`);
   const body = await readBody(req);
   try {
     if (body && body !== "null") import_fs.default.writeFileSync(filePath, body, "utf-8");
@@ -174,63 +188,124 @@ router.get("/api/git", (req, res) => {
       res.json({ hasGit: false, status: [], log: [], branches: [], remotes: [], diffStat: "", lastCommit: "" });
       return;
     }
-    const [status, log, branches, diffStat, remotes, lastCommit] = await Promise.all([
+    const hasCommits = await run("git rev-parse HEAD").then((r) => !r.startsWith("fatal") && r.length > 0).catch(() => false);
+    const [status, remoteUrl] = await Promise.all([
       run("git status --short"),
+      run('git remote get-url origin 2>/dev/null || echo ""')
+    ]);
+    const remotes = remoteUrl ? [remoteUrl.replace(/https?:\/\/[^@]+@/, "https://")] : [];
+    const [log, branches, diffStat, lastCommit] = hasCommits ? await Promise.all([
       run('git log --oneline -20 --pretty=format:"%h|%s|%an|%ar|%ai"'),
       run('git branch -v --format="%(refname:short)|%(objectname:short)|%(subject)|%(HEAD)"'),
       run("git diff --stat HEAD 2>/dev/null | tail -1"),
-      run("git remote -v | head -2"),
       run('git log -1 --format="%ar"')
-    ]);
+    ]) : ["", "main||||*", "", ""];
+    const isFatal = (s) => s.startsWith("fatal") || s.startsWith("error");
     res.json({
       hasGit: true,
       status: status.split("\n").filter(Boolean).map((l) => ({ flag: l.slice(0, 2).trim(), file: l.slice(3) })),
-      log: log.split("\n").filter(Boolean).map((l) => {
+      log: log.split("\n").filter((l) => Boolean(l) && !isFatal(l)).map((l) => {
         const p = l.split("|");
-        return { hash: p[0], msg: p[1], author: p[2], when: p[3], date: p[4] };
-      }),
-      branches: branches.split("\n").filter(Boolean).map((l) => {
+        return { hash: p[0], msg: p[1] ?? "", author: p[2] ?? "", when: p[3] ?? "", date: p[4] ?? "" };
+      }).filter((e) => e.hash && e.hash.length < 50),
+      branches: branches.split("\n").filter((l) => Boolean(l) && !isFatal(l)).map((l) => {
         const p = l.split("|");
-        return { name: p[0], hash: p[1], msg: p[2], current: p[3] === "*" };
-      }),
-      diffStat,
-      remotes: [...new Set(remotes.split("\n").filter(Boolean).map((l) => l.split("	")[0]))],
-      lastCommit
+        return { name: p[0], hash: p[1] ?? "", msg: p[2] ?? "", current: p[3] === "*" };
+      }).filter((b) => b.name),
+      diffStat: isFatal(diffStat) ? "" : diffStat,
+      remotes,
+      lastCommit: isFatal(lastCommit) ? "" : lastCommit
     });
   }).catch((e) => res.json({ hasGit: false, error: String(e), status: [], log: [], branches: [], remotes: [], diffStat: "", lastCommit: "" }));
 });
 router.post("/api/git-action", async (req, res) => {
   try {
-    const { action, path: cwd, message, remote, branch } = JSON.parse(await readBody(req));
+    const { action, path: cwd, message, remote, branch, token } = JSON.parse(await readBody(req));
     const resolved = tilde(cwd);
-    const run = (cmd) => new Promise(
-      (ok) => (0, import_child_process.exec)(cmd, { cwd: resolved }, (err, out, errOut) => ok(err ? errOut || err.message : out.trim()))
+    const run = (cmd, runCwd) => new Promise(
+      (resolve) => (0, import_child_process.exec)(
+        cmd,
+        { cwd: runCwd ?? resolved },
+        (err, stdout, stderr) => resolve({ ok: !err, out: (err ? stderr || err.message : stdout).trim() })
+      )
     );
+    const withToken = async (fn) => {
+      if (!token) return fn();
+      const urlResult = await run("git remote get-url origin");
+      if (!urlResult.ok || !urlResult.out.includes("github.com") || urlResult.out.includes("@github.com")) return fn();
+      const authedUrl = urlResult.out.replace("https://github.com/", `https://${token}@github.com/`);
+      await run(`git remote set-url origin ${JSON.stringify(authedUrl)}`);
+      try {
+        return await fn();
+      } finally {
+        await run(`git remote set-url origin ${JSON.stringify(urlResult.out)}`);
+      }
+    };
     let result = { ok: false, out: "unknown action" };
-    if (action === "stage") result = { ok: true, out: await run("git add -A") };
-    if (action === "commit") result = { ok: true, out: await run(`git commit -m ${JSON.stringify(message ?? "Update")}`) };
-    if (action === "push") result = { ok: true, out: await run(`git push ${remote ?? "origin"} ${branch ?? "HEAD"}`) };
-    if (action === "push-u") result = { ok: true, out: await run(`git push -u origin ${JSON.stringify(branch ?? "main")}`) };
-    if (action === "pull") result = { ok: true, out: await run("git pull") };
-    if (action === "checkout") result = { ok: true, out: await run(`git checkout ${JSON.stringify(branch ?? "")}`) };
-    if (action === "new-branch") result = { ok: true, out: await run(`git checkout -b ${JSON.stringify(branch ?? "")}`) };
-    if (action === "init") {
-      const o1 = await run("git init");
-      const o2 = await run(`git checkout -b ${JSON.stringify(branch ?? "main")}`);
-      result = { ok: true, out: o1 + "\n" + o2 };
+    if (action === "stage") result = await run("git add -A");
+    if (action === "commit") result = await run(`git commit -m ${JSON.stringify(message ?? "Update")}`);
+    if (action === "push") result = await withToken(() => run(`git push -u ${remote ?? "origin"} ${branch ?? "HEAD"}`));
+    if (action === "push-u") result = await withToken(() => run(`git push -u origin ${JSON.stringify(branch ?? "main")}`));
+    if (action === "pull") {
+      let r = await withToken(() => run("git pull"));
+      if (!r.ok && r.out.includes("no tracking information")) {
+        const branchResult = await run("git rev-parse --abbrev-ref HEAD");
+        if (branchResult.ok) {
+          await run(`git branch --set-upstream-to=origin/${branchResult.out.trim()} ${branchResult.out.trim()}`);
+          r = await withToken(() => run(`git pull origin ${branchResult.out.trim()}`));
+        }
+      }
+      result = r;
     }
-    if (action === "add-remote" && remote) result = { ok: true, out: await run(`git remote add origin ${JSON.stringify(remote)}`) };
+    if (action === "checkout") result = await run(`git checkout ${JSON.stringify(branch ?? "")}`);
+    if (action === "new-branch") result = await run(`git checkout -b ${JSON.stringify(branch ?? "")}`);
+    if (action === "init") {
+      const r1 = await run("git init");
+      const r2 = await run(`git checkout -b ${JSON.stringify(branch ?? "main")}`);
+      result = { ok: r1.ok && r2.ok, out: [r1.out, r2.out].filter(Boolean).join("\n") };
+    }
+    if (action === "add-remote" && remote) {
+      const cleanUrl = remote.replace(/https?:\/\/[^@]+@/, "https://");
+      result = await run(`git remote add origin ${JSON.stringify(cleanUrl)}`);
+    }
     if (action === "clone" && remote) {
-      const parentDir = import_path.default.dirname(resolved);
-      const folderName = import_path.default.basename(resolved);
-      const cloneRun = (cmd) => new Promise(
-        (ok) => (0, import_child_process.exec)(cmd, { cwd: parentDir }, (err, out, errOut) => ok(err ? errOut || err.message : out.trim()))
-      );
-      result = { ok: true, out: await cloneRun(`git clone ${JSON.stringify(remote)} ${JSON.stringify(folderName)}`) };
+      result = await (async () => {
+        const cleanUrl = remote.replace(/https?:\/\/[^@]+@/, "https://");
+        const folderName = import_path.default.basename(resolved);
+        const parentDir = import_path.default.dirname(resolved);
+        if (import_fs.default.existsSync(resolved)) {
+          await run("git init");
+          await run(`git remote add origin ${JSON.stringify(remote)}`);
+          const fetchR = await run("git fetch origin");
+          if (!fetchR.ok) {
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`);
+            return fetchR;
+          }
+          await run("git remote set-head origin --auto");
+          const headR = await run("git symbolic-ref refs/remotes/origin/HEAD");
+          if (!headR.ok) {
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`);
+            return { ok: true, out: "empty" };
+          }
+          const defBranch = headR.out.replace("refs/remotes/origin/", "").trim();
+          const checkR = await run(`git checkout -B ${defBranch} origin/${defBranch}`);
+          await run(`git branch --set-upstream-to=origin/${defBranch} ${defBranch}`);
+          await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`);
+          return checkR.ok ? { ok: true, out: `Geklont auf ${defBranch}` } : checkR;
+        } else {
+          const cloneR = await run(`git clone ${JSON.stringify(remote)} ${JSON.stringify(folderName)}`, parentDir);
+          if (cloneR.ok && cleanUrl !== remote) await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`);
+          if (!cloneR.ok && cloneR.out.includes("empty repository")) {
+            await run(`git remote set-url origin ${JSON.stringify(cleanUrl)}`);
+            return { ok: true, out: "empty" };
+          }
+          return cloneR;
+        }
+      })();
     }
     if (action === "discard-file" && message) {
-      const statusOut = await run(`git status --porcelain -- ${JSON.stringify(message)}`);
-      const flag = statusOut.trim().slice(0, 2);
+      const statusResult = await run(`git status --porcelain -- ${JSON.stringify(message)}`);
+      const flag = statusResult.out.slice(0, 2);
       if (flag === "??" || flag.startsWith("A")) {
         const fullPath = import_path.default.resolve(resolved, message);
         try {
@@ -240,8 +315,8 @@ router.post("/api/git-action", async (req, res) => {
           result = { ok: false, out: String(e) };
         }
       } else {
-        const out = await run(`git checkout HEAD -- ${JSON.stringify(message)}`);
-        result = { ok: !out.includes("error:"), out };
+        const r = await run(`git checkout HEAD -- ${JSON.stringify(message)}`);
+        result = { ok: !r.out.includes("error:"), out: r.out };
       }
     }
     res.json(result);
@@ -272,6 +347,53 @@ router.get("/api/git-remote", (req, res) => {
     if (err) res.json({ ok: false, url: null });
     else res.json({ ok: true, url: out.trim() });
   });
+});
+router.get("/api/github/repos", async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.json({ ok: false, repos: [] });
+  try {
+    const headers = { Authorization: `token ${token}`, Accept: "application/vnd.github+json" };
+    const [userRepos, orgs] = await Promise.all([
+      fetch("https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all", { headers }).then((r) => r.json()),
+      fetch("https://api.github.com/user/orgs", { headers }).then((r) => r.json())
+    ]);
+    const orgRepoArrays = await Promise.all(
+      orgs.map(
+        (o) => fetch(`https://api.github.com/orgs/${o.login}/repos?per_page=100&sort=updated`, { headers }).then((r) => r.json())
+      )
+    );
+    const all = [...userRepos, ...orgRepoArrays.flat()].filter((r) => r && typeof r === "object" && "clone_url" in r).map((r) => {
+      const repo = r;
+      const owner = repo.owner;
+      return {
+        fullName: repo.full_name,
+        cloneUrl: repo.clone_url,
+        private: repo.private,
+        description: repo.description ?? "",
+        org: owner?.type === "Organization" ? owner.login : null
+      };
+    });
+    res.json({ ok: true, repos: all });
+  } catch (e) {
+    res.json({ ok: false, repos: [], error: String(e) });
+  }
+});
+router.post("/api/github/create-repo", async (req, res) => {
+  const { token, name, private: isPrivate, org } = JSON.parse(await readBody(req));
+  if (!token || !name) return res.json({ ok: false, error: "token and name required" });
+  try {
+    const url = org ? `https://api.github.com/orgs/${org}/repos` : "https://api.github.com/user/repos";
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `token ${token}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+      body: JSON.stringify({ name, private: isPrivate ?? true, auto_init: false })
+    });
+    const data = await r.json();
+    if (!r.ok) return res.json({ ok: false, error: data.message });
+    res.json({ ok: true, cloneUrl: data.clone_url, htmlUrl: data.html_url });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
 });
 router.get("/api/scan-project", (req, res) => {
   const projectPath = tilde(req.query.path ?? "");
@@ -397,7 +519,7 @@ router.post("/api/session/save", async (req, res) => {
 router.post("/api/orbit/resolve", async (req, res) => {
   try {
     const body = JSON.parse(await readBody(req));
-    const { ref, ctxBefore = 2, ctxAfter = 2, supabaseUrl, supabaseKey, userId } = body;
+    const { ref, ctxBefore = 2, ctxAfter = 2, supabaseUrl, supabaseKey, userId, supabaseJwt } = body;
     const baseDir = import_path.default.join(process.cwd(), "context", "raw", "chat");
     const readJsonl = (filePath) => import_fs.default.readFileSync(filePath, "utf-8").split("\n").filter((l) => l.trim()).map((l) => {
       try {
@@ -466,7 +588,7 @@ router.post("/api/orbit/resolve", async (req, res) => {
         return;
       }
       const { createClient } = await import("@supabase/supabase-js");
-      const sb = createClient(supabaseUrl, supabaseKey);
+      const sb = supabaseJwt ? createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: `Bearer ${supabaseJwt}` } } }) : createClient(supabaseUrl, supabaseKey);
       const { data: target } = await sb.from("agent_messages").select("id,session_id,role,content,ts").eq("id", refId).eq("user_id", userId).maybeSingle();
       if (!target) {
         res.json({ ok: false, error: "Agent message not found" });
@@ -733,6 +855,30 @@ router.get("/api/check-port", (req, res) => {
     else res.json({ ok: true, inUse: true, pids: stdout.trim().split("\n").map((p) => parseInt(p, 10)).filter(Boolean) });
   });
 });
+router.get("/api/process-status", (req, res) => {
+  const pid = parseInt(req.query.pid ?? "0", 10);
+  if (!pid) {
+    res.json({ alive: false });
+    return;
+  }
+  try {
+    process.kill(pid, 0);
+    res.json({ alive: true });
+  } catch {
+    res.json({ alive: false });
+  }
+});
+router.get("/api/app-log", (req, res) => {
+  const port = req.query.port ?? "unknown";
+  const logFile = `/tmp/cc-app-${port}.log`;
+  const chars = Math.min(Math.max(Number(req.query.chars) || 3e3, 3e3), 1e5);
+  try {
+    const content = import_fs.default.readFileSync(logFile, "utf8");
+    res.json({ ok: true, content: content.slice(-chars), logFile });
+  } catch {
+    res.json({ ok: true, content: "", logFile });
+  }
+});
 router.post("/api/kill-port", async (req, res) => {
   try {
     const { port } = JSON.parse(await readBody(req));
@@ -754,10 +900,10 @@ router.post("/api/start-app", async (req, res) => {
       setTimeout(() => {
         const child = (0, import_child_process.spawn)("bash", ["-c", `cd ${JSON.stringify(projectPath)} && ${startCmd}`], {
           detached: true,
-          stdio: ["ignore", import_fs.default.openSync(logFile, "a"), import_fs.default.openSync(logFile, "a")]
+          stdio: ["ignore", import_fs.default.openSync(logFile, "a"), import_fs.default.openSync(logFile, "a")],
+          env: { ...process.env, BROWSER: "none", OPEN_BROWSER: "false" }
         });
         child.unref();
-        if (port) setTimeout(() => (0, import_child_process.exec)(`open http://localhost:${port} 2>/dev/null || true`), 2500);
         res.json({ ok: true, pid: child.pid ?? 0, logFile });
       }, 400);
     });
@@ -767,7 +913,8 @@ router.post("/api/start-app", async (req, res) => {
 });
 router.post("/api/ai-refine", async (req, res) => {
   try {
-    const { provider, apiKey, model, text, systemPrompt } = JSON.parse(await readBody(req));
+    const { provider, apiKey: rawApiKey, model, text, systemPrompt } = JSON.parse(await readBody(req));
+    const apiKey = rawApiKey.replace(/[^\x20-\x7E]/g, "").trim();
     const sysMsg = systemPrompt ?? "Verbessere den folgenden Text sprachlich und inhaltlich. Mache ihn klarer, pr\xE4ziser und professioneller. Gib nur den verbesserten Text zur\xFCck, ohne Erkl\xE4rungen oder zus\xE4tzliche Kommentare.";
     console.log("\n[ai-refine] \u25B6 provider:", provider, "| model:", model);
     if (provider === "anthropic") {
@@ -781,20 +928,32 @@ router.post("/api/ai-refine", async (req, res) => {
         res.json({ ok: false, error: d?.error?.message ?? "API error" });
         return;
       }
-      res.json({ ok: true, text: d.content?.[0]?.text ?? text });
+      const u = d.usage ?? {};
+      res.json({ ok: true, text: d.content?.[0]?.text ?? text, inputTokens: u.input_tokens ?? 0, outputTokens: u.output_tokens ?? 0 });
     } else {
-      const baseUrl = provider === "deepseek" ? "https://api.deepseek.com/v1" : "https://api.openai.com/v1";
+      const baseUrl = provider === "deepseek" ? "https://api.deepseek.com/v1" : provider === "openrouter" ? "https://openrouter.ai/api/v1" : provider === "groq" ? "https://api.groq.com/openai/v1" : null;
+      if (!baseUrl) {
+        res.json({ ok: false, error: `Unbekannter Provider: "${provider}". Bitte einen g\xFCltigen Provider w\xE4hlen.` });
+        return;
+      }
+      console.log(`[ai-refine] \u25B6 sending to ${baseUrl} | model: ${model}`);
       const r = await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json", ...provider === "openrouter" ? { "HTTP-Referer": "https://codera.ai", "X-Title": "Codera AI" } : {} },
         body: JSON.stringify({ model, messages: [{ role: "system", content: sysMsg }, { role: "user", content: text }] })
       });
       const d = await r.json();
       if (!r.ok) {
-        res.json({ ok: false, error: d?.error?.message ?? "API error" });
+        const rawErr = d?.error?.message ?? "API error";
+        console.error(`[ai-refine] \u2717 ${provider} HTTP ${r.status}: ${rawErr}`);
+        const userErr = provider === "openrouter" && r.status === 401 ? `OpenRouter: Key ung\xFCltig/abgelaufen (HTTP 401). Bitte openrouter.ai/keys pr\xFCfen. Orig: ${rawErr.slice(0, 100)}` : provider === "openrouter" && r.status === 402 ? "OpenRouter-Konto hat kein Guthaben. Bitte unter openrouter.ai/credits aufladen." : provider === "openrouter" ? `OpenRouter HTTP ${r.status}: ${rawErr}` : rawErr;
+        res.json({ ok: false, error: userErr });
         return;
       }
-      res.json({ ok: true, text: d.choices?.[0]?.message?.content ?? text });
+      const u = d.usage ?? {};
+      const inputTokens = u.input_tokens ?? u.prompt_tokens ?? 0;
+      const outputTokens = u.output_tokens ?? u.completion_tokens ?? (u.total_tokens ? u.total_tokens - inputTokens : 0);
+      res.json({ ok: true, text: d.choices?.[0]?.message?.content ?? text, inputTokens, outputTokens });
     }
   } catch (e) {
     res.json({ ok: false, error: String(e) });
@@ -802,7 +961,8 @@ router.post("/api/ai-refine", async (req, res) => {
 });
 router.post("/api/context-search", async (req, res) => {
   try {
-    const { query, messages, provider, apiKey, model, systemPromptOverride } = JSON.parse(await readBody(req));
+    const { query, messages, provider, apiKey: rawApiKey2, model, systemPromptOverride } = JSON.parse(await readBody(req));
+    const apiKey = rawApiKey2.replace(/[^\x20-\x7E]/g, "").trim();
     const historyText = messages.sort((a, b) => a.ts - b.ts).map((m) => {
       const date = new Date(m.ts).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
       const src = m.source === "agent" ? "AGENT" : "ORBIT";
@@ -839,20 +999,25 @@ ${historyText}`;
       rawText = d.content?.[0]?.text ?? "";
       usage = d.usage ?? {};
     } else {
-      const baseUrl = provider === "deepseek" ? "https://api.deepseek.com/v1" : provider === "groq" ? "https://api.groq.com/openai/v1" : "https://api.openai.com/v1";
+      const baseUrl = provider === "deepseek" ? "https://api.deepseek.com/v1" : provider === "openrouter" ? "https://openrouter.ai/api/v1" : provider === "groq" ? "https://api.groq.com/openai/v1" : null;
+      if (!baseUrl) {
+        res.json({ ok: false, error: `Unbekannter Provider: "${provider}"` });
+        return;
+      }
       const r = await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json", ...provider === "openrouter" ? { "HTTP-Referer": "https://codera.ai", "X-Title": "Codera AI" } : {} },
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMsg }],
-          max_tokens: 4096,
-          response_format: provider === "openai" ? { type: "json_object" } : void 0
+          max_tokens: 4096
         })
       });
       const d = await r.json();
       if (!r.ok) {
-        res.json({ ok: false, error: d?.error?.message ?? "API error" });
+        const rawErr = d?.error?.message ?? "API error";
+        const userErr = provider === "openrouter" && r.status === 401 ? `OpenRouter API-Key ung\xFCltig oder abgelaufen. Bitte unter openrouter.ai/keys pr\xFCfen. (${rawErr.slice(0, 80)})` : provider === "openrouter" && r.status === 402 ? "OpenRouter-Konto hat kein Guthaben. Bitte unter openrouter.ai/credits aufladen." : rawErr;
+        res.json({ ok: false, error: userErr });
         return;
       }
       rawText = d.choices?.[0]?.message?.content ?? "";
@@ -878,7 +1043,7 @@ router.post("/api/transcribe", async (req, res) => {
   req.on("data", (c) => chunks.push(c));
   req.on("end", async () => {
     try {
-      const apiKey = req.headers["x-api-key"];
+      const apiKey = req.headers["x-api-key"] || process.env.GROQ_API_KEY || "";
       const lang = req.headers["x-language"] || "de";
       if (!apiKey) {
         res.json({ ok: false, error: "no api key" });
@@ -929,6 +1094,58 @@ router.get("/api/serve-image", (req, res) => {
     res.status(404).send("not found");
   }
 });
+router.get("/api/serve-local", (req, res) => {
+  const filePath = tilde(req.query.path ?? "");
+  if (!filePath) {
+    res.status(400).send("missing path");
+    return;
+  }
+  const allowed = import_path.default.join(home(), "Documents", "Codera", "var");
+  if (!filePath.startsWith(allowed)) {
+    res.status(403).send("forbidden");
+    return;
+  }
+  try {
+    const stat = import_fs.default.statSync(filePath);
+    if (stat.size > 50 * 1024 * 1024) {
+      res.status(413).send("too large");
+      return;
+    }
+    const ext = import_path.default.extname(filePath).replace(/^\d+-/, "").toLowerCase();
+    const mime = {
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".gif": "image/gif",
+      ".webp": "image/webp",
+      ".svg": "image/svg+xml",
+      ".avif": "image/avif",
+      ".bmp": "image/bmp",
+      ".pdf": "application/pdf",
+      ".json": "application/json",
+      ".txt": "text/plain",
+      ".md": "text/plain",
+      ".mdx": "text/plain",
+      ".csv": "text/csv",
+      ".xml": "text/xml",
+      ".yaml": "text/plain",
+      ".yml": "text/plain",
+      ".ts": "text/plain",
+      ".tsx": "text/plain",
+      ".js": "text/plain",
+      ".jsx": "text/plain",
+      ".css": "text/plain",
+      ".html": "text/html",
+      ".sql": "text/plain",
+      ".log": "text/plain"
+    };
+    res.setHeader("Content-Type", mime[ext] ?? "application/octet-stream");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(import_fs.default.readFileSync(filePath));
+  } catch {
+    res.status(404).send("not found");
+  }
+});
 router.post("/api/write-temp-image", (req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
@@ -936,9 +1153,9 @@ router.post("/api/write-temp-image", (req, res) => {
     try {
       const fileName = decodeURIComponent(req.headers["x-file-name"] ?? "image");
       const safeName = import_path.default.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
-      const tmpPath = import_path.default.join((0, import_os.tmpdir)(), `cc-ui-img-${Date.now()}-${safeName}`);
-      import_fs.default.writeFileSync(tmpPath, Buffer.concat(chunks));
-      res.json({ ok: true, path: tmpPath });
+      const filePath = import_path.default.join(coderaVarDir(), `${Date.now()}-${safeName}`);
+      import_fs.default.writeFileSync(filePath, Buffer.concat(chunks));
+      res.json({ ok: true, path: filePath });
     } catch (e) {
       res.json({ ok: false, error: String(e) });
     }
@@ -955,28 +1172,14 @@ var readStore = () => {
 router.post("/api/r2-upload", (req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
-  req.on("end", async () => {
+  req.on("end", () => {
     try {
-      const store = readStore();
-      const bucket = store["cloudflareR2BucketName"] ?? "";
-      const accessKey = store["cloudflareR2AccessKeyId"] ?? "";
-      const secretKey = store["cloudflareR2SecretAccessKey"] ?? "";
-      const r2Endpoint = store["cloudflareR2Endpoint"] || (store["cloudflareAccountId"] ? `https://${store["cloudflareAccountId"]}.r2.cloudflarestorage.com` : "");
-      const publicUrl = (store["cloudflareR2PublicUrl"] ?? "").replace(/\/$/, "");
-      if (!r2Endpoint || !bucket || !accessKey || !secretKey) {
-        res.status(400).json({ ok: false, error: "Cloudflare R2 nicht konfiguriert." });
-        return;
-      }
-      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
-      const s3 = new S3Client({ region: "auto", endpoint: r2Endpoint, forcePathStyle: true, credentials: { accessKeyId: accessKey, secretAccessKey: secretKey } });
       const fileName = decodeURIComponent(req.headers["x-file-name"] ?? "file");
-      const userId = req.headers["x-user-id"] ?? "anonymous";
-      const folder = req.headers["x-folder"] ?? "image-text-context";
-      const mimeType = req.headers["content-type"] ?? "application/octet-stream";
-      const key = `${userId}/${folder}/${Date.now()}-${import_path.default.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: Buffer.concat(chunks), ContentType: mimeType }));
-      const fileUrl = publicUrl ? `${publicUrl}/${key}` : `/api/r2-proxy?key=${encodeURIComponent(key)}`;
-      res.json({ ok: true, url: fileUrl, key });
+      const safeName = import_path.default.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = import_path.default.join(coderaVarDir(), `${Date.now()}-${safeName}`);
+      import_fs.default.writeFileSync(filePath, Buffer.concat(chunks));
+      const fileUrl = `/api/serve-local?path=${encodeURIComponent(filePath)}`;
+      res.json({ ok: true, url: fileUrl });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e) });
     }
@@ -1188,6 +1391,7 @@ var api_default = router;
 var import_module = require("module");
 var import_fs2 = __toESM(require("fs"), 1);
 var import_path2 = __toESM(require("path"), 1);
+var import_child_process2 = require("child_process");
 var import_ws = require("ws");
 var _require = (0, import_module.createRequire)(__importMetaUrl);
 var PROJECT_ROOT = process.env.APP_ROOT ?? process.cwd();
@@ -1252,8 +1456,8 @@ terminalWss.on("connection", (ws, req) => {
         cwd,
         env: ptyEnv
       });
-      const session = { pty: ptyProc, clients: /* @__PURE__ */ new Set([ws]), scrollback: "" };
-      sessions.set(sessionId, session);
+      const session2 = { pty: ptyProc, clients: /* @__PURE__ */ new Set([ws]), scrollback: "" };
+      sessions.set(sessionId, session2);
       if (!(cmd === "zsh" && !args)) {
         const fullCmd = args ? `${cmd} ${args}` : cmd;
         setTimeout(() => {
@@ -1264,16 +1468,16 @@ terminalWss.on("connection", (ws, req) => {
         }, 600);
       }
       const broadcast = (data) => {
-        session.scrollback = (session.scrollback + data).slice(-PTY_SCROLLBACK);
+        session2.scrollback = (session2.scrollback + data).slice(-PTY_SCROLLBACK);
         const payload = JSON.stringify({ type: "data", data });
-        for (const c of session.clients) {
+        for (const c of session2.clients) {
           if (c.readyState === 1) c.send(payload);
         }
       };
       ptyProc.onData(broadcast);
       ptyProc.onExit(({ exitCode }) => {
         const payload = JSON.stringify({ type: "exit", exitCode });
-        for (const c of session.clients) {
+        for (const c of session2.clients) {
           if (c.readyState === 1) c.send(payload);
         }
         sessions.delete(sessionId);
@@ -1287,8 +1491,8 @@ terminalWss.on("connection", (ws, req) => {
         }
       });
       ws.on("close", () => {
-        session.clients.delete(ws);
-        if (session.clients.size === 0) {
+        session2.clients.delete(ws);
+        if (session2.clients.size === 0) {
           try {
             ptyProc.kill();
           } catch {
@@ -1342,13 +1546,21 @@ agentWss.on("connection", (ws, req) => {
           } catch {
           }
           activePtys.delete(sessionId);
+        } else {
+          ws.send(JSON.stringify({ type: "exit", exitCode: -1 }));
         }
-        ws.send(JSON.stringify({ type: "exit", exitCode: -1 }));
         return;
       }
       if (msg.type !== "message") return;
-      const text = String(msg.text ?? "");
+      const rawText = String(msg.text ?? "");
       const cwd = String(msg.cwd ?? process.env.HOME ?? "~").replace(/^~/, process.env.HOME ?? "/");
+      const imagePaths = [];
+      const IMAGE_FLAG_RE_SRV = /--image\s+"([^"]+)"|--image\s+'([^']+)'|--image\s+(\S+)/g;
+      const text = rawText.replace(IMAGE_FLAG_RE_SRV, (_match, q1, q2, bare) => {
+        const p = (q1 ?? q2 ?? bare ?? "").trim();
+        if (p) imagePaths.push(p);
+        return "";
+      }).trim();
       const orModel = msg.orModel ? String(msg.orModel) : null;
       const orKey = msg.orKey ? String(msg.orKey) : null;
       const providerSettingsJson = msg.providerSettingsJson ? String(msg.providerSettingsJson) : null;
@@ -1414,7 +1626,7 @@ agentWss.on("connection", (ws, req) => {
       }), "utf8");
       const pty = _require("node-pty");
       const isCustomProvider = !!settingsFile || !!baseEnv["ANTHROPIC_BASE_URL"];
-      const claudeArgs = [
+      const baseClaudeArgs = [
         "--output-format",
         "stream-json",
         "--verbose",
@@ -1422,26 +1634,18 @@ agentWss.on("connection", (ws, req) => {
         ...isCustomProvider ? ["--dangerously-skip-permissions", "--bare", "--add-dir", cwd] : ["--mcp-config", mcpConfigFile, "--permission-prompt-tool", "mcp__perm__permission_prompt"],
         ...settingsFile ? ["--settings", settingsFile] : [],
         ...!settingsFile && orModel ? ["--model", orModel] : [],
-        "--print",
-        text,
         ...resume ? ["--resume", resume] : []
       ];
-      const ptyProc = pty.spawn("claude", claudeArgs, {
-        name: "xterm-color",
-        cols: 220,
-        rows: 50,
-        cwd,
-        env: baseEnv
-      });
-      let lineBuf = "";
-      const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "").replace(/\x1b[>=<()][0-9A-Za-z]*/g, "").replace(/\x1b./g, "").replace(/[\x00-\x09\x0b-\x0c\x0e-\x1f\x7f]/g, "").replace(/\r/g, "");
+      const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?><]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "").replace(/\x1b[>=<()][0-9A-Za-z]*/g, "").replace(/\x1b./g, "").replace(/[\x00-\x09\x0b-\x0c\x0e-\x1f\x7f]/g, "").replace(/\r/g, "");
       let lastToolUse = null;
       const sendLine = (line) => {
         const clean = stripAnsi(line).trim();
         if (!clean) return;
         if (clean[0] !== "{") {
-          if (/allow|permission|do you want|y\/n|\[y\/n\]|proceed\?/i.test(clean)) {
+          if (!isCustomProvider && /allow|permission|do you want|y\/n|\[y\/n\]|proceed\?/i.test(clean)) {
             ws.send(JSON.stringify({ type: "permission_request", text: clean, tool: lastToolUse }));
+          } else if (isCustomProvider) {
+            ws.send(JSON.stringify({ type: "agent_error", message: clean }));
           }
           return;
         }
@@ -1472,50 +1676,120 @@ agentWss.on("connection", (ws, req) => {
         } catch {
         }
       };
-      let permDebounce = null;
-      const flushPermBuf = () => {
-        if (pendingPerms.size > 0) {
-          lineBuf = "";
-          return;
-        }
-        const cleanBuf = stripAnsi(lineBuf).trim();
-        if (!cleanBuf || cleanBuf[0] === "{" || cleanBuf.length < 8) {
-          lineBuf = "";
-          return;
-        }
-        ws.send(JSON.stringify({ type: "permission_request", text: cleanBuf, tool: lastToolUse }));
-        lineBuf = "";
-      };
-      ptyProc.onData((data) => {
-        lineBuf += data;
-        const lines = lineBuf.split("\n");
-        lineBuf = lines.pop() ?? "";
-        lines.forEach(sendLine);
-        if (permDebounce) {
-          clearTimeout(permDebounce);
-          permDebounce = null;
-        }
-        const cleanBuf = stripAnsi(lineBuf).trim();
-        if (cleanBuf && cleanBuf[0] !== "{" && cleanBuf.length >= 8 && pendingPerms.size === 0) {
-          permDebounce = setTimeout(flushPermBuf, 600);
-        }
-      });
-      activePtys.set(sessionId, { write: (d) => ptyProc.write(d), kill: () => ptyProc.kill() });
-      ptyProc.onExit(({ exitCode }) => {
-        if (lineBuf.trim()) sendLine(lineBuf);
-        activePtys.delete(sessionId);
-        ws.send(JSON.stringify({ type: "exit", exitCode: exitCode ?? 0 }));
-        if (settingsFile) {
+      if (imagePaths.length > 0) {
+        const mimeForExt = (p) => {
+          const ext = import_path2.default.extname(p).toLowerCase();
+          if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+          if (ext === ".png") return "image/png";
+          if (ext === ".gif") return "image/gif";
+          if (ext === ".webp") return "image/webp";
+          return "image/png";
+        };
+        const content = [];
+        for (const p of imagePaths) {
           try {
-            import_fs2.default.unlinkSync(settingsFile);
+            const data = import_fs2.default.readFileSync(p);
+            content.push({ type: "image", source: { type: "base64", media_type: mimeForExt(p), data: data.toString("base64") } });
           } catch {
           }
         }
-        try {
-          import_fs2.default.unlinkSync(mcpConfigFile);
-        } catch {
-        }
-      });
+        if (text.trim()) content.push({ type: "text", text });
+        const jsonInput = JSON.stringify({
+          type: "user",
+          message: { role: "user", content }
+        });
+        const imageArgs = [...baseClaudeArgs, "--print", "--input-format", "stream-json"];
+        const proc = (0, import_child_process2.spawn)("claude", imageArgs, { cwd, env: baseEnv, stdio: ["pipe", "pipe", "pipe"] });
+        proc.stdin.write(jsonInput + "\n");
+        proc.stdin.end();
+        activePtys.set(sessionId, { write: () => {
+        }, kill: () => {
+          proc.kill();
+        } });
+        let imgBuf = "";
+        const handleChunk = (chunk) => {
+          imgBuf += chunk.toString();
+          const lines = imgBuf.split("\n");
+          imgBuf = lines.pop() ?? "";
+          lines.forEach(sendLine);
+        };
+        proc.stdout.on("data", handleChunk);
+        proc.stderr.on("data", handleChunk);
+        proc.on("close", (exitCode) => {
+          if (imgBuf.trim()) sendLine(imgBuf);
+          activePtys.delete(sessionId);
+          ws.send(JSON.stringify({ type: "exit", exitCode: exitCode ?? 0 }));
+          if (settingsFile) {
+            try {
+              import_fs2.default.unlinkSync(settingsFile);
+            } catch {
+            }
+          }
+          try {
+            import_fs2.default.unlinkSync(mcpConfigFile);
+          } catch {
+          }
+        });
+      } else {
+        const claudeArgs = [...baseClaudeArgs, "--print", "--", text];
+        const ptyProc = pty.spawn("claude", claudeArgs, {
+          name: "xterm-color",
+          cols: 220,
+          rows: 50,
+          cwd,
+          env: baseEnv
+        });
+        let lineBuf = "";
+        let permDebounce = null;
+        const flushPermBuf = () => {
+          if (pendingPerms.size > 0) {
+            lineBuf = "";
+            return;
+          }
+          const cleanBuf = stripAnsi(lineBuf).trim();
+          if (!cleanBuf || cleanBuf[0] === "{" || cleanBuf.length < 8) {
+            lineBuf = "";
+            return;
+          }
+          if (isCustomProvider) {
+            ws.send(JSON.stringify({ type: "agent_error", message: cleanBuf }));
+            lineBuf = "";
+            return;
+          }
+          ws.send(JSON.stringify({ type: "permission_request", text: cleanBuf, tool: lastToolUse }));
+          lineBuf = "";
+        };
+        ptyProc.onData((data) => {
+          lineBuf += data;
+          const lines = lineBuf.split("\n");
+          lineBuf = lines.pop() ?? "";
+          lines.forEach(sendLine);
+          if (permDebounce) {
+            clearTimeout(permDebounce);
+            permDebounce = null;
+          }
+          const cleanBuf = stripAnsi(lineBuf).trim();
+          if (cleanBuf && cleanBuf[0] !== "{" && cleanBuf.length >= 8 && pendingPerms.size === 0) {
+            permDebounce = setTimeout(flushPermBuf, 600);
+          }
+        });
+        activePtys.set(sessionId, { write: (d) => ptyProc.write(d), kill: () => ptyProc.kill() });
+        ptyProc.onExit(({ exitCode }) => {
+          if (lineBuf.trim()) sendLine(lineBuf);
+          activePtys.delete(sessionId);
+          ws.send(JSON.stringify({ type: "exit", exitCode: exitCode ?? 0 }));
+          if (settingsFile) {
+            try {
+              import_fs2.default.unlinkSync(settingsFile);
+            } catch {
+            }
+          }
+          try {
+            import_fs2.default.unlinkSync(mcpConfigFile);
+          } catch {
+          }
+        });
+      }
     } catch (e) {
       console.error("[ws/agent] error:", e);
     }
@@ -1538,6 +1812,7 @@ function attachWsUpgrade(httpServer) {
 }
 
 // electron/main.ts
+import_electron.app.commandLine.appendSwitch("in-process-gpu");
 var isDev = !import_electron.app.isPackaged;
 process.env.APP_ROOT = import_electron.app.getAppPath();
 var BACKEND_PORT2 = 2003;
@@ -1549,7 +1824,7 @@ function listenWithRetry(server, port) {
     };
     server.once("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        (0, import_child_process2.exec)(`lsof -ti tcp:${port} | xargs kill -9 2>/dev/null; true`, () => {
+        (0, import_child_process3.exec)(`lsof -ti tcp:${port} | xargs kill -9 2>/dev/null; true`, () => {
           setTimeout(tryListen, 400);
         });
       } else {
@@ -1586,7 +1861,8 @@ function createWindow() {
     webPreferences: {
       preload: import_path3.default.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      webviewTag: true
     }
   });
   const url = isDev ? `http://localhost:${VITE_PORT}` : `http://localhost:${BACKEND_PORT2}`;
@@ -1605,6 +1881,20 @@ import_electron.app.whenReady().then(async () => {
       console.error("[backend] failed to start:", err);
     }
   }
+  import_electron.session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    const allowed = ["media", "audioCapture", "microphone"].includes(permission);
+    callback(allowed);
+  });
+  import_electron.session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    return ["media", "audioCapture", "microphone"].includes(permission);
+  });
+  import_electron.ipcMain.on("webview-invalidate", (_event, id) => {
+    try {
+      const wc = import_electron.webContents.fromId(id);
+      if (wc && !wc.isDestroyed()) wc.invalidate();
+    } catch {
+    }
+  });
   createWindow();
   import_electron.app.on("activate", () => {
     if (import_electron.BrowserWindow.getAllWindows().length === 0) createWindow();

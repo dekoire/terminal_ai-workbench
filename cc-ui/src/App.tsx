@@ -107,9 +107,9 @@ export default function App() {
       {/* Keep Workspace alive at all times (except login/register) so terminals never restart */}
       {screen !== 'login' && screen !== 'register' && (
         <div style={{ position: 'absolute', inset: 0, display: workspaceActive ? 'flex' : 'none', flexDirection: 'column' }}>
-          {currentUser && !dataLoaded ? (
+          {!dataLoaded ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-0)' }}>
-              <ISpinner size={24} style={{ color: 'var(--fg-3)' }} />
+              <ISpinner size={28} style={{ color: 'var(--accent)' }} />
             </div>
           ) : (
             <Workspace />
@@ -130,14 +130,22 @@ export default function App() {
 
       {/* Workshop — fixed overlay modal, workspace stays alive behind it */}
       {screen === 'workshop' && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9000,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <UIWorkshop />
-        </div>
+        <>
+          {/* Blur overlay — separate sibling, NOT parent of UIWorkshop.
+              backdrop-filter creates a compositing layer that blacks out Electron webviews. */}
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 8999,
+            background: 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(8px)',
+            pointerEvents: 'none',
+          }} />
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 9000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <UIWorkshop />
+          </div>
+        </>
       )}
 
       {newProjectOpen && <NewProjectModal />}

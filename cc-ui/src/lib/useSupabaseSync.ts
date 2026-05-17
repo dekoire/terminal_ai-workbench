@@ -412,6 +412,7 @@ export function useSupabaseSync() {
       console.error('[supabaseSync] load error:', err)
       loadedRef.current  = true
       loadingRef.current = false
+      useAppStore.getState().setDataLoaded(true)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id, supabaseUrl, supabaseKey])

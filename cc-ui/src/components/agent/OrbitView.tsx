@@ -13,6 +13,7 @@ import { sanitizeKey } from '../../utils/orProvider'
 import { getSupabase } from '../../lib/supabase'
 import { saveProjectBrainToSupabase } from '../../lib/supabaseSync'
 import { resolveRefs } from '../../lib/resolveRefs'
+import { writeClipboard } from '../../lib/clipboard'
 import { loadAgentMessageById } from '../../lib/agentSync'
 
 // ── Syntax highlighter (shared with AgentView) ────────────────────────────────
@@ -85,7 +86,7 @@ function tokenize(line: string, hashComment: boolean): Array<{ t: TokenType; s: 
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(code).then(() => {
+    writeClipboard(code).then(() => {
       setCopied(true); setTimeout(() => setCopied(false), 1500)
     }).catch(() => {})
   }
@@ -127,7 +128,7 @@ function InlineRefBadge({ type, id }: { type: string; id: string }) {
   const typeColor = type === 'chat' ? 'var(--orbit)' : 'var(--accent)'
   const copy = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
-    navigator.clipboard.writeText(`#${type}:${id}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }).catch(() => {})
+    writeClipboard(`#${type}:${id}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }).catch(() => {})
   }
   return (
     <span onClick={copy} title={copied ? 'Kopiert!' : `#${type}:${id} kopieren`} style={{
@@ -441,7 +442,7 @@ function IdBadge({ id }: { id: string }) {
   const copy = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    navigator.clipboard.writeText(copyVal).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }).catch(() => {})
+    writeClipboard(copyVal).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }).catch(() => {})
   }
   const typeColor = type === 'chat' ? 'var(--orbit)' : 'var(--accent)'
   return (
@@ -535,7 +536,7 @@ function MessageBubble({ msg, onFavorite, isFavorited, onImageClick }: {
   const [ctxModal, setCtxModal] = useState(false)
 
   const copy = () => {
-    navigator.clipboard.writeText(msg.content).then(() => {
+    writeClipboard(msg.content).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1400)
     })
@@ -1272,7 +1273,7 @@ export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) 
         {chatId && (
           <div
             onClick={() => {
-              navigator.clipboard.writeText(chatId).then(() => { setChatIdCopied(true); setTimeout(() => setChatIdCopied(false), 1200) }).catch(() => {})
+              writeClipboard(chatId).then(() => { setChatIdCopied(true); setTimeout(() => setChatIdCopied(false), 1200) }).catch(() => {})
             }}
             title={chatIdCopied ? 'Kopiert!' : `Chat-ID kopieren: ${chatId}`}
             style={{

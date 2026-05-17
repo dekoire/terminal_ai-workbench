@@ -5,9 +5,11 @@ import type { SessionKind } from '../../store/useAppStore'
 import { ISpinner, ICopy, IExternalLink, IBookmark, IChevDown, IChevUp, IMoveUpRight, IRefresh, IWarn, IOrbit, IBot } from '../primitives/Icons'
 import { CtxCard } from '../primitives/CtxCard'
 import { FileCard } from '../primitives/FileCard'
+import { MarkdownContent } from '../primitives/MarkdownContent'
 import { getSupabase } from '../../lib/supabase'
 import { saveAgentMessage, loadLastProjectMessages, loadLatestContextSummary, saveContextSummary, compressAgentHistory, loadAgentMessageById, loadMessagesSince, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { resolveRefs } from '../../lib/resolveRefs'
+import { writeClipboard } from '../../lib/clipboard'
 import { newAgentMsgId } from '../../lib/ids'
 import { PermissionDialog } from './PermissionDialog'
 import type { PermissionDecision } from './PermissionDialog'
@@ -242,7 +244,7 @@ function tokenize(line: string, hashComment: boolean): Array<{ t: TokenType; s: 
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(code).then(() => {
+    writeClipboard(code).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     }).catch(() => {})
@@ -484,7 +486,7 @@ function TextBlock({ text, style }: { text: string; style?: React.CSSProperties 
   const [copied, setCopied] = useState(false)
   const [hovered, setHovered] = useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(text).then(() => {
+    writeClipboard(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     }).catch(() => {})
@@ -953,7 +955,7 @@ function CollapsibleError({ message }: { message: string }) {
 function MsgFooterCopy({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400) }).catch(() => {})
+    writeClipboard(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400) }).catch(() => {})
   }
   return (
     <button onClick={copy} title="Kopieren" style={{ background: 'none', border: 'none', cursor: 'pointer', color: copied ? 'var(--ok)' : 'var(--fg-3)', padding: '0 2px', display: 'flex', alignItems: 'center' }}>
@@ -986,7 +988,7 @@ function OldMsgIdBadge({ id }: { id: string }) {
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    navigator.clipboard.writeText(ref).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }).catch(() => {})
+    writeClipboard(ref).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200) }).catch(() => {})
   }
   return (
     <span
@@ -1246,7 +1248,9 @@ function BubbleContent({ text }: { text: string }) {
         if (p.kind === 'text') {
           const trimmed = p.value.trim()
           return trimmed ? (
-            <span key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{trimmed}</span>
+            <div key={i} style={{ wordBreak: 'break-word' }}>
+              <MarkdownContent text={trimmed} />
+            </div>
           ) : null
         }
         if (p.kind === 'inlinefile') {
@@ -2308,7 +2312,7 @@ export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSe
   // Session ID copy badge (top-right inside chat)
   const [sidCopied, setSidCopied] = useState(false)
   const copySid = () => {
-    navigator.clipboard.writeText(sessionId).then(() => { setSidCopied(true); setTimeout(() => setSidCopied(false), 1200) }).catch(() => {})
+    writeClipboard(sessionId).then(() => { setSidCopied(true); setTimeout(() => setSidCopied(false), 1200) }).catch(() => {})
   }
 
   // freshSessionStart: events contains only the session_start marker (no real messages yet)

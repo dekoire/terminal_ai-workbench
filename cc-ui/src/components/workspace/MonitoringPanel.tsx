@@ -97,6 +97,22 @@ export function MonitoringPanel({ projectId }: { projectId: string | undefined }
   const listRef    = useRef<HTMLDivElement>(null)
   const prevRawRef = useRef<Record<string, string>>({})  // source → last raw content
 
+  // Reset all state when project changes
+  useEffect(() => {
+    setLogs([])
+    setFilter('')
+    setLevelFilter('all')
+    setTimeFrom('')
+    setTimeTo('')
+    setAutoScroll(true)
+    setPortStatus('unknown')
+    setConfig(null)
+    setManualPort('')
+    setSources([])
+    setSelectedSource('')
+    prevRawRef.current = {}
+  }, [projectId])
+
   // Port priority: launcher state (Play button) → config → store → manual input
   const activePort = (() => {
     const src = sources.find(s => s.key === selectedSource)

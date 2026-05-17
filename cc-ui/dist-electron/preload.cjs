@@ -2,5 +2,6 @@
 var import_electron = require("electron");
 import_electron.contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
-  version: process.versions.electron
+  version: process.versions.electron,
+  invalidateWebview: (id) => import_electron.ipcRenderer.send("webview-invalidate", id)
 });

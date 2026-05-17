@@ -60,7 +60,7 @@ export function UIWorkshop() {
   }, [transferToAgent])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '89vw', height: '89vh', background: 'var(--bg-0)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line-strong)', boxShadow: '0 8px 28px rgba(0,0,0,0.35)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '89vw', height: '89vh', background: 'var(--bg-0)', borderRadius: 10, border: '1px solid var(--line-strong)', boxShadow: '0 8px 28px rgba(0,0,0,0.35)', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
 
       {showModal && project && (
         <SmartLaunchModal
@@ -72,28 +72,8 @@ export function UIWorkshop() {
         />
       )}
 
-      {/* ── Header ── */}
-      {(() => {
-        const hdr = { bg: '#ffffff', border: '#e0e0e0', color: 'var(--bg-1)' }
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 38, background: hdr.bg, flexShrink: 0 }}>
-            <div style={{ flex: 1, textAlign: 'left', fontSize: 13, fontWeight: 600, color: hdr.color, fontFamily: 'var(--font-ui)', letterSpacing: 0.3 }}>
-              Live Browser / Selektor
-            </div>
-
-            <button
-              onClick={closeWorkshop}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: hdr.color, padding: 4, display: 'flex', alignItems: 'center', borderRadius: 5, opacity: 0.7 }}
-              title="Schließen"
-            >
-              <IClose style={{ width: 14, height: 14, strokeWidth: 2.2 }} />
-            </button>
-          </div>
-        )
-      })()}
-
-      {/* ── Browser area ── */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      {/* ── Browser area — no overflow:hidden, Electron webview is a GPU surface and gets clipped to black by it ── */}
+      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {isRunning ? (
           <BrowserPane
             mode={mode}
@@ -101,25 +81,36 @@ export function UIWorkshop() {
             onElementCaptured={onElementCaptured}
             onScreenshot={onScreenshot}
             initialUrl={browserUrl}
+            onClose={closeWorkshop}
           />
         ) : isIdle ? (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-1)' }}>
-              {hasConfig ? 'App ist nicht gestartet' : 'Keine App konfiguriert'}
+          <>
+            {/* Minimal browser bar for idle state */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 8px', background: '#ffffff', borderBottom: '1px solid #e8e8e8', flexShrink: 0 }}>
+              <button onClick={closeWorkshop} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.6)', padding: '5px 7px', display: 'flex', alignItems: 'center', borderRadius: 5 }} title="Schließen"
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.08)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                <IClose style={{ width: 14, height: 14, strokeWidth: 2.2 }} />
+              </button>
             </div>
-            {hasConfig && (
-              <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-                {project?.appStartCmd ?? `Port ${project?.appPort}`}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-1)' }}>
+                {hasConfig ? 'App ist nicht gestartet' : 'Keine App konfiguriert'}
               </div>
-            )}
-            <button
-              onClick={triggerDetect}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '7px 18px', fontSize: 12, color: 'var(--accent-fg)', cursor: 'pointer', fontWeight: 600, fontFamily: 'var(--font-ui)', marginTop: 4 }}
-            >
-              <IPlay style={{ width: 12, height: 12 }} />
-              {hasConfig ? 'App starten' : 'Erkennen & starten'}
-            </button>
-          </div>
+              {hasConfig && (
+                <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+                  {project?.appStartCmd ?? `Port ${project?.appPort}`}
+                </div>
+              )}
+              <button
+                onClick={triggerDetect}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '7px 18px', fontSize: 12, color: 'var(--accent-fg)', cursor: 'pointer', fontWeight: 600, fontFamily: 'var(--font-ui)', marginTop: 4 }}
+              >
+                <IPlay style={{ width: 12, height: 12 }} />
+                {hasConfig ? 'App starten' : 'Erkennen & starten'}
+              </button>
+            </div>
+          </>
         ) : null /* starting/detecting/error — SmartLaunchModal is shown */}
 
         {/* Floating chatbox */}

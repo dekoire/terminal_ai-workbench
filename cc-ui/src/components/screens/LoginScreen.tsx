@@ -7,7 +7,6 @@ export function LoginScreen() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
   const [showLogin, setShowLogin] = useState(true)
   const [showPw, setShowPw]     = useState(false)
 
@@ -19,11 +18,11 @@ export function LoginScreen() {
   const supabaseKey    = useAppStore(s => s.supabaseAnonKey)
 
   const handleLogin = async () => {
-    if (!email.trim() || !password) { setError('Bitte E-Mail und Passwort eingeben.'); return }
+    if (!email.trim() || !password) { addToast({ type: 'error', title: 'Bitte E-Mail und Passwort eingeben.' }); return }
     const sb = getSupabase(supabaseUrl, supabaseKey)
-    if (!sb) { setError('Supabase nicht konfiguriert.'); return }
+    if (!sb) { addToast({ type: 'error', title: 'Supabase nicht konfiguriert.' }); return }
 
-    setLoading(true); setError('')
+    setLoading(true)
     try {
       const { data, error: sbErr } = await sb.auth.signInWithPassword({ email: email.trim(), password })
       if (sbErr) { addToast({ type: 'error', title: 'Login fehlgeschlagen', body: sbErr.message }); return }
@@ -59,22 +58,101 @@ export function LoginScreen() {
       {/* ── Background pattern ── */}
       <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
         <defs>
-          {/* Dot grid */}
           <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
-            <circle cx="1.5" cy="1.5" r="1.2" fill="var(--line)" opacity="0.6" />
+            <circle cx="1.5" cy="1.5" r="1.4" fill="var(--fg-3)" opacity="0.75" />
           </pattern>
-          {/* Radial fade mask — bright center, fades to edges */}
-          <radialGradient id="fade" cx="50%" cy="50%" r="70%">
+          <radialGradient id="fade" cx="50%" cy="50%" r="65%">
             <stop offset="0%"   stopColor="var(--bg-0)" stopOpacity="0" />
+            <stop offset="60%"  stopColor="var(--bg-0)" stopOpacity="0.4" />
             <stop offset="100%" stopColor="var(--bg-0)" stopOpacity="1" />
           </radialGradient>
-          {/* Diagonal accent lines */}
-          <pattern id="diag" width="60" height="60" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
-            <line x1="0" y1="0" x2="0" y2="60" stroke="var(--accent)" strokeWidth="0.3" opacity="0.18" />
-          </pattern>
+          <radialGradient id="inner" cx="30%" cy="50%" r="45%">
+            <stop offset="50%"  stopColor="var(--bg-0)" stopOpacity="0" />
+            <stop offset="100%" stopColor="var(--bg-0)" stopOpacity="0.55" />
+          </radialGradient>
+          <filter id="glow-l" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
         </defs>
         <rect width="100%" height="100%" fill="url(#dots)" />
-        <rect width="100%" height="100%" fill="url(#diag)" />
+        {/* Accent dots */}
+        {([
+          { cx: 85.5,   cy: 141.5, dur: '3.2s', begin: '0s'   },
+          { cx: 477.5,  cy: 85.5,  dur: '2.8s', begin: '1.4s' },
+          { cx: 925.5,  cy: 477.5, dur: '3.6s', begin: '0.3s' },
+          { cx: 365.5,  cy: 589.5, dur: '2.5s', begin: '2.5s' },
+          { cx: 813.5,  cy: 365.5, dur: '3.3s', begin: '3.2s' },
+          { cx: 141.5,  cy: 477.5, dur: '4.2s', begin: '2.8s' },
+          { cx: 477.5,  cy: 813.5, dur: '5.2s', begin: '3.5s' },
+          { cx: 701.5,  cy: 57.5,  dur: '2.6s', begin: '1.6s' },
+          { cx: 253.5,  cy: 701.5, dur: '4.6s', begin: '4.5s' },
+          { cx: 1093.5, cy: 421.5, dur: '3.8s', begin: '1.0s' },
+          { cx: 589.5,  cy: 309.5, dur: '4.0s', begin: '5.5s' },
+        ] as const).map((d, i) => (
+          <circle key={`a${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="var(--accent)" opacity="0" filter="url(#glow-l)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {/* Blue dots */}
+        {([
+          { cx: 253.5,  cy: 365.5, dur: '4.1s', begin: '0.7s' },
+          { cx: 701.5,  cy: 253.5, dur: '5.0s', begin: '2.1s' },
+          { cx: 1149.5, cy: 141.5, dur: '4.4s', begin: '1.8s' },
+          { cx: 1037.5, cy: 589.5, dur: '2.9s', begin: '1.2s' },
+          { cx: 57.5,   cy: 253.5, dur: '4.0s', begin: '2.2s' },
+          { cx: 925.5,  cy: 813.5, dur: '3.9s', begin: '4.0s' },
+          { cx: 533.5,  cy: 533.5, dur: '3.4s', begin: '6.0s' },
+          { cx: 1205.5, cy: 673.5, dur: '4.7s', begin: '0.4s' },
+        ] as const).map((d, i) => (
+          <circle key={`b${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#3b82f6" opacity="0" filter="url(#glow-l)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {/* Orange dots */}
+        {([
+          { cx: 589.5,  cy: 701.5, dur: '4.8s', begin: '0.9s' },
+          { cx: 1261.5, cy: 365.5, dur: '3.7s', begin: '0.5s' },
+          { cx: 1373.5, cy: 589.5, dur: '3.1s', begin: '3.8s' },
+          { cx: 1037.5, cy: 253.5, dur: '4.3s', begin: '5.1s' },
+          { cx: 365.5,  cy: 141.5, dur: '3.5s', begin: '1.9s' },
+          { cx: 729.5,  cy: 673.5, dur: '5.4s', begin: '3.3s' },
+          { cx: 197.5,  cy: 813.5, dur: '3.0s', begin: '4.8s' },
+          { cx: 869.5,  cy: 197.5, dur: '4.5s', begin: '2.6s' },
+        ] as const).map((d, i) => (
+          <circle key={`o${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#f97316" opacity="0" filter="url(#glow-l)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {/* Red dots */}
+        {([
+          { cx: 169.5,  cy: 309.5, dur: '3.6s', begin: '1.3s' },
+          { cx: 645.5,  cy: 449.5, dur: '4.9s', begin: '3.7s' },
+          { cx: 1093.5, cy: 729.5, dur: '3.2s', begin: '0.6s' },
+          { cx: 421.5,  cy: 757.5, dur: '5.1s', begin: '2.9s' },
+          { cx: 869.5,  cy: 533.5, dur: '2.7s', begin: '5.8s' },
+          { cx: 1317.5, cy: 197.5, dur: '4.2s', begin: '1.5s' },
+          { cx: 309.5,  cy: 197.5, dur: '3.8s', begin: '4.3s' },
+        ] as const).map((d, i) => (
+          <circle key={`r${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#ef4444" opacity="0" filter="url(#glow-l)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        {/* Green dots */}
+        {([
+          { cx: 421.5,  cy: 253.5, dur: '4.3s', begin: '2.0s' },
+          { cx: 757.5,  cy: 589.5, dur: '3.5s', begin: '0.8s' },
+          { cx: 1205.5, cy: 449.5, dur: '5.0s', begin: '3.1s' },
+          { cx: 533.5,  cy: 757.5, dur: '2.9s', begin: '5.4s' },
+          { cx: 981.5,  cy: 141.5, dur: '4.6s', begin: '1.7s' },
+          { cx: 113.5,  cy: 645.5, dur: '3.3s', begin: '4.6s' },
+          { cx: 1317.5, cy: 757.5, dur: '4.8s', begin: '6.2s' },
+        ] as const).map((d, i) => (
+          <circle key={`g${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#22c55e" opacity="0" filter="url(#glow-l)">
+            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+          </circle>
+        ))}
+        <rect width="100%" height="100%" fill="url(#inner)" />
         <rect width="100%" height="100%" fill="url(#fade)" />
       </svg>
 
@@ -158,11 +236,6 @@ export function LoginScreen() {
                   </button>
                 </div>
               </div>
-              {error && (
-                <div style={{ fontSize: 11.5, color: 'var(--err)', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, padding: '8px 10px' }}>
-                  {error}
-                </div>
-              )}
               <button onClick={handleLogin} disabled={loading} style={{ ...btnPrimary, marginTop: 4, opacity: loading ? 0.7 : 1 }}>
                 {loading ? 'Anmelden…' : 'Anmelden'}
               </button>

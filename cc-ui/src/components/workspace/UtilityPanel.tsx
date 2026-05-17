@@ -12,6 +12,7 @@ import { MonitoringPanel } from './MonitoringPanel'
 import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
+import { writeClipboard } from '../../lib/clipboard'
 
 const OPENROUTER_MODELS = [
   { label: 'Claude Opus 4',       value: 'anthropic/claude-opus-4' },
@@ -373,12 +374,12 @@ function LiveTreeNode({ node, depth, installedApps }: { node: LiveNode; depth: n
           <CtxItem
             label="Pfad kopieren"
             icon={<ICopy style={{ width: 11, height: 11, color: 'var(--fg-2)', flexShrink: 0 }} />}
-            onClick={() => { navigator.clipboard.writeText(node.path); setMenu(null) }}
+            onClick={() => { writeClipboard(node.path); setMenu(null) }}
           />
           <CtxItem
             label="Name kopieren"
             icon={<ICopy style={{ width: 11, height: 11, color: 'var(--fg-2)', flexShrink: 0 }} />}
-            onClick={() => { navigator.clipboard.writeText(node.name); setMenu(null) }}
+            onClick={() => { writeClipboard(node.name); setMenu(null) }}
           />
           {/* Öffnen mit — files only, based on extension, filtered to installed apps */}
           {!node.isDir && (() => {
@@ -1850,7 +1851,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
             {data?.log.map((c, i) => (
               <div
                 key={i}
-                onClick={() => { navigator.clipboard.writeText(c.hash).catch(() => {}); showToast(`Hash kopiert: ${c.hash.slice(0, 7)}`, true) }}
+                onClick={() => { writeClipboard(c.hash).catch(() => {}); showToast(`Hash kopiert: ${c.hash.slice(0, 7)}`, true) }}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 6px', borderBottom: i < (data?.log.length ?? 0) - 1 ? 'var(--line)' : 'none', cursor: 'pointer', borderRadius: 4 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -2734,7 +2735,7 @@ function SectionHeader({ label }: { label: string }) {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400) }).catch(() => {})
+    writeClipboard(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400) }).catch(() => {})
   }
   return (
     <button onClick={copy} title={copied ? 'Kopiert!' : 'Kopieren'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: copied ? 'var(--ok)' : 'var(--fg-3)', padding: '2px 4px', display: 'flex', alignItems: 'center', gap: 3, fontSize: 10 }}>
@@ -2870,7 +2871,7 @@ export function CtxLogButton({ projectId }: { projectId: string }) {
                             </span>
                           )}
                           <button
-                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.summary ?? '').catch(() => {}) }}
+                            onClick={e => { e.stopPropagation(); writeClipboard(item.summary ?? '').catch(() => {}) }}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}
                             title="Summary kopieren"
                           >
@@ -4323,7 +4324,7 @@ function FieldPlain({ label, value }: { label: string; value: string }) {
 function FieldPath({ label, path }: { label: string; path: string }) {
   const [copied, setCopied] = React.useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(path)
+    writeClipboard(path)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }

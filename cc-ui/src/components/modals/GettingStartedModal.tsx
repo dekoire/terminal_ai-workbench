@@ -303,9 +303,13 @@ export function GettingStartedModal({ onClose }: Props) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 720, maxWidth: '92vw', height: 520, maxHeight: '88vh', borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line-strong)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
-        <button onClick={handleSkip} style={{ position: 'absolute', top: 14, right: 14, zIndex: 1, background: 'transparent', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 6 }} title="Schließen">
-          <IClose style={{ width: 16, height: 16 }} />
-        </button>
+        {/* Top-right: logo + close */}
+        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <img src={simpleLogo} alt="Codera AI" style={{ width: 22, height: 22, opacity: 0.55 }} />
+          <button onClick={handleSkip} style={{ background: 'transparent', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 6 }} title="Schließen">
+            <IClose style={{ width: 15, height: 15 }} />
+          </button>
+        </div>
         {step === 0 && renderStep0()}
         {step === 1 && renderStep1()}
         {step === 2 && renderStep2()}

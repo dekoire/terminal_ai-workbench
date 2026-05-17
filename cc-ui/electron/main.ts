@@ -1,4 +1,7 @@
-import { app, BrowserWindow, shell, nativeTheme, session } from 'electron'
+import { app, BrowserWindow, shell, nativeTheme, session, ipcMain, webContents, clipboard } from 'electron'
+
+// Fix for Electron webview black screen on macOS — must be called before app.whenReady()
+app.commandLine.appendSwitch('in-process-gpu')
 import { createServer }  from 'http'
 import { exec }          from 'child_process'
 import path              from 'path'
@@ -104,6 +107,19 @@ app.whenReady().then(async () => {
   })
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
     return ['media', 'audioCapture', 'microphone'].includes(permission)
+  })
+
+  // IPC: clipboard write (navigator.clipboard fails under contextIsolation)
+  ipcMain.handle('clipboard:write', (_e, text: string) => {
+    clipboard.writeText(text)
+  })
+
+  // IPC: force-repaint a webview by its webContentsId
+  ipcMain.on('webview-invalidate', (_event, id: number) => {
+    try {
+      const wc = webContents.fromId(id)
+      if (wc && !wc.isDestroyed()) wc.invalidate()
+    } catch {}
   })
 
   createWindow()
