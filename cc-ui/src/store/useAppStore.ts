@@ -1605,7 +1605,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     adminEmails:         s.adminEmails,
     supabaseUrl:              s.supabaseUrl,
     supabaseAnonKey:          s.supabaseAnonKey,
-    supabaseServiceRoleKey:   s.supabaseServiceRoleKey,
+    // supabaseServiceRoleKey intentionally NOT persisted — stored server-side only
     cloudflareAccountId:      s.cloudflareAccountId,
     cloudflareR2AccessKeyId:  s.cloudflareR2AccessKeyId,
     cloudflareR2SecretAccessKey: s.cloudflareR2SecretAccessKey,

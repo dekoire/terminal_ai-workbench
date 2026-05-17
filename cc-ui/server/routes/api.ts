@@ -638,9 +638,46 @@ async function sbFetch(supabaseUrl: string, serviceRoleKey: string, path: string
   })
 }
 
-router.get('/api/admin/users', async (req, res) => {
-  const { supabaseUrl, serviceRoleKey } = req.query as Record<string, string>
-  if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+// ── Admin credentials storage ──────────────────────────────────────────────────
+const adminCredsPath = () => path.join(home(), '.cc-ui-admin-creds.json')
+
+async function readAdminCreds(): Promise<{ supabaseUrl: string; serviceRoleKey: string } | null> {
+  try {
+    const raw = await fs.promises.readFile(adminCredsPath(), 'utf8')
+    const { supabaseUrl, serviceRoleKey } = JSON.parse(raw) as { supabaseUrl?: string; serviceRoleKey?: string }
+    if (supabaseUrl && serviceRoleKey) return { supabaseUrl, serviceRoleKey }
+    return null
+  } catch {
+    return null
+  }
+}
+
+router.post('/api/admin/set-credentials', async (req, res) => {
+  try {
+    const { supabaseUrl, serviceRoleKey } = JSON.parse(await readBody(req)) as Record<string, string>
+    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing fields' }); return }
+    await fs.promises.writeFile(adminCredsPath(), JSON.stringify({ supabaseUrl, serviceRoleKey }), 'utf8')
+    res.json({ ok: true })
+  } catch (e) {
+    res.json({ ok: false, error: String(e) })
+  }
+})
+
+router.get('/api/admin/has-credentials', async (_req, res) => {
+  try {
+    await fs.promises.access(adminCredsPath())
+    const raw = await fs.promises.readFile(adminCredsPath(), 'utf8')
+    const { supabaseUrl, serviceRoleKey } = JSON.parse(raw) as { supabaseUrl?: string; serviceRoleKey?: string }
+    res.json({ ok: true, hasCredentials: !!(supabaseUrl && serviceRoleKey) })
+  } catch {
+    res.json({ ok: true, hasCredentials: false })
+  }
+})
+
+router.get('/api/admin/users', async (_req, res) => {
+  const creds = await readAdminCreds()
+  if (!creds) { res.json({ ok: false, error: 'Admin credentials not configured. Please save them in the Admin Panel.' }); return }
+  const { supabaseUrl, serviceRoleKey } = creds
   try {
     const [usersR, adminsR] = await Promise.all([
       sbFetch(supabaseUrl, serviceRoleKey, '/auth/v1/admin/users?page=1&per_page=1000'),
@@ -663,9 +700,11 @@ router.get('/api/admin/users', async (req, res) => {
 })
 
 router.post('/api/admin/users', async (req, res) => {
+  const creds = await readAdminCreds()
+  if (!creds) { res.json({ ok: false, error: 'Admin credentials not configured. Please save them in the Admin Panel.' }); return }
+  const { supabaseUrl, serviceRoleKey } = creds
   try {
-    const { supabaseUrl, serviceRoleKey, email, password, firstName, lastName } = JSON.parse(await readBody(req)) as Record<string, string>
-    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+    const { email, password, firstName, lastName } = JSON.parse(await readBody(req)) as Record<string, string>
     const r = await sbFetch(supabaseUrl, serviceRoleKey, '/auth/v1/admin/users', {
       method: 'POST',
       body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { firstName, lastName } }),
@@ -677,9 +716,11 @@ router.post('/api/admin/users', async (req, res) => {
 })
 
 router.put('/api/admin/users/:id', async (req, res) => {
+  const creds = await readAdminCreds()
+  if (!creds) { res.json({ ok: false, error: 'Admin credentials not configured. Please save them in the Admin Panel.' }); return }
+  const { supabaseUrl, serviceRoleKey } = creds
   try {
-    const { supabaseUrl, serviceRoleKey, email, firstName, lastName, password } = JSON.parse(await readBody(req)) as Record<string, string>
-    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+    const { email, firstName, lastName, password } = JSON.parse(await readBody(req)) as Record<string, string>
     const payload: Record<string, unknown> = { user_metadata: { firstName, lastName } }
     if (email) payload.email = email
     if (password) payload.password = password
@@ -692,18 +733,21 @@ router.put('/api/admin/users/:id', async (req, res) => {
 })
 
 router.delete('/api/admin/users/:id', async (req, res) => {
+  const creds = await readAdminCreds()
+  if (!creds) { res.json({ ok: false, error: 'Admin credentials not configured. Please save them in the Admin Panel.' }); return }
+  const { supabaseUrl, serviceRoleKey } = creds
   try {
-    const { supabaseUrl, serviceRoleKey } = req.query as Record<string, string>
-    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
     await sbFetch(supabaseUrl, serviceRoleKey, `/auth/v1/admin/users/${req.params.id}`, { method: 'DELETE' })
     res.json({ ok: true })
   } catch (e) { res.json({ ok: false, error: String(e) }) }
 })
 
 router.post('/api/admin/users/:id/admin', async (req, res) => {
+  const creds = await readAdminCreds()
+  if (!creds) { res.json({ ok: false, error: 'Admin credentials not configured. Please save them in the Admin Panel.' }); return }
+  const { supabaseUrl, serviceRoleKey } = creds
   try {
-    const { supabaseUrl, serviceRoleKey, grantedBy } = JSON.parse(await readBody(req)) as Record<string, string>
-    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
+    const { grantedBy } = JSON.parse(await readBody(req)) as Record<string, string>
     await sbFetch(supabaseUrl, serviceRoleKey, '/rest/v1/admin_users', {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates' },
@@ -714,9 +758,10 @@ router.post('/api/admin/users/:id/admin', async (req, res) => {
 })
 
 router.delete('/api/admin/users/:id/admin', async (req, res) => {
+  const creds = await readAdminCreds()
+  if (!creds) { res.json({ ok: false, error: 'Admin credentials not configured. Please save them in the Admin Panel.' }); return }
+  const { supabaseUrl, serviceRoleKey } = creds
   try {
-    const { supabaseUrl, serviceRoleKey } = req.query as Record<string, string>
-    if (!supabaseUrl || !serviceRoleKey) { res.json({ ok: false, error: 'Missing credentials' }); return }
     await sbFetch(supabaseUrl, serviceRoleKey, `/rest/v1/admin_users?user_id=eq.${req.params.id}`, { method: 'DELETE' })
     res.json({ ok: true })
   } catch (e) { res.json({ ok: false, error: String(e) }) }

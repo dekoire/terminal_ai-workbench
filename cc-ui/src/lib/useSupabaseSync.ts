@@ -10,32 +10,16 @@
  *   Settings     → debounced 4 s save on any store change
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useAppStore, setActiveStorageUser } from '../store/useAppStore'
 
 // Module-level sign-out function, set by the auth-state effect so that
-// clearUserState() and external callers can fire a Supabase sign-out without
-// needing direct access to the Supabase client.
+// triggerSupabaseSignOut() and clearUserState() can fire a Supabase sign-out
+// without needing direct access to the Supabase client.
 let _signOutFn: (() => void) | null = null
 
 /** Fire-and-forget Supabase sign-out — safe to call from anywhere. */
 export function triggerSupabaseSignOut() { _signOutFn?.() }
-
-// Clears all user-specific local state on logout so the next user starts clean.
-function clearUserState() {
-  _signOutFn?.()   // fire-and-forget Supabase signOut
-  _signOutFn = null
-  // setActiveStorageUser('') now also removes cc-user-id, cc-active-session from
-  // localStorage and cc-active-session from sessionStorage.
-  setActiveStorageUser('')
-  // currentUser must be null BEFORE resetUserData so the doSave guard catches
-  // the immediate save that fires when projects.length drops to 0.
-  useAppStore.setState({
-    currentUser: null,
-    screen: 'login',
-  } as Partial<ReturnType<typeof useAppStore.getState>>)
-  useAppStore.getState().resetUserData()
-}
 import { getSupabase }        from './supabase'
 import {
   loadFromSupabase,
@@ -63,15 +47,31 @@ export function useSupabaseSync() {
   const supabaseUrl   = useAppStore(s => s.supabaseUrl)
   const supabaseKey   = useAppStore(s => s.supabaseAnonKey)
 
-
   // track whether initial load is done so we don't re-save what we just loaded
   const loadedRef  = useRef(false)
   const userIdRef  = useRef<string | null>(null)
   // Prevent React Strict Mode double-invoke from firing two parallel loads.
   // Set to true as soon as a load starts; reset only when the user changes.
   const loadingRef = useRef(false)
-  // Fix 1: Guard against SIGNED_OUT firing before Supabase INITIAL_SESSION.
+  // Guard against SIGNED_OUT firing before Supabase INITIAL_SESSION.
   const rehydratedRef = useRef(false)
+
+  // ── clearUserState (defined inside hook for stable closure access) ─────────
+
+  const clearUserState = useCallback(() => {
+    _signOutFn?.()   // fire-and-forget Supabase signOut
+    _signOutFn = null
+    // setActiveStorageUser('') removes cc-user-id, cc-active-session from
+    // localStorage and cc-active-session from sessionStorage.
+    setActiveStorageUser('')
+    // currentUser must be null BEFORE resetUserData so the doSave guard catches
+    // the immediate save that fires when projects.length drops to 0.
+    useAppStore.setState({
+      currentUser: null,
+      screen: 'login',
+    } as Partial<ReturnType<typeof useAppStore.getState>>)
+    useAppStore.getState().resetUserData()
+  }, [])
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -155,42 +155,47 @@ export function useSupabaseSync() {
         return
       }
       if (event === 'SIGNED_OUT') {
-        // Fix 1: Ignore SIGNED_OUT events that fire before Supabase has finished
+        // Ignore SIGNED_OUT events that fire before Supabase has finished
         // rehydrating the persisted session (avoids false logout on page reload).
         if (!rehydratedRef.current) return
 
-        // Fix 2: Check active-session flag (localStorage survives reload; sessionStorage as fallback)
-        const hasActiveFlag = localStorage.getItem('cc-active-session') === '1' || sessionStorage.getItem('cc-active-session') === '1'
-        const inactive = Date.now() - lastActivityRef.current
+        // Verify: is the session really gone?
+        // SIGNED_OUT can fire spuriously under race conditions.
+        sb.auth.getSession().then(({ data: { session } }) => {
+          if (session) return  // Session still alive — spurious event, ignore
 
-        if (hasActiveFlag && inactive < INACTIVITY_MS) {
-          // Session was active and user wasn't idle — this is a spurious SIGNED_OUT.
-          // Try to silently refresh the session.
-          sb.auth.refreshSession().catch(() => {
+          // Session is genuinely gone
+          const inactive = Date.now() - lastActivityRef.current
+          if (inactive >= INACTIVITY_MS) {
+            // User was idle ≥ 2 h → log out
             loadedRef.current  = false
             loadingRef.current = false
             userIdRef.current  = null
             clearUserState()
-          })
-          return
-        }
-
-        if (inactive >= INACTIVITY_MS) {
-          // User was idle for ≥ 2 hours → force re-login
+          } else {
+            // User was active → attempt a silent token refresh
+            sb.auth.refreshSession().then(({ data: { session: newSession } }) => {
+              if (!newSession) {
+                loadedRef.current  = false
+                loadingRef.current = false
+                userIdRef.current  = null
+                clearUserState()
+              }
+              // newSession present → token refreshed, all good
+            }).catch(() => {
+              loadedRef.current  = false
+              loadingRef.current = false
+              userIdRef.current  = null
+              clearUserState()
+            })
+          }
+        }).catch(() => {
+          // getSession itself failed → log out to be safe
           loadedRef.current  = false
           loadingRef.current = false
           userIdRef.current  = null
           clearUserState()
-        } else {
-          // Still active — silently refresh the session so the user stays in
-          sb.auth.refreshSession().catch(() => {
-            // Refresh failed (e.g. invalid refresh token) → log out anyway
-            loadedRef.current  = false
-            loadingRef.current = false
-            userIdRef.current  = null
-            clearUserState()
-          })
-        }
+        })
       }
     })
     return () => {
