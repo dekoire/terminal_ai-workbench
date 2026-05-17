@@ -101,7 +101,7 @@ export function RegisterScreen() {
           </filter>
         </defs>
         <rect width="100%" height="100%" fill="url(#dots-r)" />
-        {/* Accent dots */}
+        {/* Accent dots — all in accent color */}
         {([
           { cx: 113.5,  cy: 169.5, dur: '3.4s', begin: '0.2s' },
           { cx: 505.5,  cy: 113.5, dur: '2.7s', begin: '1.6s' },
@@ -114,28 +114,12 @@ export function RegisterScreen() {
           { cx: 281.5,  cy: 729.5, dur: '4.7s', begin: '4.7s' },
           { cx: 1121.5, cy: 449.5, dur: '3.9s', begin: '1.0s' },
           { cx: 617.5,  cy: 337.5, dur: '4.1s', begin: '5.5s' },
-        ] as const).map((d, i) => (
-          <circle key={`a${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="var(--accent)" opacity="0" filter="url(#glow-r)">
-            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
-          </circle>
-        ))}
-        {/* Blue dots */}
-        {([
-          { cx: 281.5,  cy: 393.5, dur: '4.3s', begin: '0.9s' },
           { cx: 729.5,  cy: 281.5, dur: '5.1s', begin: '2.3s' },
           { cx: 1177.5, cy: 169.5, dur: '4.6s', begin: '2.0s' },
           { cx: 1065.5, cy: 617.5, dur: '3.0s', begin: '1.4s' },
           { cx: 85.5,   cy: 281.5, dur: '4.2s', begin: '2.4s' },
           { cx: 953.5,  cy: 841.5, dur: '4.0s', begin: '4.2s' },
-          { cx: 561.5,  cy: 561.5, dur: '3.4s', begin: '6.0s' },
           { cx: 1233.5, cy: 701.5, dur: '4.8s', begin: '0.4s' },
-        ] as const).map((d, i) => (
-          <circle key={`b${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#3b82f6" opacity="0" filter="url(#glow-r)">
-            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
-          </circle>
-        ))}
-        {/* Orange dots */}
-        {([
           { cx: 617.5,  cy: 729.5, dur: '4.9s', begin: '1.1s' },
           { cx: 1289.5, cy: 393.5, dur: '3.9s', begin: '0.7s' },
           { cx: 1401.5, cy: 617.5, dur: '3.2s', begin: '4.0s' },
@@ -143,39 +127,35 @@ export function RegisterScreen() {
           { cx: 393.5,  cy: 169.5, dur: '3.5s', begin: '1.9s' },
           { cx: 757.5,  cy: 701.5, dur: '5.4s', begin: '3.3s' },
           { cx: 225.5,  cy: 841.5, dur: '3.0s', begin: '4.8s' },
-          { cx: 897.5,  cy: 225.5, dur: '4.5s', begin: '2.6s' },
-        ] as const).map((d, i) => (
-          <circle key={`o${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#f97316" opacity="0" filter="url(#glow-r)">
-            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
-          </circle>
-        ))}
-        {/* Red dots */}
-        {([
           { cx: 197.5,  cy: 337.5, dur: '3.6s', begin: '1.3s' },
           { cx: 673.5,  cy: 477.5, dur: '4.9s', begin: '3.7s' },
-          { cx: 1121.5, cy: 757.5, dur: '3.2s', begin: '0.6s' },
           { cx: 449.5,  cy: 785.5, dur: '5.1s', begin: '2.9s' },
-          { cx: 897.5,  cy: 561.5, dur: '2.7s', begin: '5.8s' },
-          { cx: 1345.5, cy: 225.5, dur: '4.2s', begin: '1.5s' },
           { cx: 337.5,  cy: 225.5, dur: '3.8s', begin: '4.3s' },
-        ] as const).map((d, i) => (
-          <circle key={`r${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#ef4444" opacity="0" filter="url(#glow-r)">
-            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
-          </circle>
-        ))}
-        {/* Green dots */}
-        {([
-          { cx: 449.5,  cy: 281.5, dur: '4.3s', begin: '2.0s' },
           { cx: 785.5,  cy: 617.5, dur: '3.5s', begin: '0.8s' },
           { cx: 1233.5, cy: 477.5, dur: '5.0s', begin: '3.1s' },
-          { cx: 561.5,  cy: 785.5, dur: '2.9s', begin: '5.4s' },
+          { cx: 449.5,  cy: 281.5, dur: '4.3s', begin: '2.0s' },
           { cx: 1009.5, cy: 169.5, dur: '4.6s', begin: '1.7s' },
           { cx: 141.5,  cy: 673.5, dur: '3.3s', begin: '4.6s' },
           { cx: 1345.5, cy: 785.5, dur: '4.8s', begin: '6.2s' },
         ] as const).map((d, i) => (
-          <circle key={`g${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#22c55e" opacity="0" filter="url(#glow-r)">
+          <circle key={`d${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="var(--accent)" opacity="0" filter="url(#glow-r)">
             <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
           </circle>
+        ))}
+        {/* Star sparkles — occasional twinkling 4-pointed Kreuz-Sterne */}
+        {([
+          { cx: 281.5,  cy: 393.5, dur: '8.0s',  begin: '0s'   },
+          { cx: 897.5,  cy: 225.5, dur: '10.5s', begin: '3.5s' },
+          { cx: 561.5,  cy: 561.5, dur: '9.0s',  begin: '7.2s' },
+          { cx: 1121.5, cy: 757.5, dur: '11.0s', begin: '1.5s' },
+          { cx: 141.5,  cy: 673.5, dur: '7.5s',  begin: '5.0s' },
+          { cx: 1345.5, cy: 225.5, dur: '12.0s', begin: '9.5s' },
+        ] as const).map((d, i) => (
+          <g key={`s${i}`} transform={`translate(${d.cx},${d.cy})`} opacity="0" filter="url(#glow-r)">
+            <path d="M0,-5 L0.8,-0.8 L5,0 L0.8,0.8 L0,5 L-0.8,0.8 L-5,0 L-0.8,-0.8 Z" fill="var(--accent)" />
+            <animate attributeName="opacity" values="0;0;0.9;1;0.9;0;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+            <animateTransform attributeName="transform" type="scale" values="0.2;0.2;1;1.2;1;0.2;0.2" dur={d.dur} begin={d.begin} repeatCount="indefinite" additive="sum" />
+          </g>
         ))}
         <rect width="100%" height="100%" fill="url(#inner-r)" />
         <rect width="100%" height="100%" fill="url(#fade-r)" />

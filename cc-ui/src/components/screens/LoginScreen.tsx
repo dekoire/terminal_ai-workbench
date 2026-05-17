@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useAppStore, setActiveStorageUser } from '../../store/useAppStore'
-import { IShield, IGit, ITerminal, ISpark, IChev, ISpinner, IEye, IEyeOff } from '../primitives/Icons'
+import { IShield, IGit, ITerminal, ISpark, ISpinner, IEye, IEyeOff } from '../primitives/Icons'
 import { getSupabase } from '../../lib/supabase'
 
 export function LoginScreen() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
-  const [showLogin, setShowLogin] = useState(true)
   const [showPw, setShowPw]     = useState(false)
 
   const setScreen      = useAppStore(s => s.setScreen)
@@ -78,81 +77,61 @@ export function LoginScreen() {
           </filter>
         </defs>
         <rect width="100%" height="100%" fill="url(#dots)" />
-        {/* Accent dots */}
+        {/* Accent dots — all in accent color, staggered max 1.9s so all appear quickly */}
         {([
           { cx: 85.5,   cy: 141.5, dur: '3.2s', begin: '0s'   },
-          { cx: 477.5,  cy: 85.5,  dur: '2.8s', begin: '1.4s' },
+          { cx: 477.5,  cy: 85.5,  dur: '2.8s', begin: '0.6s' },
           { cx: 925.5,  cy: 477.5, dur: '3.6s', begin: '0.3s' },
-          { cx: 365.5,  cy: 589.5, dur: '2.5s', begin: '2.5s' },
-          { cx: 813.5,  cy: 365.5, dur: '3.3s', begin: '3.2s' },
-          { cx: 141.5,  cy: 477.5, dur: '4.2s', begin: '2.8s' },
-          { cx: 477.5,  cy: 813.5, dur: '5.2s', begin: '3.5s' },
-          { cx: 701.5,  cy: 57.5,  dur: '2.6s', begin: '1.6s' },
-          { cx: 253.5,  cy: 701.5, dur: '4.6s', begin: '4.5s' },
+          { cx: 365.5,  cy: 589.5, dur: '2.5s', begin: '1.2s' },
+          { cx: 813.5,  cy: 365.5, dur: '3.3s', begin: '0.8s' },
+          { cx: 141.5,  cy: 477.5, dur: '4.2s', begin: '1.5s' },
+          { cx: 477.5,  cy: 813.5, dur: '5.2s', begin: '0.5s' },
+          { cx: 701.5,  cy: 57.5,  dur: '2.6s', begin: '0.9s' },
+          { cx: 253.5,  cy: 701.5, dur: '4.6s', begin: '1.8s' },
           { cx: 1093.5, cy: 421.5, dur: '3.8s', begin: '1.0s' },
-          { cx: 589.5,  cy: 309.5, dur: '4.0s', begin: '5.5s' },
-        ] as const).map((d, i) => (
-          <circle key={`a${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="var(--accent)" opacity="0" filter="url(#glow-l)">
-            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
-          </circle>
-        ))}
-        {/* Blue dots */}
-        {([
-          { cx: 253.5,  cy: 365.5, dur: '4.1s', begin: '0.7s' },
-          { cx: 701.5,  cy: 253.5, dur: '5.0s', begin: '2.1s' },
-          { cx: 1149.5, cy: 141.5, dur: '4.4s', begin: '1.8s' },
+          { cx: 589.5,  cy: 309.5, dur: '4.0s', begin: '1.3s' },
+          { cx: 701.5,  cy: 253.5, dur: '5.0s', begin: '0.6s' },
+          { cx: 1149.5, cy: 141.5, dur: '4.4s', begin: '1.1s' },
           { cx: 1037.5, cy: 589.5, dur: '2.9s', begin: '1.2s' },
-          { cx: 57.5,   cy: 253.5, dur: '4.0s', begin: '2.2s' },
-          { cx: 925.5,  cy: 813.5, dur: '3.9s', begin: '4.0s' },
-          { cx: 533.5,  cy: 533.5, dur: '3.4s', begin: '6.0s' },
+          { cx: 57.5,   cy: 253.5, dur: '4.0s', begin: '0.4s' },
+          { cx: 925.5,  cy: 813.5, dur: '3.9s', begin: '1.6s' },
           { cx: 1205.5, cy: 673.5, dur: '4.7s', begin: '0.4s' },
-        ] as const).map((d, i) => (
-          <circle key={`b${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#3b82f6" opacity="0" filter="url(#glow-l)">
-            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
-          </circle>
-        ))}
-        {/* Orange dots */}
-        {([
           { cx: 589.5,  cy: 701.5, dur: '4.8s', begin: '0.9s' },
           { cx: 1261.5, cy: 365.5, dur: '3.7s', begin: '0.5s' },
-          { cx: 1373.5, cy: 589.5, dur: '3.1s', begin: '3.8s' },
-          { cx: 1037.5, cy: 253.5, dur: '4.3s', begin: '5.1s' },
-          { cx: 365.5,  cy: 141.5, dur: '3.5s', begin: '1.9s' },
-          { cx: 729.5,  cy: 673.5, dur: '5.4s', begin: '3.3s' },
-          { cx: 197.5,  cy: 813.5, dur: '3.0s', begin: '4.8s' },
-          { cx: 869.5,  cy: 197.5, dur: '4.5s', begin: '2.6s' },
-        ] as const).map((d, i) => (
-          <circle key={`o${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#f97316" opacity="0" filter="url(#glow-l)">
-            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
-          </circle>
-        ))}
-        {/* Red dots */}
-        {([
+          { cx: 1373.5, cy: 589.5, dur: '3.1s', begin: '1.4s' },
+          { cx: 1037.5, cy: 253.5, dur: '4.3s', begin: '0.7s' },
+          { cx: 365.5,  cy: 141.5, dur: '3.5s', begin: '0.2s' },
+          { cx: 729.5,  cy: 673.5, dur: '5.4s', begin: '1.7s' },
+          { cx: 197.5,  cy: 813.5, dur: '3.0s', begin: '1.9s' },
           { cx: 169.5,  cy: 309.5, dur: '3.6s', begin: '1.3s' },
-          { cx: 645.5,  cy: 449.5, dur: '4.9s', begin: '3.7s' },
-          { cx: 1093.5, cy: 729.5, dur: '3.2s', begin: '0.6s' },
-          { cx: 421.5,  cy: 757.5, dur: '5.1s', begin: '2.9s' },
-          { cx: 869.5,  cy: 533.5, dur: '2.7s', begin: '5.8s' },
-          { cx: 1317.5, cy: 197.5, dur: '4.2s', begin: '1.5s' },
-          { cx: 309.5,  cy: 197.5, dur: '3.8s', begin: '4.3s' },
+          { cx: 645.5,  cy: 449.5, dur: '4.9s', begin: '0.7s' },
+          { cx: 421.5,  cy: 757.5, dur: '5.1s', begin: '1.0s' },
+          { cx: 869.5,  cy: 533.5, dur: '2.7s', begin: '1.5s' },
+          { cx: 309.5,  cy: 197.5, dur: '3.8s', begin: '0.3s' },
+          { cx: 757.5,  cy: 589.5, dur: '3.5s', begin: '0.8s' },
+          { cx: 1205.5, cy: 449.5, dur: '5.0s', begin: '1.1s' },
+          { cx: 533.5,  cy: 757.5, dur: '2.9s', begin: '1.3s' },
+          { cx: 981.5,  cy: 141.5, dur: '4.6s', begin: '1.7s' },
+          { cx: 421.5,  cy: 253.5, dur: '4.3s', begin: '0.5s' },
         ] as const).map((d, i) => (
-          <circle key={`r${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#ef4444" opacity="0" filter="url(#glow-l)">
+          <circle key={`d${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="var(--accent)" opacity="0" filter="url(#glow-l)">
             <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
           </circle>
         ))}
-        {/* Green dots */}
+        {/* Star sparkles — occasional twinkling 4-pointed Kreuz-Sterne */}
         {([
-          { cx: 421.5,  cy: 253.5, dur: '4.3s', begin: '2.0s' },
-          { cx: 757.5,  cy: 589.5, dur: '3.5s', begin: '0.8s' },
-          { cx: 1205.5, cy: 449.5, dur: '5.0s', begin: '3.1s' },
-          { cx: 533.5,  cy: 757.5, dur: '2.9s', begin: '5.4s' },
-          { cx: 981.5,  cy: 141.5, dur: '4.6s', begin: '1.7s' },
-          { cx: 113.5,  cy: 645.5, dur: '3.3s', begin: '4.6s' },
-          { cx: 1317.5, cy: 757.5, dur: '4.8s', begin: '6.2s' },
+          { cx: 253.5,  cy: 365.5, dur: '8.0s',  begin: '0s'   },
+          { cx: 869.5,  cy: 197.5, dur: '10.5s', begin: '2.5s' },
+          { cx: 533.5,  cy: 533.5, dur: '9.0s',  begin: '4.8s' },
+          { cx: 1093.5, cy: 729.5, dur: '11.0s', begin: '1.5s' },
+          { cx: 113.5,  cy: 645.5, dur: '7.5s',  begin: '3.5s' },
+          { cx: 1317.5, cy: 197.5, dur: '12.0s', begin: '6.0s' },
         ] as const).map((d, i) => (
-          <circle key={`g${i}`} cx={d.cx} cy={d.cy} r="2.5" fill="#22c55e" opacity="0" filter="url(#glow-l)">
-            <animate attributeName="opacity" values="0;1;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
-          </circle>
+          <g key={`s${i}`} transform={`translate(${d.cx},${d.cy})`} opacity="0" filter="url(#glow-l)">
+            <path d="M0,-5 L0.8,-0.8 L5,0 L0.8,0.8 L0,5 L-0.8,0.8 L-5,0 L-0.8,-0.8 Z" fill="var(--accent)" />
+            <animate attributeName="opacity" values="0;0;0.9;1;0.9;0;0" dur={d.dur} begin={d.begin} repeatCount="indefinite" />
+            <animateTransform attributeName="transform" type="scale" values="0.2;0.2;1;1.2;1;0.2;0.2" dur={d.dur} begin={d.begin} repeatCount="indefinite" additive="sum" />
+          </g>
         ))}
         <rect width="100%" height="100%" fill="url(#inner)" />
         <rect width="100%" height="100%" fill="url(#fade)" />
@@ -186,11 +165,7 @@ export function LoginScreen() {
         </div>
         <div style={{ flex: 1 }} />
 
-        {/* Bottom left — secret login trigger */}
-        <div
-          onClick={() => setShowLogin(v => !v)}
-          style={{ fontSize: 10.5, color: 'var(--fg-3)', cursor: 'default', userSelect: 'none' }}
-        >
+        <div style={{ fontSize: 10.5, color: 'var(--fg-3)', userSelect: 'none' }}>
           © 2025 Codera AI
         </div>
       </div>
@@ -203,77 +178,49 @@ export function LoginScreen() {
       }}>
         <div style={{ flex: 1 }} />
 
-        {showLogin ? (
-          /* ── Hidden login form ── */
-          <div>
-            <h2 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: -0.4, color: 'var(--fg-0)' }}>
-              Willkommen zurück.
-            </h2>
-            <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.6 }}>
-              Melde dich an und arbeite dort weiter, wo du aufgehört hast.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={fieldLabel}>E-Mail</label>
-                <input style={fieldInput} type="email" placeholder="du@beispiel.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={handleKeyDown} autoFocus />
-              </div>
-              <div>
-                <label style={fieldLabel}>Passwort</label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    style={{ ...fieldInput, paddingRight: 36 }}
-                    type={showPw ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPw(v => !v)}
-                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', alignItems: 'center' }}
-                    tabIndex={-1}
-                  >
-                    {showPw ? <IEyeOff style={{ width: 15, height: 15 }} /> : <IEye style={{ width: 15, height: 15 }} />}
-                  </button>
-                </div>
-              </div>
-              <button onClick={handleLogin} disabled={loading} style={{ ...btnPrimary, marginTop: 4, opacity: loading ? 0.7 : 1 }}>
-                {loading ? 'Anmelden…' : 'Anmelden'}
-              </button>
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 2 }}>
-                <button onClick={() => setScreen('register')} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
-                  Konto erstellen
+        <div>
+          <h2 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: -0.4, color: 'var(--fg-0)' }}>
+            Willkommen zurück.
+          </h2>
+          <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.6 }}>
+            Melde dich an und arbeite dort weiter, wo du aufgehört hast.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={fieldLabel}>E-Mail</label>
+              <input style={fieldInput} type="email" placeholder="du@beispiel.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={handleKeyDown} autoFocus />
+            </div>
+            <div>
+              <label style={fieldLabel}>Passwort</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  style={{ ...fieldInput, paddingRight: 36 }}
+                  type={showPw ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(v => !v)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 2, display: 'flex', alignItems: 'center' }}
+                  tabIndex={-1}
+                >
+                  {showPw ? <IEyeOff style={{ width: 15, height: 15 }} /> : <IEye style={{ width: 15, height: 15 }} />}
                 </button>
               </div>
             </div>
-          </div>
-        ) : (
-          /* ── Default: localhost start ── */
-          <div>
-            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--fg-3)', fontWeight: 500, marginBottom: 10 }}>Bereit</div>
-            <h2 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: -0.4, color: 'var(--fg-0)' }}>
-              Los geht's.
-            </h2>
-            <p style={{ margin: '0 0 28px', fontSize: 12.5, color: 'var(--fg-2)', lineHeight: 1.6 }}>
-              Starte lokal und arbeite sofort mit deinen Projekten. Alle Daten bleiben auf diesem Gerät.
-            </p>
-
-            {/* Localhost badge */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--line-strong)', marginBottom: 28 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#28c941', flexShrink: 0, boxShadow: '0 0 6px #28c941aa' }} />
-              <span className="mono" style={{ fontSize: 12, color: 'var(--fg-1)' }}>localhost</span>
-            </div>
-
-            <button
-              onClick={() => setScreen('workspace')}
-              style={{ ...btnPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-            >
-              Codera AI starten
-              <IChev style={{ width: 14, height: 14 }} />
+            <button onClick={handleLogin} disabled={loading} style={{ ...btnPrimary, marginTop: 4, opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Anmelden…' : 'Anmelden'}
             </button>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 2 }}>
+              <button onClick={() => setScreen('register')} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                Konto erstellen
+              </button>
+            </div>
           </div>
-        )}
+        </div>
 
         <div style={{ flex: 1 }} />
       </div>
