@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { TurnMessage, Template, TerminalShortcut, Session } from '../../store/useAppStore'
-import { IGit, IBranch, IPlus, IClose, IChev, IShield, IFile, ITerminal, IFolder, ISearch, IBell, ISpinner } from '../primitives/Icons'
+import { IGit, IBranch, IPlus, IClose, IChev, IShield, IShieldPlus, IFile, ITerminal, IFolder, ISearch, IBell, ISpinner, IOrbit, ISpark, IWarn } from '../primitives/Icons'
 import { TERMINAL_THEMES } from '../../theme/presets'
 import { useAppLauncher } from '../../hooks/useAppLauncher'
 import { SmartLaunchModal } from '../modals/SmartLaunchModal'
