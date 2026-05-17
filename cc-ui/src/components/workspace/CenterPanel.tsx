@@ -6,9 +6,9 @@ import { TERMINAL_THEMES } from '../../theme/presets'
 import { useAppLauncher } from '../../hooks/useAppLauncher'
 import { SmartLaunchModal } from '../modals/SmartLaunchModal'
 import { DiffBlock } from '../terminal/DiffBlock'
-import { AgentView } from '../agent/AgentView'
-import { OrbitView } from '../agent/OrbitView'
-import { XTermPane } from '../terminal/XTermPane'
+import { AgentChatPanel } from '../agent/AgentChatPanel'
+import { OrbitChatPanel } from '../agent/OrbitChatPanel'
+import { TerminalChatPanel } from '../terminal/TerminalChatPanel'
 import { ChatInput } from './ChatInput'
 import { JsonTreeNode } from '../primitives/JsonTree'
 import { highlightSegments } from '../../utils/highlight'
@@ -29,7 +29,7 @@ export function CenterPanel({ fileTabs, activeFilePath, setActiveFilePath, close
   const sessions = project?.sessions ?? []
 
 
-  // ── Popup modal (cc:popup from XTermPane / AgentView) ──────────────────────
+  // ── Popup modal (cc:popup from TerminalChatPanel / AgentChatPanel) ────────────
   const [popup, setPopup] = useState<PopupPrompt | null>(null)
   useEffect(() => {
     const handler = (e: Event) => {
@@ -577,7 +577,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-0)' }}>Coding Agent</span>
             </div>
             <span style={{ fontSize: 10.5, color: 'var(--fg-2)', lineHeight: 1.5 }}>Strukturierte UI mit Tool-Calls, Diffs und Genehmigungen.</span>
-            <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>OpenRouter · AgentView</span>
+            <span style={{ fontSize: 9.5, color: 'var(--fg-3)' }}>OpenRouter · AgentChatPanel</span>
           </div>
         </div>
 
@@ -732,10 +732,10 @@ function SessionWrapper({ isActive, isOrbit, isAgent, hasMounted, s, project, se
   return (
     <div ref={wrapRef} style={{ display: isActive ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column', position: 'relative' }}>
       {hasMounted && (isOrbit
-        ? <OrbitView sessionId={s.id} containerWidth={paneWidth} />
+        ? <OrbitChatPanel sessionId={s.id} containerWidth={paneWidth} />
         : isAgent
-          ? <AgentView sessionId={s.id} kind={s.kind!} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} orModel={s.orModel} providerSettingsJson={s.providerSettingsJson} providerAlias={sessionCmd(s)} containerWidth={paneWidth} />
-          : <XTermPane  sessionId={s.id} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} />
+          ? <AgentChatPanel sessionId={s.id} kind={s.kind!} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} orModel={s.orModel} providerSettingsJson={s.providerSettingsJson} providerAlias={sessionCmd(s)} containerWidth={paneWidth} />
+          : <TerminalChatPanel sessionId={s.id} cmd={sessionCmd(s)} args={sessionArgs(s)} cwd={project?.path ?? '~'} />
       )}
     </div>
   )
@@ -1024,7 +1024,7 @@ const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center'
 
 // ── PopupDialog ───────────────────────────────────────────────────────────────
 // Shown as a centered floating modal when a PTY session dispatches cc:popup.
-// The [POPUP_REQUIRED] marker format is detected in XTermPane / AgentView.
+// The [POPUP_REQUIRED] marker format is detected in TerminalChatPanel / AgentChatPanel.
 
 interface PopupPrompt {
   sessionId: string

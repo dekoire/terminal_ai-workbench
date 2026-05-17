@@ -224,7 +224,7 @@ export function ChatInput({ containerWidth = 9999 }: { containerWidth?: number }
     return () => window.removeEventListener('keydown', h)
   }, [attachPreviewSrc])
 
-  // Insert a #msg: / #chat: reference into the input (fired by clicking ID badges in AgentView / OrbitView)
+  // Insert a #msg: / #chat: reference into the input (fired by clicking ID badges in AgentChatPanel / OrbitChatPanel)
   useEffect(() => {
     const onInsertRef = (e: Event) => {
       const ref = (e as CustomEvent<string>).detail

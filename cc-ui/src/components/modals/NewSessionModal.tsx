@@ -205,7 +205,7 @@ export function NewSessionModal() {
                         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-0)' }}>Coding Agent</span>
                       </div>
                       <p style={{ fontSize: 12, color: 'var(--fg-2)', margin: 0, lineHeight: 1.55 }}>Interaktive Coding-Oberfläche mit jedem LLM. Tool-Calls, Diffs und Genehmigungen als strukturierte UI.</p>
-                      <span style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>OpenRouter · claude CLI · AgentView</span>
+                      <span style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>OpenRouter · claude CLI · AgentChatPanel</span>
                     </div>
 
                   </div>

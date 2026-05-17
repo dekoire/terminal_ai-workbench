@@ -6,7 +6,7 @@ import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '../../store/useAppStore'
 import { TERMINAL_THEMES } from '../../theme/presets'
 
-interface Props {
+interface TerminalChatPanelProps {
   sessionId: string
   cmd: string
   args: string
@@ -69,7 +69,7 @@ function resolveTheme(terminalTheme: string, appTheme: string) {
   return { ...base, background: bg0, foreground: fg0, cursor: accent, cursorAccent: bg0, selectionBackground: accent + '44' }
 }
 
-export function XTermPane({ sessionId, cmd, args, cwd }: Props) {
+export function TerminalChatPanel({ sessionId, cmd, args, cwd }: TerminalChatPanelProps) {
   const containerRef         = useRef<HTMLDivElement>(null)
   const appTheme             = useAppStore(s => s.theme)
   const terminalTheme        = useAppStore(s => s.terminalTheme)

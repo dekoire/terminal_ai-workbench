@@ -7,7 +7,7 @@ import { exec }          from 'child_process'
 import path              from 'path'
 import express           from 'express'
 import apiRouter         from '../server/routes/api.js'
-import { attachWsUpgrade } from '../server/routes/ws.js'
+import { attachWsUpgrade } from '../server/routes/websocket-chat-handler.js'
 const isDev = !app.isPackaged
 
 // Let server code find permission-mcp.cjs and other root-level files

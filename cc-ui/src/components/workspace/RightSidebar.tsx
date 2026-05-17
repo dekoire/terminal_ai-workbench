@@ -12,7 +12,7 @@ import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages, loadAllContextSummaries, type AgentContextSummary, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGit, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain, ITag, IDrag, IScrollText } from '../primitives/Icons'
 import { KanbanBoard } from './KanbanBoard'
-import { XTermPane } from '../terminal/XTermPane'
+import { TerminalChatPanel } from '../terminal/TerminalChatPanel'
 import { Pill } from '../primitives/Pill'
 import { writeClipboard } from '../../lib/clipboard'
 import { JsonTreeNode } from '../primitives/JsonTree'
@@ -3522,7 +3522,7 @@ export function RightSidebar() {
         {terminalOpen && tab === terminalTabIdx && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
             {project
-              ? <XTermPane sessionId={termSessionId} cmd="zsh" args="" cwd={project.path} />
+              ? <TerminalChatPanel sessionId={termSessionId} cmd="zsh" args="" cwd={project.path} />
               : <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
             }
           </div>

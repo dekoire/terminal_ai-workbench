@@ -1484,7 +1484,7 @@ interface Props {
   containerWidth?: number
 }
 
-export function AgentView({ sessionId, kind, cmd, args, cwd, orModel, providerSettingsJson, providerAlias, containerWidth = 9999 }: Props) {
+export function AgentChatPanel({ sessionId, kind, cmd, args, cwd, orModel, providerSettingsJson, providerAlias, containerWidth = 9999 }: Props) {
   const [events, setEvents]       = useState<AgentEvent[]>([])
   const [connected, setConnected] = useState(false)
   const [running, setRunning]     = useState(false)

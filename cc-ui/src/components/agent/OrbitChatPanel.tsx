@@ -16,7 +16,7 @@ import { resolveRefs } from '../../lib/resolveRefs'
 import { writeClipboard } from '../../lib/clipboard'
 import { loadAgentMessageById } from '../../lib/agentSync'
 
-// ── Syntax highlighter (shared with AgentView) ────────────────────────────────
+// ── Syntax highlighter (shared with AgentChatPanel) ──────────────────────────
 type TokenType = 'keyword' | 'string' | 'number' | 'comment' | 'type' | 'fn' | 'plain'
 const SYN_KEYWORDS = new Set([
   'const','let','var','function','return','if','else','for','while','do',
@@ -720,9 +720,9 @@ function StreamingBubble({ text }: { text: string }) {
   )
 }
 
-interface OrbitViewProps { sessionId: string; containerWidth?: number }
+interface OrbitChatPanelProps { sessionId: string; containerWidth?: number }
 
-export function OrbitView({ sessionId, containerWidth = 9999 }: OrbitViewProps) {
+export function OrbitChatPanel({ sessionId, containerWidth = 9999 }: OrbitChatPanelProps) {
   const {
     openrouterKey, setScreen,
     orbitMessages, orbitMeta, addOrbitMessage, setOrbitMessages, clearOrbitMessages, setOrbitMeta,
