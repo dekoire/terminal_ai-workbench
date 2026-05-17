@@ -2272,10 +2272,10 @@ export function UserStoriesCard({ projectId: activeProjectId, sessionId }: { pro
   const addBtn = (
     <button
       onClick={() => setShowNewTask(true)}
-      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '0 2px' }}
+      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center', padding: 0 }}
       title="Neuer Task"
     >
-      <IPlus style={{ width: 12, height: 12 }} />
+      <IPlus />
     </button>
   )
 
@@ -2329,7 +2329,7 @@ function NotesCard({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <SectionCard label="Notes" action={<IEdit style={{ color: 'var(--fg-3)' }} />}>
+    <SectionCard label="Notes" action={<IEdit />}>
       <textarea
         value={text}
         onChange={handleChange}
