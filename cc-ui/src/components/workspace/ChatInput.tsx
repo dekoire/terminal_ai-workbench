@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import type { TurnMessage, Template, TerminalShortcut } from '../../store/useAppStore'
 import { ISpark, IBolt, ISend, IWarn, IMic, IAiWand, IDocAI, IImage, IKeyboard, IShieldPlus, IOrbit, IPaperclip, IEdit, ISpinner } from '../primitives/Icons'
@@ -20,6 +20,9 @@ import { loadAgentMessageById } from '../../lib/agentSync'
 // reference pills, template context menu, image annotation.
 // Reads all state from the store directly — no props drilling needed.
 // Used via ChatInputConnector in CenterPanel.tsx.
+
+// ── Shared style constants ─────────────────────────────────────────────────────
+const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 99, color: 'var(--fg-1)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'var(--font-ui)' }
 
 function TplCtxItem({ label, onClick }: { label: string; onClick: () => void }) {
   const [hov, setHov] = useState(false)
