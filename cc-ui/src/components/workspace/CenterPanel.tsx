@@ -10,6 +10,8 @@ import { AgentView } from '../agent/AgentView'
 import { OrbitView } from '../agent/OrbitView'
 import { XTermPane } from '../terminal/XTermPane'
 import { ChatInput } from './ChatInput'
+import { JsonTreeNode } from '../primitives/JsonTree'
+import { highlightSegments } from '../../utils/highlight'
 
 
 interface CenterPanelProps {
@@ -971,7 +973,7 @@ function FileTabViewer({ path }: { path: string }) {
         )}
         {!error && content !== null && !editMode && parsedJson !== undefined && (
           <div style={{ padding: '12px 20px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.65 }}>
-            <FtvJsonNode value={parsedJson} depth={0} />
+            <JsonTreeNode value={parsedJson} depth={0} />
           </div>
         )}
         {!error && content !== null && !editMode && parsedJson === undefined && (
@@ -980,65 +982,6 @@ function FileTabViewer({ path }: { path: string }) {
       </div>
     </div>
   )
-}
-
-// Minimal JSON tree for FileTabViewer (same logic as DataViewer's JsonNode)
-function FtvJsonNode({ value, depth }: { value: unknown; depth: number }): React.ReactElement {
-  if (value === null)             return <span style={{ color: 'var(--fg-3)' }}>null</span>
-  if (typeof value === 'boolean') return <span style={{ color: '#3b82f6' }}>{String(value)}</span>
-  if (typeof value === 'number')  return <span style={{ color: '#10b981' }}>{value}</span>
-  if (typeof value === 'string')  return <span style={{ color: '#a78bfa' }}>"{value}"</span>
-  if (Array.isArray(value))       return <FtvJsonArr arr={value} depth={depth} />
-  if (typeof value === 'object' && value !== null) return <FtvJsonObj obj={value as Record<string, unknown>} depth={depth} />
-  return <span>{String(value)}</span>
-}
-function FtvJsonObj({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
-  const [col, setCol] = useState(depth >= 2)
-  const keys = Object.keys(obj)
-  if (!keys.length) return <span style={{ color: 'var(--fg-2)' }}>{'{}'}</span>
-  return (
-    <span>
-      <span onClick={() => setCol(c => !c)} style={{ cursor: 'pointer', color: 'var(--fg-3)', fontSize: 10 }}>{col ? '▶' : '▼'} </span>
-      {col
-        ? <span onClick={() => setCol(false)} style={{ color: 'var(--fg-3)', cursor: 'pointer' }}>{'{'} {keys.length} keys {'}'}</span>
-        : <>{'{'}
-            <div style={{ paddingLeft: 20 }}>{keys.map((k, i) => (
-              <div key={k}><span style={{ color: 'var(--accent)' }}>"{k}"</span><span style={{ color: 'var(--fg-3)' }}>: </span><FtvJsonNode value={obj[k]} depth={depth + 1} />{i < keys.length - 1 && <span style={{ color: 'var(--fg-3)' }}>,</span>}</div>
-            ))}</div>{'}'}</>
-      }
-    </span>
-  )
-}
-function FtvJsonArr({ arr, depth }: { arr: unknown[]; depth: number }) {
-  const [col, setCol] = useState(depth >= 2)
-  if (!arr.length) return <span style={{ color: 'var(--fg-2)' }}>{'[]'}</span>
-  return (
-    <span>
-      <span onClick={() => setCol(c => !c)} style={{ cursor: 'pointer', color: 'var(--fg-3)', fontSize: 10 }}>{col ? '▶' : '▼'} </span>
-      {col
-        ? <span onClick={() => setCol(false)} style={{ color: 'var(--fg-3)', cursor: 'pointer' }}>{'['} {arr.length} items {']'}</span>
-        : <>{'['}
-            <div style={{ paddingLeft: 20 }}>{arr.map((v, i) => (
-              <div key={i}><FtvJsonNode value={v} depth={depth + 1} />{i < arr.length - 1 && <span style={{ color: 'var(--fg-3)' }}>,</span>}</div>
-            ))}</div>{']'}</>
-      }
-    </span>
-  )
-}
-
-function FtvHighlight({ line, query }: { line: string; query: string }): React.ReactElement {
-  if (!query) return <>{line}</>
-  const parts: React.ReactNode[] = []
-  const lower = line.toLowerCase()
-  let cursor = 0, idx = lower.indexOf(query)
-  while (idx !== -1) {
-    if (idx > cursor) parts.push(line.slice(cursor, idx))
-    parts.push(<mark key={idx} style={{ background: 'rgba(255,200,50,0.4)', color: 'inherit', borderRadius: 2 }}>{line.slice(idx, idx + query.length)}</mark>)
-    cursor = idx + query.length
-    idx = lower.indexOf(query, cursor)
-  }
-  if (cursor < line.length) parts.push(line.slice(cursor))
-  return <>{parts}</>
 }
 
 function FtvTextViewer({ content, search, showLineNums, ext }: { content: string; search: string; showLineNums: boolean; ext: string }) {
@@ -1066,7 +1009,7 @@ function FtvTextViewer({ content, search, showLineNums, ext }: { content: string
         <div style={{ flex: 1, padding: '10px 0', overflow: 'hidden' }}>
           {lines.map((line, i) => (
             <div key={i} style={{ padding: '0 18px', lineHeight: '1.65em', fontSize: isMono ? 12 : 13, fontFamily: isMono ? 'var(--font-mono)' : 'var(--font-ui)', color: 'var(--fg-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: matchSet?.has(i) ? 'rgba(255,200,50,0.07)' : 'transparent' }}>
-              <FtvHighlight line={line} query={search} />
+              {highlightSegments(line, search)}
             </div>
           ))}
         </div>

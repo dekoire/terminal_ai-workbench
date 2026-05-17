@@ -16,6 +16,8 @@ import { KanbanBoard } from './KanbanBoard'
 import { XTermPane } from '../terminal/XTermPane'
 import { Pill } from '../primitives/Pill'
 import { writeClipboard } from '../../lib/clipboard'
+import { JsonTreeNode } from '../primitives/JsonTree'
+import { highlightSegments } from '../../utils/highlight'
 
 const OPENROUTER_MODELS = [
   { label: 'Claude Opus 4',       value: 'anthropic/claude-opus-4' },
@@ -3808,7 +3810,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
         )}
         {!error && content !== null && !editMode && parsedJson !== undefined && (
           <div style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: 10.5, lineHeight: 1.6 }}>
-            <JsonNode value={parsedJson} depth={0} />
+            <JsonTreeNode value={parsedJson} depth={0} />
           </div>
         )}
         {!error && content !== null && !editMode && parsedJson === undefined && (
@@ -3819,109 +3821,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
   )
 }
 
-// ── JSON tree viewer ──────────────────────────────────────────────────────────
-
-function JsonNode({ value, depth }: { value: unknown; depth: number }): React.ReactElement {
-  if (value === null)           return <span style={{ color: 'var(--fg-3)' }}>null</span>
-  if (value === undefined)      return <span style={{ color: 'var(--fg-3)' }}>undefined</span>
-  if (typeof value === 'boolean') return <span style={{ color: '#3b82f6' }}>{String(value)}</span>
-  if (typeof value === 'number')  return <span style={{ color: '#10b981' }}>{value}</span>
-  if (typeof value === 'string')  return <span style={{ color: '#a78bfa' }}>"{value}"</span>
-  if (Array.isArray(value))       return <JsonArray arr={value} depth={depth} />
-  if (typeof value === 'object')  return <JsonObject obj={value as Record<string, unknown>} depth={depth} />
-  return <span>{String(value)}</span>
-}
-
-function JsonObject({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth >= 2)
-  const keys = Object.keys(obj)
-  if (keys.length === 0) return <span style={{ color: 'var(--fg-2)' }}>{'{}'}</span>
-  return (
-    <span>
-      <span
-        onClick={() => setCollapsed(c => !c)}
-        style={{ cursor: 'pointer', color: 'var(--fg-3)', userSelect: 'none', fontSize: 9 }}
-      >{collapsed ? '▶' : '▼'}</span>
-      {' '}
-      {collapsed ? (
-        <span
-          onClick={() => setCollapsed(false)}
-          style={{ color: 'var(--fg-3)', cursor: 'pointer', fontSize: 10 }}
-        >{'{'} {keys.length} {keys.length === 1 ? 'key' : 'keys'} {'}'}</span>
-      ) : (
-        <>
-          {'{'}
-          <div style={{ paddingLeft: 16 }}>
-            {keys.map((k, i) => (
-              <div key={k}>
-                <span style={{ color: 'var(--accent)' }}>"{k}"</span>
-                <span style={{ color: 'var(--fg-3)' }}>: </span>
-                <JsonNode value={obj[k]} depth={depth + 1} />
-                {i < keys.length - 1 && <span style={{ color: 'var(--fg-3)' }}>,</span>}
-              </div>
-            ))}
-          </div>
-          {'}'}
-        </>
-      )}
-    </span>
-  )
-}
-
-function JsonArray({ arr, depth }: { arr: unknown[]; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth >= 2)
-  if (arr.length === 0) return <span style={{ color: 'var(--fg-2)' }}>{'[]'}</span>
-  return (
-    <span>
-      <span
-        onClick={() => setCollapsed(c => !c)}
-        style={{ cursor: 'pointer', color: 'var(--fg-3)', userSelect: 'none', fontSize: 9 }}
-      >{collapsed ? '▶' : '▼'}</span>
-      {' '}
-      {collapsed ? (
-        <span
-          onClick={() => setCollapsed(false)}
-          style={{ color: 'var(--fg-3)', cursor: 'pointer', fontSize: 10 }}
-        >{'['} {arr.length} items {']'}</span>
-      ) : (
-        <>
-          {'['}
-          <div style={{ paddingLeft: 16 }}>
-            {arr.map((v, i) => (
-              <div key={i}>
-                <JsonNode value={v} depth={depth + 1} />
-                {i < arr.length - 1 && <span style={{ color: 'var(--fg-3)' }}>,</span>}
-              </div>
-            ))}
-          </div>
-          {']'}
-        </>
-      )}
-    </span>
-  )
-}
-
 // ── Text viewer with line numbers + search highlight ──────────────────────────
-
-function highlightSegments(line: string, query: string): React.ReactNode {
-  if (!query) return line
-  const parts: React.ReactNode[] = []
-  const lower = line.toLowerCase()
-  let cursor = 0
-  let idx = lower.indexOf(query)
-  while (idx !== -1) {
-    if (idx > cursor) parts.push(line.slice(cursor, idx))
-    parts.push(
-      <mark key={idx} style={{ background: 'rgba(255,200,50,0.4)', color: 'inherit', borderRadius: 2 }}>
-        {line.slice(idx, idx + query.length)}
-      </mark>
-    )
-    cursor = idx + query.length
-    idx = lower.indexOf(query, cursor)
-  }
-  if (cursor < line.length) parts.push(line.slice(cursor))
-  return parts
-}
 
 function TextViewer({ content, search, showLineNums, ext }: { content: string; search: string; showLineNums: boolean; ext: string }) {
   const lines = content.split('\n')
