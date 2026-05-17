@@ -899,25 +899,6 @@ const DEMO_TURNS: TurnMessage[] = [
   },
 ]
 
-const DEMO_PROJECTS: Project[] = [
-  {
-    id: 'p1', name: 'payments-api', path: '~/code/payments-api', branch: 'feat/payment-retries', dirty: 3,
-    sessions: [
-      { id: 's1', name: 'main · refactor retries', alias: 'claude-code', cmd: 'claude', args: '--model claude-sonnet-4-5', status: 'active', permMode: 'normal', startedAt: Date.now() - 6 * 60_000 },
-      { id: 's2', name: 'tests · add jest cases', alias: 'minimax', cmd: 'minimax', args: '--model m1-coder', status: 'idle', permMode: 'normal', startedAt: Date.now() - 42 * 60_000 },
-      { id: 's3', name: 'logs · trace pdfgen', alias: 'codex', cmd: 'codex', args: '--profile default --dangerously-skip-permissions', status: 'idle', permMode: 'dangerous', startedAt: Date.now() - 120 * 60_000 },
-    ],
-  },
-  { id: 'p2', name: 'design-system', path: '~/code/ds', branch: 'main', sessions: [] },
-  {
-    id: 'p3', name: 'growth-dash', path: '~/code/growth', branch: 'exp/cohorts', dirty: 1,
-    sessions: [
-      { id: 's4', name: 'main · debug cohort sql', alias: 'aider', cmd: 'aider', args: '--no-auto-commit', status: 'idle', permMode: 'normal', startedAt: Date.now() - 90 * 60_000 },
-    ],
-  },
-  { id: 'p4', name: 'infra', path: '~/work/infra', branch: 'main', sessions: [] },
-]
-
 const DEMO_ALIASES: Alias[] = [
   { id: 'a1', name: 'claude-code', cmd: 'claude', args: '--model claude-sonnet-4-5', permMode: 'normal', status: 'ok' },
   { id: 'a2', name: 'minimax', cmd: 'minimax', args: '--model m1-coder', permMode: 'normal', status: 'ok' },
@@ -1112,6 +1093,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   adminEmails: ['admin@codera.com'],
 
   supabaseUrl: 'https://fpphqkuizptypeawclsx.supabase.co',
+  // Safe to ship: Supabase anon keys are intentionally public-facing (row-level security
+  // enforces access control). Never store service_role key here.
   supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwcGhxa3VpenB0eXBlYXdjbHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwMjY2ODksImV4cCI6MjA5MzYwMjY4OX0.A7n06LfElOmYPlzHpIGALAzEc1YK946pve-YsfJuSYk',
   supabaseServiceRoleKey: '',
   cloudflareAccountId: '',
