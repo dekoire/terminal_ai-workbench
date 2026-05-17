@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { SectionCard } from '../primitives/SectionCard'
 import { useAppStore } from '../../store/useAppStore'
 import { getOrModel, sanitizeKey } from '../../utils/orProvider'
 import type { OrbitMessage, RepoToken, RightSidebarSection, RightSidebarSectionId, AllSectionId, LayoutSection } from '../../store/useAppStore'
@@ -2295,7 +2296,7 @@ export function UserStoriesCard({ projectId: activeProjectId, sessionId }: { pro
           onClose={() => setShowNewTask(false)}
         />
       )}
-      <Card title={`Tasks${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false} action={addBtn}>
+      <SectionCard label={`Tasks${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false} action={addBtn}>
         {allTickets.length === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>Keine Tasks</div>
         ) : (
@@ -2311,7 +2312,7 @@ export function UserStoriesCard({ projectId: activeProjectId, sessionId }: { pro
         {allTickets.length > 8 && (
           <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 4 }}>+{allTickets.length - 8} weitere</div>
         )}
-      </Card>
+      </SectionCard>
     </>
   )
 }
@@ -2327,7 +2328,7 @@ function NotesCard({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <Card title="Notes" action={<IEdit style={{ color: 'var(--fg-3)' }} />}>
+    <SectionCard label="Notes" action={<IEdit style={{ color: 'var(--fg-3)' }} />}>
       <textarea
         value={text}
         onChange={handleChange}
@@ -2348,7 +2349,7 @@ function NotesCard({ sessionId }: { sessionId: string }) {
           boxSizing: 'border-box',
         }}
       />
-    </Card>
+    </SectionCard>
   )
 }
 
@@ -3968,30 +3969,6 @@ function TextViewer({ content, search, showLineNums, ext }: { content: string; s
 }
 
 // ── shared primitives ─────────────────────────────────────────────────────────
-
-function Card({ title, action, children, collapsible, defaultOpen = true }: { title: string; action?: React.ReactNode; children: React.ReactNode; collapsible?: boolean; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div
-        onClick={collapsible ? () => setOpen(o => !o) : undefined}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: collapsible ? 'pointer' : 'default', userSelect: 'none', paddingBottom: open ? 6 : 0 }}
-      >
-        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1 }}>{title}</span>
-        {action && <span onClick={e => e.stopPropagation()}>{action}</span>}
-        {collapsible && (open
-          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-        )}
-      </div>
-      {open && (
-        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
 
 function Field({ label, value, mono, accent }: { label: string; value: string; mono?: boolean; accent?: boolean }) {
   return (

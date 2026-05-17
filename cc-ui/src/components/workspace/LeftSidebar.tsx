@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { SectionCard } from '../primitives/SectionCard'
 import { useAppStore, setActiveStorageUser, DEFAULT_SIDEBAR_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
 import type { Project, Session, SidebarSection, SidebarSectionId, LayoutSection, AllSectionId } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
@@ -261,7 +262,8 @@ export function LeftSidebar() {
   const renderSection = (id: AllSectionId) => {
     switch (id) {
       case 'workspaces': return (
-        <CollapsibleSection label="Workspaces" count={projects.length} defaultOpen action={
+        <div style={{ padding: '0 10px' }}>
+        <SectionCard label="Workspaces" count={projects.length} defaultOpen noPadding action={
           <button onClick={() => setNewProjectOpen(true)} style={iconBtn}><IPlus /></button>
         }>
           {(projectsExpanded ? projects : projects.slice(0, PROJECTS_COLLAPSED)).map((p, idx) => (
@@ -319,7 +321,8 @@ export function LeftSidebar() {
               {projectsExpanded ? 'Weniger anzeigen' : `${projects.length - PROJECTS_COLLAPSED} weitere`}
             </div>
           )}
-        </CollapsibleSection>
+        </SectionCard>
+        </div>
       )
       case 'prompts': return projects.length > 0 ? (
         <TemplatesSection
@@ -1108,34 +1111,7 @@ function CompactQuickLinksSection() {
   )
 }
 
-// ── Collapsible section ───────────────────────────────────────────────────────
-
-function CollapsibleSection({ label, count, action, children, defaultOpen = true }: { label: string; count?: number; action?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div style={{ marginBottom: 20, padding: '0 10px' }}>
-      <div
-        onClick={() => setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', paddingBottom: open ? 6 : 0, cursor: 'pointer', userSelect: 'none' }}
-      >
-        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-          {label}
-          {count != null && <span style={{ fontWeight: 400, letterSpacing: 0 }}>({count})</span>}
-        </span>
-        {action && <span onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', color: 'var(--fg-2)' }}>{action}</span>}
-        {open
-          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-        }
-      </div>
-      {open && React.Children.count(children) > 0 && (
-        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden' }}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
+// CollapsibleSection replaced by SectionCard (src/components/primitives/SectionCard.tsx)
 
 const iconBtn: React.CSSProperties = {
   background: 'transparent', border: 'none', color: 'var(--fg-2)',
