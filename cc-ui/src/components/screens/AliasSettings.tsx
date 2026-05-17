@@ -10,6 +10,7 @@ import { sanitizeKey } from '../../utils/orProvider'
 import { saveGlobalTemplates, saveGlobalCliConfig, saveGlobalPrompts } from '../../lib/useSupabaseSync'
 import { getSupabase } from '../../lib/supabase'
 import { MultiCombobox } from '../primitives/MultiCombobox'
+import { writeClipboard } from '../../lib/clipboard'
 import { SingleCombobox } from '../primitives/SingleCombobox'
 
 // Predefined strength options for agent roles
@@ -2368,7 +2369,7 @@ function ClaudeProviderTab({ openAddRef }: { openAddRef?: React.MutableRefObject
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
               <label style={{ ...fieldLabel, marginBottom: 0 }}>claude.json — direkt bearbeitbar</label>
               <button
-                onClick={() => navigator.clipboard.writeText(jsonDraft)}
+                onClick={() => writeClipboard(jsonDraft)}
                 style={{ ...btnGhost, padding: '2px 8px', fontSize: 9.5, marginLeft: 'auto' }}
               >Kopieren</button>
             </div>
@@ -2802,6 +2803,7 @@ function DocTemplatesPanel({ isAdmin = false }: { isAdmin?: boolean }) {
 function KontextMgmtPanel() {
   const {
     orbitCtxBefore, orbitCtxAfter, setOrbitCtxBefore, setOrbitCtxAfter,
+    agentCtxBefore, agentCtxAfter, setAgentCtxBefore, setAgentCtxAfter,
     orbitCompressModel, setOrbitCompressModel,
     openrouterKey, orbitMessages, activeOrbitChatId, setOrbitMessages,
     agentContextMsgCount, setAgentContextMsgCount,
@@ -2918,7 +2920,7 @@ function KontextMgmtPanel() {
           </div>
 
           <div style={card}>
-            <div style={cardTitle}>Kontext-Fenster</div>
+            <div style={cardTitle}>Kontext-Fenster Orbit</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={fieldLabel}>Nachrichten davor</label>
@@ -2931,6 +2933,26 @@ function KontextMgmtPanel() {
                 <label style={fieldLabel}>Nachrichten danach</label>
                 <input type="number" min={0} max={20} value={orbitCtxAfter}
                   onChange={e => setOrbitCtxAfter(Math.max(0, Math.min(20, Number(e.target.value))))}
+                  style={numInput} />
+                <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>Nachrichten nach der Referenz-Nachricht</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={cardTitle}>Kontext-Fenster Agent Chat</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={fieldLabel}>Nachrichten davor</label>
+                <input type="number" min={0} max={20} value={agentCtxBefore}
+                  onChange={e => setAgentCtxBefore(Math.max(0, Math.min(20, Number(e.target.value))))}
+                  style={numInput} />
+                <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>Nachrichten vor der Referenz-Nachricht</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={fieldLabel}>Nachrichten danach</label>
+                <input type="number" min={0} max={20} value={agentCtxAfter}
+                  onChange={e => setAgentCtxAfter(Math.max(0, Math.min(20, Number(e.target.value))))}
                   style={numInput} />
                 <span style={{ fontSize: 10, color: 'var(--fg-3)' }}>Nachrichten nach der Referenz-Nachricht</span>
               </div>
@@ -3081,7 +3103,7 @@ function KontextMgmtPanel() {
                 <div style={cardTitle}>Ergebnis</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
-                    onClick={() => navigator.clipboard.writeText(compressResult)}
+                    onClick={() => writeClipboard(compressResult)}
                     style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg-2)', color: 'var(--fg-1)', fontSize: 11, cursor: 'pointer' }}
                   >
                     Kopieren

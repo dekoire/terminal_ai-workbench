@@ -12,7 +12,7 @@ import type { WorkshopElementRef } from '../../store/useAppStore'
 import { useAppStore } from '../../store/useAppStore'
 import {
   IChevLeft, IEdit, IMousePointer, IMousePointerClick, ISave, IClose, IEraser,
-  IUndo, ITrash, IRefresh, ICamera, IMessageSquare, IGlobe,
+  IUndo, ITrash, IRotateCcw, ICamera, IMessageSquare, IGlobe,
 } from '../primitives/Icons'
 import { DrawCanvas } from './DrawCanvas'
 import type { DrawCanvasHandle, DrawTool } from './DrawCanvas'
@@ -35,6 +35,8 @@ interface Props {
   onScreenshot: (dataUrl: string) => void
   /** Pre-filled URL from the active project's appPort. Empty = show placeholder. */
   initialUrl?: string
+  /** Close button handler — shown as × at far right of toolbar */
+  onClose?: () => void
 }
 
 // ── Webview element type (Electron-specific, works cross-origin) ─────────────
@@ -44,7 +46,20 @@ interface WebviewEl extends HTMLElement {
   reload(): void
   goBack(): void
   goForward(): void
+  isLoading(): boolean
+  getWebContentsId(): number
   executeJavaScript(code: string): Promise<unknown>
+}
+
+declare global {
+  interface Window {
+    electronAPI?: {
+      platform?: string
+      version?: string
+      invalidateWebview?: (id: number) => void
+      writeClipboard?: (text: string) => Promise<void>
+    }
+  }
 }
 
 declare global {
@@ -246,7 +261,7 @@ async function captureViaServer(url: string, width: number, height: number): Pro
   }
 }
 
-export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreenshot, initialUrl = '' }: Props) {
+export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreenshot, initialUrl = '', onClose }: Props) {
   // Only subscribe to `theme` — avoids re-rendering BrowserPane on every store change
   const theme = useAppStore(s => s.theme)
   const webviewRef     = useRef<HTMLElement>(null)
@@ -254,6 +269,9 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
   const cleanupInspect = useRef<(() => void) | null>(null)
   const wvReady        = useRef(false)   // true after dom-ready fires
   const wv = () => webviewRef.current as WebviewEl | null
+
+  // ResizeObserver disabled — was freezing wrong px values when firing before
+  // final flex layout pass. width/height:'100%' + zoom:'1' handle sizing instead.
 
   const execJS = (script: string) => {
     const el = wv()
@@ -277,7 +295,7 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
   const [saving,   setSaving]   = useState(false)
 
   // ── Browser chrome colours — always white toolbar with bg-1 text/icons ──────
-  const bChrome: React.CSSProperties = { background: '#ffffff', borderColor: '#e0e0e0', color: 'var(--bg-1)' }
+  const bChrome: React.CSSProperties = { background: '#ffffff', borderColor: '#e8e8e8', color: 'rgba(0,0,0,0.6)' }
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   const navigate = useCallback((target: string) => {
@@ -296,15 +314,57 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
     const el = wv()
     if (!el) return
 
+    // Force Electron GPU surface to repaint.
+    // Primary: webContents.invalidate() via IPC (most reliable).
+    // Fallback: resize trick forces compositor to re-rasterize.
+    const forceRepaint = () => {
+      // IPC invalidate — directly tells Electron to redraw the webview GPU surface
+      try {
+        const id = (el as WebviewEl).getWebContentsId()
+        window.electronAPI?.invalidateWebview?.(id)
+      } catch {}
+
+      // Resize fallback
+      const e = el as HTMLElement
+      e.style.width = 'calc(100% + 1px)'
+      requestAnimationFrame(() => {
+        e.style.width = '100%'
+        requestAnimationFrame(() => {
+          e.style.visibility = 'hidden'
+          requestAnimationFrame(() => { e.style.visibility = '' })
+        })
+      })
+    }
+
     const onDomReady   = () => {
       wvReady.current = true
       if (mode === 'inspect') execJS(INSPECT_SCRIPT)
+      forceRepaint()
     }
     const onLoad = () => {
       setError(false); setLoading(false)
       try { setInputUrl(el.getURL()) } catch {}
       if (mode === 'inspect') execJS(INSPECT_SCRIPT)
+      forceRepaint()
     }
+
+    // Polling fallback: did-finish-load sometimes doesn't fire (Electron timing issue).
+    // Poll isLoading() every 500ms; clear loading state once the page is done.
+    const poll = setInterval(() => {
+      try {
+        const wvEl = el as WebviewEl
+        if (!wvEl.isLoading()) {
+          clearInterval(poll)
+          setLoading(false)
+          setError(false)
+          try { setInputUrl(wvEl.getURL()) } catch {}
+          forceRepaint()
+        }
+      } catch { clearInterval(poll) }
+    }, 500)
+
+    // Absolute timeout: never show "Lädt…" more than 15s
+    const loadTimeout = setTimeout(() => { setLoading(false) }, 15000)
     const onFailLoad = (e: Event) => {
       const ev = e as Event & { isMainFrame?: boolean; errorCode?: number }
       if (ev.isMainFrame && ev.errorCode !== -3) { setError(true); setLoading(false) }
@@ -333,6 +393,8 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
 
     return () => {
       wvReady.current = false
+      clearInterval(poll)
+      clearTimeout(loadTimeout)
       el.removeEventListener('dom-ready',            onDomReady)
       el.removeEventListener('did-finish-load',      onLoad)
       el.removeEventListener('did-fail-load',        onFailLoad)
@@ -425,12 +487,14 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
 
   // ── Button style helpers ──────────────────────────────────────────────────────
   const btnBase: React.CSSProperties = {
-    background: 'none', border: 'none', padding: '5px 9px',
-    cursor: 'pointer', color: bChrome.color, display: 'flex',
+    background: 'none', border: 'none', padding: '5px 7px',
+    cursor: 'pointer', color: 'rgba(0,0,0,0.52)', display: 'flex',
     alignItems: 'center', borderRadius: 5, fontSize: 13,
     fontFamily: 'var(--font-ui)', transition: 'background 0.1s',
   }
-  const hoverBg = theme === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.14)'
+  const hoverBg = 'rgba(0,0,0,0.08)'
+  // Uniform icon size + stroke for every toolbar icon
+  const icn: React.CSSProperties = { width: 15, height: 15, strokeWidth: 2 }
   const modeActive = (m: BrowserMode): React.CSSProperties => ({
     ...btnBase,
     background: mode === m ? 'var(--accent)' : 'transparent',
@@ -441,81 +505,102 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
-      {/* ── Main toolbar ── */}
+      {/* ── Main toolbar — browser-bar style ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
+        display: 'flex', alignItems: 'center', gap: 2, padding: '5px 8px',
         background: bChrome.background,
         borderBottom: `1px solid ${bChrome.borderColor}`,
-        flexShrink: 0,
-      }}>
+        flexShrink: 0, WebkitAppRegion: 'no-drag',
+      } as React.CSSProperties}>
+
+        {/* Nav buttons */}
         <button onClick={back}   style={btnBase} title="Zurück"
           onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-          <IChevLeft style={{ width: 17, height: 17, strokeWidth: 2.2 }} />
+          <IChevLeft style={icn} />
         </button>
         <button onClick={fwd}    style={btnBase} title="Vorwärts"
           onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-          <IChevLeft style={{ width: 15, height: 15, strokeWidth: 2.2, transform: 'scaleX(-1)' }} />
+          <IChevLeft style={{ ...icn, transform: 'scaleX(-1)' }} />
         </button>
         <button onClick={reload} style={btnBase} title="Neu laden"
           onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-          <IRefresh style={{ width: 17, height: 17, strokeWidth: 2.2 }} />
+          <IRotateCcw style={icn} />
         </button>
 
+        {/* URL field — borderless, blends into white bar */}
         <form onSubmit={e => { e.preventDefault(); navigate(inputUrl) }}
           style={{ flex: 1, display: 'flex', position: 'relative', alignItems: 'center',
-            borderRadius: 10,
+            borderRadius: 6,
             border: error ? '1px solid #ef4444' : '1px solid transparent',
-            background: 'rgba(0,0,0,0.07)',
-            transition: 'border-color 0.12s, background 0.12s',
+            background: 'transparent',
+            transition: 'background 0.12s',
+            margin: '0 2px',
           }}
-          onFocus={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.10)'; if (!error) e.currentTarget.style.borderColor = 'rgba(0,0,0,0.15)' }}
-          onBlur={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)'; if (!error) e.currentTarget.style.borderColor = 'transparent' }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.09)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)' }}
+          onMouseEnter={e => { if (document.activeElement?.closest('form') !== e.currentTarget) e.currentTarget.style.background = 'rgba(0,0,0,0.05)' }}
+          onMouseLeave={e => { if (document.activeElement?.closest('form') !== e.currentTarget) e.currentTarget.style.background = 'transparent' }}
+          onFocus={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.10)' }}
+          onBlur={e => { e.currentTarget.style.background = 'transparent' }}
         >
-          <IGlobe style={{ position: 'absolute', left: 10, width: 14, height: 14, color: 'rgba(0,0,0,0.4)', pointerEvents: 'none', flexShrink: 0 }} />
+          <IGlobe style={{ ...icn, position: 'absolute', left: 9, color: 'rgba(0,0,0,0.52)', pointerEvents: 'none', flexShrink: 0 }} />
           <input
             value={inputUrl}
             onChange={e => setInputUrl(e.target.value)}
             placeholder="http://localhost:3000"
             style={{
-              flex: 1, padding: '5px 10px 5px 30px', borderRadius: 10,
+              flex: 1, padding: '4px 10px 4px 28px', borderRadius: 6,
               border: 'none', background: 'transparent',
-              color: 'rgba(0,0,0,0.75)',
-              fontSize: 12.5, fontFamily: 'var(--font-ui)', outline: 'none',
+              color: 'rgba(0,0,0,0.8)', boxShadow: 'none',
+              fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none',
             }}
           />
         </form>
 
-        <button onClick={() => onModeChange('normal')} style={modeActive('normal')} title="Normal"
-          onMouseEnter={e => { if (mode !== 'normal') e.currentTarget.style.background = hoverBg }}
-          onMouseLeave={e => { if (mode !== 'normal') e.currentTarget.style.background = 'transparent' }}>
-          <IMousePointer style={{ width: 16, height: 16, marginRight: 5, strokeWidth: 2.2 }} />Normal
-        </button>
-        <button onClick={() => onModeChange('draw')} style={modeActive('draw')} title="Zeichnen"
-          onMouseEnter={e => { if (mode !== 'draw') e.currentTarget.style.background = hoverBg }}
-          onMouseLeave={e => { if (mode !== 'draw') e.currentTarget.style.background = 'transparent' }}>
-          <IEdit style={{ width: 16, height: 16, marginRight: 5, strokeWidth: 2.2 }} />Zeichnen
-        </button>
-        <button onClick={() => onModeChange('inspect')} style={modeActive('inspect')} title="Inspect (Shift+Klick)"
-          onMouseEnter={e => { if (mode !== 'inspect') e.currentTarget.style.background = hoverBg }}
-          onMouseLeave={e => { if (mode !== 'inspect') e.currentTarget.style.background = 'transparent' }}>
-          <IMousePointerClick style={{ width: 16, height: 16, marginRight: 5, strokeWidth: 2.2 }} />Selektor
-        </button>
+        {/* Divider */}
+        <div style={{ width: 1, height: 18, background: bChrome.borderColor, margin: '0 2px', flexShrink: 0 }} />
 
+        {/* Mode buttons — icon only */}
+        {(['normal', 'draw', 'inspect'] as BrowserMode[]).map((m, i) => (
+          <button key={m}
+            onClick={() => onModeChange(m)}
+            style={modeActive(m)}
+            title={['Normal', 'Zeichnen', 'Selektor (Shift+Klick)'][i]}
+            onMouseEnter={e => { if (mode !== m) e.currentTarget.style.background = hoverBg }}
+            onMouseLeave={e => { if (mode !== m) e.currentTarget.style.background = 'transparent' }}
+          >
+            {i === 0 && <IMousePointer style={icn} />}
+            {i === 1 && <IEdit style={icn} />}
+            {i === 2 && <IMousePointerClick style={icn} />}
+          </button>
+        ))}
+
+        {/* Screenshot */}
         <button
           onClick={takeScreenshot}
           disabled={!url}
-          style={{ ...btnBase, gap: 4, opacity: url ? 1 : 0.4, cursor: url ? 'pointer' : 'default' }}
-          title={url ? 'Screenshot machen' : 'Zuerst eine URL eingeben'}
+          style={{ ...btnBase, opacity: url ? 1 : 0.35, cursor: url ? 'pointer' : 'default' }}
+          title={url ? 'Screenshot' : 'Zuerst URL eingeben'}
           onMouseEnter={e => { if (url) e.currentTarget.style.background = hoverBg }}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         >
-          <ICamera style={{ width: 14, height: 14, strokeWidth: 2.2 }} />Screenshot
+          <ICamera style={icn} />
         </button>
+
+        {/* Divider + Close */}
+        {onClose && <>
+          <div style={{ width: 1, height: 18, background: bChrome.borderColor, margin: '0 2px', flexShrink: 0 }} />
+          <button
+            onClick={onClose}
+            style={btnBase}
+            title="Schließen"
+            onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <IClose style={icn} />
+          </button>
+        </>}
       </div>
 
       {/* ── Screenshot error toast ── */}
@@ -615,13 +700,8 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
       )}
 
       {/* ── Iframe area + overlays ── */}
-      {/* display:flex is required so the webview (flex:1) gets a real height.
-          Without it the container collapses to 0 because webview is the only child
-          and it's position:absolute — flex:1 alone doesn't establish a height for
-          absolutely-positioned children on a plain block container.
-          overflow must NOT be 'hidden' — Electron webview is a separate GPU surface
-          and overflow:hidden causes it to render black. */}
-      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* NO overflow:hidden anywhere in the ancestor chain (clips GPU surface to black). */}
+      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
 
         {/* Inspect hint */}
         {mode === 'inspect' && (
@@ -686,22 +766,24 @@ export function BrowserPane({ mode, onModeChange, onElementCaptured, onScreensho
           </div>
         )}
 
-        {/* webview — Electron-native, works cross-origin (localhost:xxxx etc.)
-            flex:1 makes it fill the container height without needing position:absolute
-            which would require the parent to have an established height first. */}
-        {url && (
-          <webview
-            ref={webviewRef}
-            src={url}
-            allowpopups=""
-            style={{
-              flex: 1, alignSelf: 'stretch',
-              width: '100%', minHeight: 0,
-              display: 'block',
-              pointerEvents: mode === 'draw' ? 'none' : 'auto',
-            } as React.CSSProperties}
-          />
-        )}
+        {/* webview — always mounted to avoid race condition on first layout pass.
+            zoom:'1' neutralises the root CSS zoom that compresses the GPU surface.
+            width/height:'100%' + inset:0 ensure the GPU surface fills the container. */}
+        <webview
+          ref={webviewRef}
+          src={url || 'about:blank'}
+          allowpopups=""
+          style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            width: '100%',
+            height: '100%',
+            display: 'block',
+            background: '#ffffff',
+            zoom: 1,
+            pointerEvents: url && mode !== 'draw' ? 'auto' : 'none',
+          } as React.CSSProperties}
+        />
 
         {/* DrawCanvas — positioned inside iframe container so coords are correct */}
         <DrawCanvas

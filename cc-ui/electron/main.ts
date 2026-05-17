@@ -1,10 +1,13 @@
-import { app, BrowserWindow, shell, nativeTheme, session } from 'electron'
+import { app, BrowserWindow, shell, nativeTheme, session, ipcMain, webContents, clipboard, safeStorage } from 'electron'
+
+// Fix for Electron webview black screen on macOS — must be called before app.whenReady()
+app.commandLine.appendSwitch('in-process-gpu')
 import { createServer }  from 'http'
 import { exec }          from 'child_process'
 import path              from 'path'
 import express           from 'express'
 import apiRouter         from '../server/routes/api.js'
-import { attachWsUpgrade } from '../server/routes/ws.js'
+import { attachWsUpgrade } from '../server/routes/websocket-chat-handler.js'
 const isDev = !app.isPackaged
 
 // Let server code find permission-mcp.cjs and other root-level files
@@ -104,6 +107,42 @@ app.whenReady().then(async () => {
   })
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
     return ['media', 'audioCapture', 'microphone'].includes(permission)
+  })
+
+  // IPC: clipboard write (navigator.clipboard fails under contextIsolation)
+  ipcMain.handle('clipboard:write', (_e, text: string) => {
+    clipboard.writeText(text)
+  })
+
+  // IPC: credential encryption via Electron safeStorage
+  // macOS → Keychain, Windows → DPAPI, Linux → libsecret / kwallet
+  ipcMain.handle('credential:encrypt', (_e, plaintext: string): string => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      // safeStorage not available (e.g. headless CI) — return plaintext unchanged
+      // The renderer marks it as __enc__: false so it can detect this on read.
+      return plaintext
+    }
+    return safeStorage.encryptString(plaintext).toString('base64')
+  })
+
+  ipcMain.handle('credential:decrypt', (_e, ciphertext: string): string => {
+    if (!safeStorage.isEncryptionAvailable()) return ciphertext
+    try {
+      return safeStorage.decryptString(Buffer.from(ciphertext, 'base64'))
+    } catch {
+      // Decryption failed — could be a plaintext value from an old store.
+      // Return empty string; user will need to re-enter the credential.
+      console.warn('[main] credential:decrypt failed for value, returning empty')
+      return ''
+    }
+  })
+
+  // IPC: force-repaint a webview by its webContentsId
+  ipcMain.on('webview-invalidate', (_event, id: number) => {
+    try {
+      const wc = webContents.fromId(id)
+      if (wc && !wc.isDestroyed()) wc.invalidate()
+    } catch {}
   })
 
   createWindow()

@@ -18,7 +18,28 @@ import { ISpinner } from './components/primitives/Icons'
 import { ToastContainer } from './components/primitives/ToastContainer'
 
 export default function App() {
-  const { screen: rawScreen, theme, accent, accentFg, preset, uiFont, uiFontSize, uiFontWeight, newProjectOpen, newSessionOpen, customUiColors, projects, activeProjectId, setupWizardDone, currentUser, dataLoaded, setScreen, addToast } = useAppStore()
+  // Split into focused selectors so each group re-renders only when its slice changes.
+  // A single useAppStore() destructure would re-render the whole App on any state change.
+  const rawScreen        = useAppStore(s => s.screen)
+  const currentUser      = useAppStore(s => s.currentUser)
+  const dataLoaded       = useAppStore(s => s.dataLoaded)
+  const setupWizardDone  = useAppStore(s => s.setupWizardDone)
+  const newProjectOpen   = useAppStore(s => s.newProjectOpen)
+  const newSessionOpen   = useAppStore(s => s.newSessionOpen)
+  const projects         = useAppStore(s => s.projects)
+  const activeProjectId  = useAppStore(s => s.activeProjectId)
+  const setScreen        = useAppStore(s => s.setScreen)
+  const addToast         = useAppStore(s => s.addToast)
+  // Theme/appearance — grouped because they always change together
+  const theme            = useAppStore(s => s.theme)
+  const accent           = useAppStore(s => s.accent)
+  const accentFg         = useAppStore(s => s.accentFg)
+  const preset           = useAppStore(s => s.preset)
+  const customUiColors   = useAppStore(s => s.customUiColors)
+  // Font/size — grouped because they always change together
+  const uiFont           = useAppStore(s => s.uiFont)
+  const uiFontSize       = useAppStore(s => s.uiFontSize)
+  const uiFontWeight     = useAppStore(s => s.uiFontWeight)
   // Guarantee screen is always a valid value — null/undefined causes a total black screen
   const screen = rawScreen || (currentUser ? 'workspace' : 'login')
 
@@ -107,9 +128,9 @@ export default function App() {
       {/* Keep Workspace alive at all times (except login/register) so terminals never restart */}
       {screen !== 'login' && screen !== 'register' && (
         <div style={{ position: 'absolute', inset: 0, display: workspaceActive ? 'flex' : 'none', flexDirection: 'column' }}>
-          {currentUser && !dataLoaded ? (
+          {!dataLoaded ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-0)' }}>
-              <ISpinner size={24} style={{ color: 'var(--fg-3)' }} />
+              <ISpinner size={28} style={{ color: 'var(--accent)' }} />
             </div>
           ) : (
             <Workspace />
@@ -130,14 +151,22 @@ export default function App() {
 
       {/* Workshop — fixed overlay modal, workspace stays alive behind it */}
       {screen === 'workshop' && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9000,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <UIWorkshop />
-        </div>
+        <>
+          {/* Blur overlay — separate sibling, NOT parent of UIWorkshop.
+              backdrop-filter creates a compositing layer that blacks out Electron webviews. */}
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 8999,
+            background: 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(8px)',
+            pointerEvents: 'none',
+          }} />
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 9000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <UIWorkshop />
+          </div>
+        </>
       )}
 
       {newProjectOpen && <NewProjectModal />}

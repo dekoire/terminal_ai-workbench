@@ -207,9 +207,9 @@ export const DEFAULT_SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: 'tasks',      visible: true },
 ]
 
-export type UtilityPanelSectionId = 'kontextlog' | 'github' | 'quicklinks' | 'tasks'
-export interface UtilitySection { id: UtilityPanelSectionId; visible: boolean }
-export const DEFAULT_UTILITY_SECTIONS: UtilitySection[] = [
+export type RightSidebarSectionId = 'kontextlog' | 'github' | 'quicklinks' | 'tasks'
+export interface RightSidebarSection { id: RightSidebarSectionId; visible: boolean }
+export const DEFAULT_RIGHT_SIDEBAR_SECTIONS: RightSidebarSection[] = [
   { id: 'kontextlog', visible: true },
   { id: 'github',     visible: true },
   { id: 'quicklinks', visible: true },
@@ -692,8 +692,10 @@ export interface AppState {
   orbitMeta: Record<string, OrbitChatMeta>         // chatId → meta
   orbitChats: Record<string, string[]>             // projectId → [chatId, ...]
   activeOrbitChatId: Record<string, string>        // sessionId → chatId
-  orbitCtxBefore: number                           // context window — messages before ref
-  orbitCtxAfter: number                            // context window — messages after ref
+  orbitCtxBefore: number                           // context window — messages before ref (orbit)
+  orbitCtxAfter: number                            // context window — messages after ref (orbit)
+  agentCtxBefore: number                           // context window — messages before ref (agent chat)
+  agentCtxAfter: number                            // context window — messages after ref (agent chat)
   orbitCompressPrompt: string                      // prompt used to compress chat history
   orbitCompressModel: string                       // OR model used for compression
   agentContextMsgCount: number                     // how many messages to compress (default 20)
@@ -705,7 +707,7 @@ export interface AppState {
   orbitFavorites: Record<string, OrbitFavorite[]>  // projectId → favorites
   quickLinks:     QuickLink[]
   sidebarSections: SidebarSection[]
-  utilitySections: UtilitySection[]
+  utilitySections: RightSidebarSection[]
   layoutSections:  LayoutSection[]
   projectBrains: Record<string, ProjectBrainEntry>  // projectId → brain
   orbitChatsLoaded: Record<string, boolean>          // chatId → Supabase-fetch done (runtime only)
@@ -832,6 +834,8 @@ export interface AppState {
   setDefaultManagerModel: (model: string) => void
   setOrbitCtxBefore: (n: number) => void
   setOrbitCtxAfter: (n: number) => void
+  setAgentCtxBefore: (n: number) => void
+  setAgentCtxAfter: (n: number) => void
   setOrbitCompressPrompt: (s: string) => void
   setOrbitCompressModel: (s: string) => void
   setAgentContextMsgCount: (agentContextMsgCount: number) => void
@@ -843,7 +847,7 @@ export interface AppState {
   addOrbitFavorite:  (fav: OrbitFavorite) => void
   setQuickLinks:     (links: QuickLink[]) => void
   setSidebarSections: (sections: SidebarSection[]) => void
-  setUtilitySections: (sections: UtilitySection[]) => void
+  setUtilitySections: (sections: RightSidebarSection[]) => void
   setLayoutSections:  (sections: LayoutSection[]) => void
   addToast: (t: Omit<Toast, 'id'>) => string
   removeToast: (id: string) => void
@@ -895,25 +899,6 @@ const DEMO_TURNS: TurnMessage[] = [
   },
 ]
 
-const DEMO_PROJECTS: Project[] = [
-  {
-    id: 'p1', name: 'payments-api', path: '~/code/payments-api', branch: 'feat/payment-retries', dirty: 3,
-    sessions: [
-      { id: 's1', name: 'main · refactor retries', alias: 'claude-code', cmd: 'claude', args: '--model claude-sonnet-4-5', status: 'active', permMode: 'normal', startedAt: Date.now() - 6 * 60_000 },
-      { id: 's2', name: 'tests · add jest cases', alias: 'minimax', cmd: 'minimax', args: '--model m1-coder', status: 'idle', permMode: 'normal', startedAt: Date.now() - 42 * 60_000 },
-      { id: 's3', name: 'logs · trace pdfgen', alias: 'codex', cmd: 'codex', args: '--profile default --dangerously-skip-permissions', status: 'idle', permMode: 'dangerous', startedAt: Date.now() - 120 * 60_000 },
-    ],
-  },
-  { id: 'p2', name: 'design-system', path: '~/code/ds', branch: 'main', sessions: [] },
-  {
-    id: 'p3', name: 'growth-dash', path: '~/code/growth', branch: 'exp/cohorts', dirty: 1,
-    sessions: [
-      { id: 's4', name: 'main · debug cohort sql', alias: 'aider', cmd: 'aider', args: '--no-auto-commit', status: 'idle', permMode: 'normal', startedAt: Date.now() - 90 * 60_000 },
-    ],
-  },
-  { id: 'p4', name: 'infra', path: '~/work/infra', branch: 'main', sessions: [] },
-]
-
 const DEMO_ALIASES: Alias[] = [
   { id: 'a1', name: 'claude-code', cmd: 'claude', args: '--model claude-sonnet-4-5', permMode: 'normal', status: 'ok' },
   { id: 'a2', name: 'minimax', cmd: 'minimax', args: '--model m1-coder', permMode: 'normal', status: 'ok' },
@@ -935,8 +920,19 @@ const DEMO_TEMPLATES: Template[] = [
 // Reads/writes ~/.cc-ui-data.json via the Vite dev-server API.
 // Active user ID for per-user file routing.
 // Set on login, cleared on logout.
+// Credentials (API keys, tokens) are encrypted at rest via Electron safeStorage.
+import { encryptCredentials, decryptCredentials } from '../utils/credentialStore'
 let _activeStorageUserId = ''
-export const setActiveStorageUser = (id: string) => { _activeStorageUserId = id }
+export const setActiveStorageUser = (id: string) => {
+  _activeStorageUserId = id
+  if (id) {
+    localStorage.setItem('cc-user-id', id)
+  } else {
+    localStorage.removeItem('cc-user-id')
+    localStorage.removeItem('cc-active-session')
+    sessionStorage.removeItem('cc-active-session')
+  }
+}
 
 const storeUrl = (base: string) =>
   _activeStorageUserId ? `${base}?userId=${encodeURIComponent(_activeStorageUserId)}` : base
@@ -947,46 +943,83 @@ const storeUrl = (base: string) =>
 const fileStorage = {
   getItem: async (_name: string): Promise<string | null> => {
     try {
-      // If userId already known, read user file directly
-      if (_activeStorageUserId) {
-        const r = await fetch(storeUrl('/api/store-read'))
-        if (!r.ok) throw new Error()
-        const text = await r.text()
-        return text === 'null' || text.trim() === '' ? null : text
-      }
-      // Bootstrap: read shared file, detect currentUser, switch to user file
-      const r = await fetch('/api/store-read')
-      if (!r.ok) throw new Error()
-      const sharedText = await r.text()
-      if (!sharedText || sharedText === 'null') return null
-      try {
-        const parsed = JSON.parse(sharedText) as { state?: { currentUser?: { id?: string } } }
-        const uid = parsed?.state?.currentUser?.id
-        if (uid) {
-          _activeStorageUserId = uid
-          const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(uid)}`)
-          if (r2.ok) {
-            const userText = await r2.text()
-            // User file exists → use it; otherwise migrate shared file to user file
-            if (userText && userText !== 'null') return userText
-            // First login ever: seed user file from shared file so nothing is lost
-            await fetch(`/api/store-write?userId=${encodeURIComponent(uid)}`, {
-              method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: sharedText,
-            })
-          }
+      // Primary: use cached userId from localStorage (set on login, cleared on logout)
+      const lsUid = localStorage.getItem('cc-user-id')
+      const activeUid = _activeStorageUserId || lsUid || ''
+
+      let rawText: string | null = null
+
+      if (activeUid) {
+        if (!_activeStorageUserId) _activeStorageUserId = activeUid
+        const r = await fetch(`/api/store-read?userId=${encodeURIComponent(activeUid)}`)
+        if (r.ok) {
+          const text = await r.text()
+          if (text && text !== 'null' && text.trim() !== '') rawText = text
         }
-      } catch { /* shared file not parseable — use as-is */ }
-      return sharedText
+      }
+
+      if (!rawText) {
+        // Fallback: read shared file (for users who haven't logged in yet, or first-ever launch)
+        const r = await fetch('/api/store-read')
+        if (!r.ok) throw new Error()
+        const sharedText = await r.text()
+        if (!sharedText || sharedText === 'null' || sharedText.trim() === '') return null
+
+        // Legacy bootstrap: try to find userId in shared file for users upgrading from old version
+        try {
+          const parsed = JSON.parse(sharedText) as { state?: { currentUser?: { id?: string } } }
+          const uid = parsed?.state?.currentUser?.id
+          if (uid && !activeUid) {
+            // Migrate: save to localStorage so future reloads use the fast path
+            localStorage.setItem('cc-user-id', uid)
+            _activeStorageUserId = uid
+            const r2 = await fetch(`/api/store-read?userId=${encodeURIComponent(uid)}`)
+            if (r2.ok) {
+              const userText = await r2.text()
+              if (userText && userText !== 'null') {
+                rawText = userText
+              } else {
+                // Seed user file from shared file
+                await fetch(`/api/store-write?userId=${encodeURIComponent(uid)}`, {
+                  method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: sharedText,
+                })
+                rawText = sharedText
+              }
+            }
+          }
+        } catch { /* shared file not parseable */ }
+        if (!rawText) rawText = sharedText
+      }
+
+      // Decrypt credential fields before returning to the store
+      try {
+        const parsed = JSON.parse(rawText) as { state?: Record<string, unknown> }
+        if (parsed?.state) {
+          parsed.state = await decryptCredentials(parsed.state)
+          return JSON.stringify(parsed)
+        }
+      } catch { /* not parseable — return as-is */ }
+      return rawText
     } catch {
       return localStorage.getItem(_name)
     }
   },
   setItem: async (_name: string, value: string): Promise<void> => {
     try {
+      // Encrypt credential fields before writing to disk
+      let toWrite = value
+      try {
+        const parsed = JSON.parse(value) as { state?: Record<string, unknown> }
+        if (parsed?.state) {
+          parsed.state = await encryptCredentials(parsed.state)
+          toWrite = JSON.stringify(parsed)
+        }
+      } catch { /* value not parseable — write as-is */ }
+
       await fetch(storeUrl('/api/store-write'), {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: value,
+        body: toWrite,
       })
     } catch {
       localStorage.setItem(_name, value)
@@ -1061,6 +1094,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   activeOrbitChatId: {},
   orbitCtxBefore: 2,
   orbitCtxAfter: 2,
+  agentCtxBefore: 2,
+  agentCtxAfter: 2,
   orbitCompressPrompt: `Du bist ein Kontext-Kompressor für Entwickler-Chats. Fasse den folgenden Chat-Verlauf in präzisen Stichpunkten zusammen.\n\nRegeln:\n- Nur entwicklungsrelevante Infos (Code, Dateipfade, Bugs, Entscheidungen, Architektur, Tools)\n- Kein Smalltalk, keine Begrüßungen, keine Wiederholungen, kein Lob\n- Bullet-Points (•), maximal 2–3 Zeilen pro Punkt\n- Technische Details (Dateinamen, Funktionsnamen, Fehlermeldungen) immer behalten\n- So kurz wie möglich — eine KI muss danach genau verstehen was besprochen und umgesetzt wurde\n- Max 25 Punkte`,
   orbitCompressModel: 'deepseek/deepseek-chat-v3-0324',
   agentContextMsgCount: 20,
@@ -1072,7 +1107,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   orbitFavorites: {},
   quickLinks: [],
   sidebarSections: DEFAULT_SIDEBAR_SECTIONS,
-  utilitySections: DEFAULT_UTILITY_SECTIONS,
+  utilitySections: DEFAULT_RIGHT_SIDEBAR_SECTIONS,
   layoutSections:  DEFAULT_LAYOUT_SECTIONS,
   projectBrains: {},
   orbitChatsLoaded: {},
@@ -1088,6 +1123,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   adminEmails: ['admin@codera.com'],
 
   supabaseUrl: 'https://fpphqkuizptypeawclsx.supabase.co',
+  // Safe to ship: Supabase anon keys are intentionally public-facing (row-level security
+  // enforces access control). Never store service_role key here.
   supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwcGhxa3VpenB0eXBlYXdjbHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwMjY2ODksImV4cCI6MjA5MzYwMjY4OX0.A7n06LfElOmYPlzHpIGALAzEc1YK946pve-YsfJuSYk',
   supabaseServiceRoleKey: '',
   cloudflareAccountId: '',
@@ -1123,7 +1160,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     claudeProviders:        [],
     quickLinks:             [],
     sidebarSections:        DEFAULT_SIDEBAR_SECTIONS,
-    utilitySections:        DEFAULT_UTILITY_SECTIONS,
+    utilitySections:        DEFAULT_RIGHT_SIDEBAR_SECTIONS,
     layoutSections:         DEFAULT_LAYOUT_SECTIONS,
     deletedProjectIds:      [],
     // Credentials — must never bleed to another user
@@ -1377,6 +1414,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   setDefaultManagerModel: (defaultManagerModel) => set({ defaultManagerModel }),
   setOrbitCtxBefore: (orbitCtxBefore) => set({ orbitCtxBefore }),
   setOrbitCtxAfter: (orbitCtxAfter) => set({ orbitCtxAfter }),
+  setAgentCtxBefore: (agentCtxBefore) => set({ agentCtxBefore }),
+  setAgentCtxAfter: (agentCtxAfter) => set({ agentCtxAfter }),
   setOrbitCompressPrompt: (orbitCompressPrompt) => set({ orbitCompressPrompt }),
   setOrbitCompressModel: (orbitCompressModel) => set({ orbitCompressModel }),
   setAgentContextMsgCount: (agentContextMsgCount) => set({ agentContextMsgCount }),
@@ -1441,12 +1480,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   // Migrate old sessions that were saved without cmd/args
   onRehydrateStorage: () => (state) => {
     if (!state) return
-    // Ensure screen is always valid — null/undefined causes a black screen
-    if (!state.screen) {
-      state.screen = state.currentUser ? 'workspace' : 'login'
-      // Force-persist the corrected screen back to storage so it doesn't revert on next reload
-      setTimeout(() => useAppStore.setState({ screen: state!.screen }), 0)
-    }
+    // Derive screen from currentUser — never restore 'login' from disk if user is set,
+    // and never land on a stale overlay screen.
+    state.screen = state.currentUser ? 'workspace' : 'login'
     // Migrate sessions missing cmd/args
     state.projects = state.projects.map(p => ({
       ...p,
@@ -1487,6 +1523,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.defaultManagerModel === undefined) state.defaultManagerModel = 'anthropic/claude-sonnet-4-6'
     if (state.orbitCtxBefore === undefined) state.orbitCtxBefore = 2
     if (state.orbitCtxAfter === undefined) state.orbitCtxAfter = 2
+    if (state.agentCtxBefore === undefined) state.agentCtxBefore = 2
+    if (state.agentCtxAfter === undefined) state.agentCtxAfter = 2
     if (state.orbitFavorites === undefined) state.orbitFavorites = {}
     if (state.setupWizardDone === undefined) state.setupWizardDone = false
     if (state.preferredOrModels === undefined) state.preferredOrModels = []
@@ -1511,7 +1549,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (state.cloudflareR2PublicUrl === undefined) state.cloudflareR2PublicUrl = ''
     if (state.currentUser === undefined) state.currentUser = null
     if (!state.sidebarSections || state.sidebarSections.length === 0) state.sidebarSections = DEFAULT_SIDEBAR_SECTIONS
-    if (!state.utilitySections || state.utilitySections.length === 0) state.utilitySections = DEFAULT_UTILITY_SECTIONS
+    if (!state.utilitySections || state.utilitySections.length === 0) state.utilitySections = DEFAULT_RIGHT_SIDEBAR_SECTIONS
     if (!state.layoutSections  || state.layoutSections.length === 0)  state.layoutSections  = DEFAULT_LAYOUT_SECTIONS
     // Flush migrated values back to file storage so they persist across restarts
     // Use setTimeout(0) to let Zustand finish rehydration before triggering a set
@@ -1523,8 +1561,6 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }, 0)
   },
   partialize: (s) => ({
-    // Normalize overlay screens → workspace so we never restore a modal/settings on reload
-    screen: (s.screen === 'login' || s.screen === 'workspace') ? s.screen : 'workspace',
     projects:        s.projects,
     aliases:         s.aliases,
     templates:       s.templates,
@@ -1582,7 +1618,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     adminEmails:         s.adminEmails,
     supabaseUrl:              s.supabaseUrl,
     supabaseAnonKey:          s.supabaseAnonKey,
-    supabaseServiceRoleKey:   s.supabaseServiceRoleKey,
+    // supabaseServiceRoleKey intentionally NOT persisted — stored server-side only
     cloudflareAccountId:      s.cloudflareAccountId,
     cloudflareR2AccessKeyId:  s.cloudflareR2AccessKeyId,
     cloudflareR2SecretAccessKey: s.cloudflareR2SecretAccessKey,

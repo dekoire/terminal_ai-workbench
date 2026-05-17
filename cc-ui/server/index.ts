@@ -9,7 +9,7 @@ import { readFileSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import apiRouter           from './routes/api.js'
-import { attachWsUpgrade } from './routes/ws.js'
+import { attachWsUpgrade } from './routes/websocket-chat-handler.js'
 
 // Load app-level .env (bundled with the app, never per-user)
 try {

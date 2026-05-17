@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useAppStore } from '../../store/useAppStore'
-import { readProjectConfig } from '../../utils/launchUtils'
-import type { ProjectConfig } from '../../utils/launchUtils'
-import { useAppLauncher } from '../../hooks/useAppLauncher'
-import { IScrollText, IRefresh, ISearch, IClose, IPlay } from '../primitives/Icons'
+import { useAppStore } from '../../../store/useAppStore'
+import { readProjectConfig } from '../../../utils/launchUtils'
+import type { ProjectConfig } from '../../../utils/launchUtils'
+import { useAppLauncher } from '../../../hooks/useAppLauncher'
+import { IScrollText, IRefresh, ISearch, IClose, IPlay } from '../../primitives/Icons'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,9 +70,9 @@ function buildLevelStyle(colors: { error: string; warn: string; info: string; de
 
 const MAX_LINES = 5000
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── LogsTab ───────────────────────────────────────────────────────────────────
 
-export function MonitoringPanel({ projectId }: { projectId: string | undefined }) {
+export function LogsTab({ projectId }: { projectId: string | undefined }) {
   const projects   = useAppStore(s => s.projects)
   const logColors  = useAppStore(s => s.logColors)
   const project    = projects.find(p => p.id === projectId)
@@ -96,6 +96,22 @@ export function MonitoringPanel({ projectId }: { projectId: string | undefined }
 
   const listRef    = useRef<HTMLDivElement>(null)
   const prevRawRef = useRef<Record<string, string>>({})  // source → last raw content
+
+  // Reset all state when project changes
+  useEffect(() => {
+    setLogs([])
+    setFilter('')
+    setLevelFilter('all')
+    setTimeFrom('')
+    setTimeTo('')
+    setAutoScroll(true)
+    setPortStatus('unknown')
+    setConfig(null)
+    setManualPort('')
+    setSources([])
+    setSelectedSource('')
+    prevRawRef.current = {}
+  }, [projectId])
 
   // Port priority: launcher state (Play button) → config → store → manual input
   const activePort = (() => {
@@ -208,28 +224,26 @@ export function MonitoringPanel({ projectId }: { projectId: string | undefined }
     return true
   })
 
-  // ── Styles ──────────────────────────────────────────────────────────────────
+  // ── Styles ───────────────────────────────────────────────────────────────────
   const s = {
-    root: { display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-0)', overflow: 'hidden' } as React.CSSProperties,
-    header: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--line)', flexShrink: 0 } as React.CSSProperties,
-    dot: (status: PortStatus): React.CSSProperties => ({
+    root:    { display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-0)', overflow: 'hidden' } as React.CSSProperties,
+    header:  { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--line)', flexShrink: 0 } as React.CSSProperties,
+    dot:     (status: PortStatus): React.CSSProperties => ({
       width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
       background: status === 'running' ? '#22c55e' : status === 'stopped' ? '#ef4444' : '#94a3b8',
     }),
     toolbar: { display: 'flex', alignItems: 'center', gap: 4, padding: '5px 8px', borderBottom: '1px solid var(--line)', flexShrink: 0, flexWrap: 'wrap' as const } as React.CSSProperties,
-    input: { padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--bg-1)', color: 'var(--fg-1)', fontSize: 11, fontFamily: 'var(--font-ui)', outline: 'none' } as React.CSSProperties,
-    btn: (active?: boolean): React.CSSProperties => ({
+    input:   { padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--bg-1)', color: 'var(--fg-1)', fontSize: 11, fontFamily: 'var(--font-ui)', outline: 'none' } as React.CSSProperties,
+    btn:     (active?: boolean): React.CSSProperties => ({
       padding: '3px 8px', borderRadius: 5, border: '1px solid var(--line)', cursor: 'pointer', fontSize: 10.5, fontFamily: 'var(--font-ui)', fontWeight: 500,
       background: active ? 'var(--accent)' : 'var(--bg-1)', color: active ? 'var(--accent-fg)' : 'var(--fg-2)',
     }),
-    select: { padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--bg-1)', color: 'var(--fg-1)', fontSize: 11, fontFamily: 'var(--font-ui)', cursor: 'pointer', outline: 'none' } as React.CSSProperties,
+    select:  { padding: '3px 6px', borderRadius: 5, border: '1px solid var(--line)', background: 'var(--bg-1)', color: 'var(--fg-1)', fontSize: 11, fontFamily: 'var(--font-ui)', cursor: 'pointer', outline: 'none' } as React.CSSProperties,
   }
 
-  const pidInfo = config?.pid ? ` · PID ${config.pid}` : ''
+  const pidInfo  = config?.pid ? ` · PID ${config.pid}` : ''
   const portLabel = activePort ? `localhost:${activePort}` : '—'
-
-  // ── Empty state ──────────────────────────────────────────────────────────────
-  const isEmpty = !activePort || (portStatus === 'stopped' && logs.length === 0)
+  const isEmpty   = !activePort || (portStatus === 'stopped' && logs.length === 0)
 
   return (
     <div style={s.root}>
@@ -260,14 +274,12 @@ export function MonitoringPanel({ projectId }: { projectId: string | undefined }
 
       {/* Filter toolbar */}
       <div style={s.toolbar}>
-        {/* Text search */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 80 }}>
           <ISearch style={{ position: 'absolute', left: 5, width: 10, height: 10, color: 'var(--fg-3)', pointerEvents: 'none' }} />
           <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Suchen…"
             style={{ ...s.input, width: '100%', paddingLeft: 18 }} />
         </div>
 
-        {/* Level filter */}
         <select value={levelFilter} onChange={e => setLevelFilter(e.target.value as typeof levelFilter)} style={s.select}>
           <option value="all">Alle</option>
           <option value="error">Error</option>
@@ -276,18 +288,15 @@ export function MonitoringPanel({ projectId }: { projectId: string | undefined }
           <option value="debug">Debug</option>
         </select>
 
-        {/* Time from/to */}
         <input value={timeFrom} onChange={e => setTimeFrom(e.target.value)} placeholder="von HH:MM"
           style={{ ...s.input, width: 64 }} title="Zeitfilter von (HH:MM:SS)" />
         <input value={timeTo} onChange={e => setTimeTo(e.target.value)} placeholder="bis HH:MM"
           style={{ ...s.input, width: 64 }} title="Zeitfilter bis (HH:MM:SS)" />
 
-        {/* Pause */}
         <button onClick={() => setPaused(p => !p)} style={s.btn(paused)} title={paused ? 'Import fortsetzen' : 'Import pausieren'}>
           {paused ? '▶ Weiter' : '⏸ Pause'}
         </button>
 
-        {/* Auto-scroll toggle */}
         <button onClick={() => setAutoScroll(a => !a)} style={s.btn(autoScroll)} title="Auto-Scroll ans Ende">
           ↓
         </button>
@@ -355,7 +364,6 @@ export function MonitoringPanel({ projectId }: { projectId: string | undefined }
             )
           })}
 
-          {/* Pause indicator */}
           {paused && (
             <div style={{ padding: '6px 10px', textAlign: 'center', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: 10.5, fontFamily: 'var(--font-ui)', fontWeight: 600 }}>
               ⏸ Import pausiert — {logs.length} Zeilen im Speicher

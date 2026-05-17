@@ -1,65 +1,65 @@
 # Codera AI — Testing Guide
 
-## 1. TypeScript — immer zuerst
+## 1. Type Check (run after every change)
 ```bash
 cd cc-ui && npx tsc --noEmit
 ```
-**Pflicht nach jeder Änderung.** Kein Output = alles OK.
+No output = all good.
 
-## 2. Dev-Server starten
+## 2. Dev Server
 ```bash
 cd cc-ui && npm run dev   # → http://localhost:4321
 ```
-**Wichtig**: Port 4321 verwenden. Chrome blockt bekannte Ports:
-- 6000 (X11), 6665–6669 (IRC), 25 (SMTP), 587 usw.
+**Important**: Use port 4321. Chrome blocks known ports:
+- 6000 (X11), 6665–6669 (IRC), 25 (SMTP), 587 etc.
 
-## 3. Visuelle Verifikation (Preview-Tools)
+## 3. Visual Verification (Preview Tools)
 
 ```
-preview_start       → Server starten
-preview_screenshot  → Layout-Check (visuell)
-preview_snapshot    → Text/Struktur-Check (Accessibility-Tree)
-preview_console_logs → JS-Fehler prüfen (level: 'error')
-preview_inspect     → CSS-Werte prüfen
+preview_start       → Start server
+preview_screenshot  → Layout check (visual)
+preview_snapshot    → Text/structure check (Accessibility Tree)
+preview_console_logs → Check JS errors (level: 'error')
+preview_inspect     → Check CSS values
 ```
 
-### Workflow für UI-Änderungen:
+### Workflow for UI changes:
 1. `preview_start` → `preview_eval: window.location.reload()`
-2. `preview_console_logs` (level: error) — keine Fehler?
-3. `preview_screenshot` — sieht es richtig aus?
-4. `preview_snapshot` — stimmt der Text/Inhalt?
+2. `preview_console_logs` (level: error) — any errors?
+3. `preview_screenshot` — does it look right?
+4. `preview_snapshot` — is the text/content correct?
 
-## 4. Interaktions-Tests
+## 4. Interaction Tests
 
 ```
 preview_click   → Buttons, Links, Tabs
-preview_fill    → Input-Felder
+preview_fill    → Input fields
 ```
 
-Danach `preview_snapshot` um Ergebnis zu prüfen.
+Then use `preview_snapshot` to verify the result.
 
-## 5. Terminal-Funktionalität testen
+## 5. Terminal Functionality Test
 
-1. Neue Session erstellen (Modal öffnen, Alias auswählen, Start)
-2. Prüfen ob Terminal-Pane erscheint (nicht leer)
-3. Nach ~600ms: Alias-Befehl sollte automatisch eingetippt worden sein
-4. `aliasCmd`-Bar über dem Terminal zeigt korrekten Befehl?
-5. Für Shell-Aliases (cc-mini etc.): Shell-Prompt kurz sichtbar, dann Alias startet
+1. Create new session (open modal, select alias, start)
+2. Verify Terminal Pane appears (not empty)
+3. After ~600ms: Alias command should be auto-typed
+4. Is `aliasCmd` bar above terminal showing correct command?
+5. For Shell Aliases (cc-mini etc.): Shell prompt briefly visible, then alias starts
 
-## 6. Store-Persistenz testen
+## 6. Store Persistence Test
 
-- App schließen/neu laden → State noch vorhanden?
-- `~/.cc-ui-data.json` prüfen: `cat ~/.cc-ui-data.json | python3 -m json.tool | head -30`
+- Close/reload app → Is state still there?
+- Check `~/.cc-ui-data.json`: `cat ~/.cc-ui-data.json | python3 -m json.tool | head -30`
 
-## 7. Playwright (E2E, bei Bedarf)
+## 7. Playwright (E2E, if needed)
 
-Playwright ist installiert. Chromium-Binary:
+Playwright is installed. Chromium binary:
 ```
 /Users/naelahmed/Library/Caches/ms-playwright/chromium-1217/chrome-mac-arm64/
 Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
 ```
 
-Für Fehler-Debugging:
+For error debugging:
 ```javascript
 // /tmp/check.cjs
 const { chromium } = require('/opt/homebrew/Cellar/playwright-cli/0.1.8/libexec/lib/node_modules/@playwright/cli/node_modules/playwright/index.js');
@@ -76,11 +76,14 @@ const { chromium } = require('/opt/homebrew/Cellar/playwright-cli/0.1.8/libexec/
 })();
 ```
 
-## 8. Checklist vor Fertigstellung
-
-- [ ] `npx tsc --noEmit` — keine Fehler
-- [ ] `preview_screenshot` — Layout korrekt
-- [ ] `preview_console_logs` — keine JS-Fehler
-- [ ] Betroffene Interaktion per `preview_click`/`preview_fill` getestet
-- [ ] Bei Store-Änderung: Persistenz geprüft
-- [ ] Bei Terminal-Änderung: Neue Session mit Alias getestet
+## 8. Checklist before done
+- [ ] TypeScript: no errors
+- [ ] No console errors
+- [ ] Core user flows work
+- [ ] No regressions in existing features
+- [ ] `npx tsc --noEmit` — no errors
+- [ ] `preview_screenshot` — layout correct
+- [ ] `preview_console_logs` — no JS errors
+- [ ] Affected interaction tested via `preview_click`/`preview_fill`
+- [ ] For store changes: persistence verified
+- [ ] For terminal changes: new session with alias tested

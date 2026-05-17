@@ -5,7 +5,8 @@
       "name": "cc-ui",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "cc-ui"],
-      "port": 2002
+      "port": 2002,
+      "autoPort": false
     }
   ]
 }

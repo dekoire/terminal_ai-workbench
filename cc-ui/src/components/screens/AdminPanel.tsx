@@ -19,7 +19,7 @@ interface ManagedUser {
 export function AdminPanel({ onClose }: { onClose: () => void }) {
   const {
     currentUser, adminEmails, addAdminEmail, removeAdminEmail,
-    projects, aliases, supabaseUrl, supabaseServiceRoleKey,
+    projects, aliases,
   } = useAppStore()
 
   const [tab, setTab] = useState<'overview' | 'users'>('overview')
@@ -124,8 +124,6 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
           {tab === 'users' && (
             <UsersTab
               currentUser={currentUser}
-              supabaseUrl={supabaseUrl}
-              serviceRoleKey={supabaseServiceRoleKey}
               adminEmails={adminEmails}
               addAdminEmail={addAdminEmail}
               removeAdminEmail={removeAdminEmail}
@@ -286,12 +284,93 @@ function OverviewTab({ currentUser, adminEmails, addAdminEmail, removeAdminEmail
   )
 }
 
+// ── Credentials setup form ────────────────────────────────────────────────────
+
+function CredentialsSetupForm({ card, onSaved }: { card: React.CSSProperties; onSaved: () => void }) {
+  const { supabaseUrl: storeUrl } = useAppStore()
+  const [url, setUrl]             = useState(storeUrl ?? '')
+  const [key, setKey]             = useState('')
+  const [saving, setSaving]       = useState(false)
+  const [err, setErr]             = useState('')
+
+  const save = async () => {
+    if (!url.trim() || !key.trim()) { setErr('Beide Felder sind erforderlich'); return }
+    setSaving(true); setErr('')
+    try {
+      const r = await fetch('/api/admin/set-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supabaseUrl: url.trim(), serviceRoleKey: key.trim() }),
+      })
+      const d = await r.json() as { ok: boolean; error?: string }
+      if (d.ok) onSaved()
+      else setErr(d.error ?? 'Speichern fehlgeschlagen')
+    } catch (e) { setErr(String(e)) }
+    finally { setSaving(false) }
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '6px 9px', borderRadius: 6, boxSizing: 'border-box',
+    border: '1px solid var(--line-strong)', background: 'var(--bg-2)',
+    color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 20px 8px', color: 'var(--fg-3)', textAlign: 'center' }}>
+        <IShield style={{ width: 28, height: 28, opacity: 0.5 }} />
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-2)' }}>Admin-Zugangsdaten konfigurieren</div>
+        <div style={{ fontSize: 11, lineHeight: 1.6, maxWidth: 360 }}>
+          Der Supabase Service Role Key wird sicher auf dem Server gespeichert und nie an den Browser übertragen.
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--fg-3)', marginBottom: 4, fontWeight: 500 }}>Supabase URL</div>
+            <input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder="https://xxx.supabase.co"
+              style={inp}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--fg-3)', marginBottom: 4, fontWeight: 500 }}>Service Role Key</div>
+            <input
+              value={key}
+              onChange={e => setKey(e.target.value)}
+              placeholder="eyJ..."
+              type="password"
+              style={inp}
+            />
+          </div>
+        </div>
+        {err && <div style={{ fontSize: 10, color: 'var(--err)', marginTop: 8 }}>{err}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+          <button
+            onClick={() => void save()}
+            disabled={saving}
+            style={{
+              background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none',
+              borderRadius: 6, padding: '6px 16px', cursor: 'pointer',
+              fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            {saving ? <ILoader style={{ width: 11, height: 11 }} /> : <ICheck style={{ width: 11, height: 11 }} />}
+            Zugangsdaten speichern
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Users tab ─────────────────────────────────────────────────────────────────
 
-function UsersTab({ currentUser, supabaseUrl, serviceRoleKey, adminEmails, addAdminEmail, removeAdminEmail, sectionLabel, card }: {
+function UsersTab({ currentUser, adminEmails, addAdminEmail, removeAdminEmail, sectionLabel, card }: {
   currentUser: ReturnType<typeof useAppStore>['currentUser']
-  supabaseUrl: string
-  serviceRoleKey: string
   adminEmails: string[]
   addAdminEmail: (e: string) => void
   removeAdminEmail: (e: string) => void
@@ -299,38 +378,45 @@ function UsersTab({ currentUser, supabaseUrl, serviceRoleKey, adminEmails, addAd
   card: React.CSSProperties
 }) {
   const { addToast } = useAppStore()
-  const [users, setUsers] = useState<ManagedUser[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [users, setUsers]           = useState<ManagedUser[]>([])
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState('')
+  const [editingId, setEditingId]   = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null)
 
-  const hasCredentials = !!(supabaseUrl && serviceRoleKey)
+  // Check server-side credentials on mount
+  useEffect(() => {
+    fetch('/api/admin/has-credentials')
+      .then(r => r.json() as Promise<{ ok: boolean; hasCredentials: boolean }>)
+      .then(d => setHasCredentials(d.hasCredentials))
+      .catch(() => setHasCredentials(false))
+  }, [])
 
   const loadUsers = useCallback(async () => {
-    if (!hasCredentials) return
     setLoading(true); setError('')
     try {
-      const r = await fetch(`/api/admin/users?supabaseUrl=${encodeURIComponent(supabaseUrl)}&serviceRoleKey=${encodeURIComponent(serviceRoleKey)}`)
+      const r = await fetch('/api/admin/users')
       const d = await r.json() as { ok: boolean; users?: ManagedUser[]; error?: string }
       if (d.ok) setUsers(d.users ?? [])
       else { const msg = d.error ?? 'Fehler beim Laden'; setError(msg); addToast({ type: 'error', title: 'Benutzer laden fehlgeschlagen', body: msg }) }
     } catch (e) { const msg = String(e); setError(msg); addToast({ type: 'error', title: 'Benutzer laden fehlgeschlagen', body: msg }) }
     finally { setLoading(false) }
-  }, [supabaseUrl, serviceRoleKey, hasCredentials])
+  }, [addToast])
 
-  useEffect(() => { void loadUsers() }, [loadUsers])
+  useEffect(() => {
+    if (hasCredentials) void loadUsers()
+  }, [hasCredentials, loadUsers])
 
   const toggleAdmin = async (user: ManagedUser) => {
-    if (!hasCredentials) return
     if (user.isAdmin) {
-      await fetch(`/api/admin/users/${user.id}/admin?supabaseUrl=${encodeURIComponent(supabaseUrl)}&serviceRoleKey=${encodeURIComponent(serviceRoleKey)}`, { method: 'DELETE' })
+      await fetch(`/api/admin/users/${user.id}/admin`, { method: 'DELETE' })
       removeAdminEmail(user.email)
     } else {
       await fetch(`/api/admin/users/${user.id}/admin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supabaseUrl, serviceRoleKey, grantedBy: currentUser?.id }),
+        body: JSON.stringify({ grantedBy: currentUser?.id }),
       })
       addAdminEmail(user.email)
     }
@@ -338,19 +424,26 @@ function UsersTab({ currentUser, supabaseUrl, serviceRoleKey, adminEmails, addAd
   }
 
   const deleteUser = async (user: ManagedUser) => {
-    if (!hasCredentials) return
     if (!window.confirm(`Benutzer "${user.email}" wirklich löschen?`)) return
-    await fetch(`/api/admin/users/${user.id}?supabaseUrl=${encodeURIComponent(supabaseUrl)}&serviceRoleKey=${encodeURIComponent(serviceRoleKey)}`, { method: 'DELETE' })
+    await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' })
     setUsers(prev => prev.filter(u => u.id !== user.id))
+  }
+
+  // Still checking
+  if (hasCredentials === null) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 24, color: 'var(--fg-3)', fontSize: 12 }}>
+        <ILoader style={{ width: 14, height: 14 }} /> Prüfe Zugangsdaten…
+      </div>
+    )
   }
 
   if (!hasCredentials) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '40px 20px', color: 'var(--fg-3)', textAlign: 'center' }}>
-        <IShield style={{ width: 32, height: 32, opacity: 0.4 }} />
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-2)' }}>Supabase-Zugangsdaten fehlen</div>
-        <div style={{ fontSize: 11, lineHeight: 1.6 }}>Bitte Supabase URL und Service Role Key in den Einstellungen hinterlegen.</div>
-      </div>
+      <CredentialsSetupForm
+        card={card}
+        onSaved={() => setHasCredentials(true)}
+      />
     )
   }
 
@@ -372,8 +465,6 @@ function UsersTab({ currentUser, supabaseUrl, serviceRoleKey, adminEmails, addAd
 
       {showCreate && (
         <CreateUserForm
-          supabaseUrl={supabaseUrl}
-          serviceRoleKey={serviceRoleKey}
           card={card}
           onCreated={u => { setUsers(prev => [u, ...prev]); setShowCreate(false) }}
           onCancel={() => setShowCreate(false)}
@@ -393,8 +484,6 @@ function UsersTab({ currentUser, supabaseUrl, serviceRoleKey, adminEmails, addAd
             ? <EditUserRow
                 key={user.id}
                 user={user}
-                supabaseUrl={supabaseUrl}
-                serviceRoleKey={serviceRoleKey}
                 onSaved={updated => { setUsers(prev => prev.map(u => u.id === user.id ? { ...u, ...updated } : u)); setEditingId(null) }}
                 onCancel={() => setEditingId(null)}
               />
@@ -484,10 +573,8 @@ function UserRow({ user, isSelf, onToggleAdmin, onEdit, onDelete }: {
   )
 }
 
-function EditUserRow({ user, supabaseUrl, serviceRoleKey, onSaved, onCancel }: {
+function EditUserRow({ user, onSaved, onCancel }: {
   user: ManagedUser
-  supabaseUrl: string
-  serviceRoleKey: string
   onSaved: (u: Partial<ManagedUser>) => void
   onCancel: () => void
 }) {
@@ -504,7 +591,7 @@ function EditUserRow({ user, supabaseUrl, serviceRoleKey, onSaved, onCancel }: {
       const r = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supabaseUrl, serviceRoleKey, firstName, lastName, email, password }),
+        body: JSON.stringify({ firstName, lastName, email, password }),
       })
       const d = await r.json() as { ok: boolean; error?: string }
       if (d.ok) onSaved({ firstName, lastName, email })
@@ -539,9 +626,7 @@ function EditUserRow({ user, supabaseUrl, serviceRoleKey, onSaved, onCancel }: {
   )
 }
 
-function CreateUserForm({ supabaseUrl, serviceRoleKey, card, onCreated, onCancel }: {
-  supabaseUrl: string
-  serviceRoleKey: string
+function CreateUserForm({ card, onCreated, onCancel }: {
   card: React.CSSProperties
   onCreated: (u: ManagedUser) => void
   onCancel: () => void
@@ -560,7 +645,7 @@ function CreateUserForm({ supabaseUrl, serviceRoleKey, card, onCreated, onCancel
       const r = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supabaseUrl, serviceRoleKey, firstName, lastName, email, password }),
+        body: JSON.stringify({ firstName, lastName, email, password }),
       })
       const d = await r.json() as { ok: boolean; user?: Record<string, unknown>; error?: string }
       if (d.ok && d.user) {

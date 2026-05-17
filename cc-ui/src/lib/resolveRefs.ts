@@ -12,20 +12,33 @@ export async function resolveRefs(
   supabaseUrl?: string,
   supabaseKey?: string,
   userId?: string,
+  agentCtxBefore?: number,
+  agentCtxAfter?: number,
+  supabaseJwt?: string,
 ): Promise<string> {
   const refPattern = /#(msg|chat|amsg):([a-z0-9-]+)/gi
   const matches = [...text.matchAll(refPattern)]
   if (matches.length === 0) return text
+  // Strip any previously-appended context blocks from fetched message content
+  const stripCtx = (s: string) => s.replace(/\n*---\nKontext-Referenzen:[\s\S]*/g, '').trim()
+
+  // For context messages (before/after): same stripping, no cap
+  const trimCtx = (s: string) => stripCtx(s)
+
   let appendix = '\n\n---\nKontext-Referenzen:'
   for (const match of matches) {
     const refType = match[1]
     const refId   = match[2]
+    const isAgent = refType === 'amsg'
+    const usedBefore = isAgent ? (agentCtxBefore ?? ctxBefore) : ctxBefore
+    const usedAfter  = isAgent ? (agentCtxAfter  ?? ctxAfter)  : ctxAfter
     try {
-      const body: Record<string, unknown> = { ref: `${refType}:${refId}`, ctxBefore, ctxAfter }
+      const body: Record<string, unknown> = { ref: `${refType}:${refId}`, ctxBefore: usedBefore, ctxAfter: usedAfter }
       if (refType === 'amsg' && supabaseUrl && supabaseKey && userId) {
         body.supabaseUrl = supabaseUrl
         body.supabaseKey = supabaseKey
         body.userId      = userId
+        if (supabaseJwt) body.supabaseJwt = supabaseJwt
       }
       const r = await fetch('/api/orbit/resolve', {
         method: 'POST',
@@ -41,29 +54,25 @@ export async function resolveRefs(
       if (refType === 'amsg') {
         appendix += `\n\nRef #amsg:${refId} → Session: ${data.sessionId ?? '?'}`
         if (data.before?.length) {
-          appendix += `\n[${data.before.length} Nachricht(en) davor]`
-          for (const m of data.before) appendix += `\n[${m.role}]: ${m.content.slice(0, 300)}`
+          for (const m of data.before) appendix += `\n[${m.role}]: ${trimCtx(m.content)}`
         }
-        if (data.target) appendix += `\n[Referenz id:${refId}]: ${data.target.content.slice(0, 600)}`
+        if (data.target) appendix += `\n[Referenz id:${refId}]: ${stripCtx(data.target.content)}`
         if (data.after?.length) {
-          appendix += `\n[${data.after.length} Nachricht(en) danach]`
-          for (const m of data.after) appendix += `\n[${m.role}]: ${m.content.slice(0, 300)}`
+          for (const m of data.after) appendix += `\n[${m.role}]: ${trimCtx(m.content)}`
         }
       } else {
-        appendix += `\n\nRef #${refType}:${refId} → Datei: ${data.filePath ?? '?'}`
+        appendix += `\n\nRef #${refType}:${refId}`
         if (refType === 'msg' && data.target) {
           if (data.before?.length) {
-            appendix += `\n[${data.before.length} Nachricht(en) davor]`
-            for (const m of data.before) appendix += `\n[${m.role}]: ${m.content.slice(0, 300)}`
+            for (const m of data.before) appendix += `\n[${m.role}]: ${trimCtx(m.content)}`
           }
-          appendix += `\n[Referenz id:${refId}]: ${data.target.content.slice(0, 600)}`
+          appendix += `\n[Referenz id:${refId}]: ${stripCtx(data.target.content)}`
           if (data.after?.length) {
-            appendix += `\n[${data.after.length} Nachricht(en) danach]`
-            for (const m of data.after) appendix += `\n[${m.role}]: ${m.content.slice(0, 300)}`
+            for (const m of data.after) appendix += `\n[${m.role}]: ${trimCtx(m.content)}`
           }
         } else if (refType === 'chat' && data.msgs?.length) {
-          appendix += `\n[Chat-Inhalt, ${data.msgs.length} Nachrichten]`
-          for (const m of data.msgs.slice(0, 6)) appendix += `\n[${m.role}]: ${m.content.slice(0, 300)}`
+          appendix += ` [Chat, ${data.msgs.length} Nachrichten]`
+          for (const m of data.msgs.slice(0, 10)) appendix += `\n[${m.role}]: ${trimCtx(m.content)}`
         }
       }
     } catch { /* skip on error */ }

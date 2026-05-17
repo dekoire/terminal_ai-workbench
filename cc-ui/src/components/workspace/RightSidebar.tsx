@@ -1,17 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { SectionCard } from '../primitives/SectionCard'
 import { useAppStore } from '../../store/useAppStore'
 import { getOrModel, sanitizeKey } from '../../utils/orProvider'
-import type { OrbitMessage, QuickLink, RepoToken, UtilitySection, UtilityPanelSectionId, AllSectionId, LayoutSection } from '../../store/useAppStore'
-import { DEFAULT_UTILITY_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
+import type { OrbitMessage, RepoToken, RightSidebarSection, RightSidebarSectionId, AllSectionId, LayoutSection } from '../../store/useAppStore'
+import { DEFAULT_RIGHT_SIDEBAR_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
+import { QuickLinksWidget } from './widgets/QuickLinksWidget'
+import { AiSearchTab, LogsTab } from './tabs'
 import { GitHubRepoPicker } from '../primitives/GitHubRepoPicker'
 import { buildUserStoryPrompt } from '../../lib/projectBrain'
 import { getSupabase } from '../../lib/supabase'
 import { loadLastProjectMessages, loadAllContextSummaries, type AgentContextSummary, type AgentMessage as DbAgentMessage } from '../../lib/agentSync'
 import { IMore, IEdit, IChev, IChevDown, IChevUp, IFolder, IFolderOpen, IFile, IClose, IBranch, IGit, IGitFork, ITrash, ICheck, ISpark, ITable, IFilePlus, ICopy, IExternalLink, IDownload, IFileDown, IFileText, ISearch, IDatabase, ITerminal, IKanban, IUser, ICpu, IPlay, IBug, IStar, IOrbit, IBookmark, ISpinner, ISend, IX, ICloudUpload, ICloudDownload, IHistoryClock, IEye, ISettings, ILink, IKeyboard, IUndo, ISliders, IPlus, IArrowDownLine, IArrowUpLine, ILayers, IBrain, ITag, IDrag, IScrollText } from '../primitives/Icons'
-import { MonitoringPanel } from './MonitoringPanel'
 import { KanbanBoard } from './KanbanBoard'
-import { XTermPane } from '../terminal/XTermPane'
+import { TerminalChatPanel } from '../terminal/TerminalChatPanel'
 import { Pill } from '../primitives/Pill'
+import { writeClipboard } from '../../lib/clipboard'
+import { JsonTreeNode } from '../primitives/JsonTree'
+import { highlightSegments } from '../../utils/highlight'
 
 const OPENROUTER_MODELS = [
   { label: 'Claude Opus 4',       value: 'anthropic/claude-opus-4' },
@@ -51,85 +56,6 @@ interface FileNode {
   type: 'file' | 'dir'
   children?: FileNode[]
 }
-
-const TREES: Record<string, FileNode[]> = {
-  'payments-api': [
-    { name: 'src', type: 'dir', children: [
-      { name: 'charge-handler.ts', type: 'file' },
-      { name: 'billing.ts', type: 'file' },
-      { name: 'retry.ts', type: 'file' },
-      { name: 'index.ts', type: 'file' },
-      { name: 'types.ts', type: 'file' },
-    ]},
-    { name: 'tests', type: 'dir', children: [
-      { name: 'charge-handler.test.ts', type: 'file' },
-      { name: 'retry.test.ts', type: 'file' },
-    ]},
-    { name: '.env.example', type: 'file' },
-    { name: 'package.json', type: 'file' },
-    { name: 'tsconfig.json', type: 'file' },
-    { name: 'README.md', type: 'file' },
-  ],
-  'design-system': [
-    { name: 'src', type: 'dir', children: [
-      { name: 'components', type: 'dir', children: [
-        { name: 'Button.tsx', type: 'file' },
-        { name: 'Input.tsx', type: 'file' },
-        { name: 'Modal.tsx', type: 'file' },
-      ]},
-      { name: 'tokens', type: 'dir', children: [
-        { name: 'colors.ts', type: 'file' },
-        { name: 'spacing.ts', type: 'file' },
-      ]},
-      { name: 'index.ts', type: 'file' },
-    ]},
-    { name: 'package.json', type: 'file' },
-    { name: 'README.md', type: 'file' },
-  ],
-  'growth-dash': [
-    { name: 'app', type: 'dir', children: [
-      { name: 'api', type: 'dir', children: [
-        { name: 'cohorts.ts', type: 'file' },
-        { name: 'metrics.ts', type: 'file' },
-      ]},
-      { name: 'pages', type: 'dir', children: [
-        { name: 'dashboard.tsx', type: 'file' },
-        { name: 'cohorts.tsx', type: 'file' },
-      ]},
-    ]},
-    { name: 'sql', type: 'dir', children: [
-      { name: 'cohort_query.sql', type: 'file' },
-      { name: 'retention.sql', type: 'file' },
-    ]},
-    { name: 'package.json', type: 'file' },
-    { name: 'README.md', type: 'file' },
-  ],
-  'infra': [
-    { name: 'terraform', type: 'dir', children: [
-      { name: 'main.tf', type: 'file' },
-      { name: 'variables.tf', type: 'file' },
-      { name: 'outputs.tf', type: 'file' },
-    ]},
-    { name: 'k8s', type: 'dir', children: [
-      { name: 'deployment.yaml', type: 'file' },
-      { name: 'service.yaml', type: 'file' },
-    ]},
-    { name: 'scripts', type: 'dir', children: [
-      { name: 'deploy.sh', type: 'file' },
-      { name: 'rollback.sh', type: 'file' },
-    ]},
-    { name: 'README.md', type: 'file' },
-  ],
-}
-
-const DEFAULT_TREE: FileNode[] = [
-  { name: 'src', type: 'dir', children: [
-    { name: 'index.ts', type: 'file' },
-    { name: 'main.ts', type: 'file' },
-  ]},
-  { name: 'package.json', type: 'file' },
-  { name: 'README.md', type: 'file' },
-]
 
 function getExt(name: string): string {
   return name.includes('.') ? name.split('.').pop()! : ''
@@ -373,12 +299,12 @@ function LiveTreeNode({ node, depth, installedApps }: { node: LiveNode; depth: n
           <CtxItem
             label="Pfad kopieren"
             icon={<ICopy style={{ width: 11, height: 11, color: 'var(--fg-2)', flexShrink: 0 }} />}
-            onClick={() => { navigator.clipboard.writeText(node.path); setMenu(null) }}
+            onClick={() => { writeClipboard(node.path); setMenu(null) }}
           />
           <CtxItem
             label="Name kopieren"
             icon={<ICopy style={{ width: 11, height: 11, color: 'var(--fg-2)', flexShrink: 0 }} />}
-            onClick={() => { navigator.clipboard.writeText(node.name); setMenu(null) }}
+            onClick={() => { writeClipboard(node.name); setMenu(null) }}
           />
           {/* Öffnen mit — files only, based on extension, filtered to installed apps */}
           {!node.isDir && (() => {
@@ -1850,7 +1776,7 @@ function GitHubTab({ projectPath, projectName }: { projectPath: string; projectN
             {data?.log.map((c, i) => (
               <div
                 key={i}
-                onClick={() => { navigator.clipboard.writeText(c.hash).catch(() => {}); showToast(`Hash kopiert: ${c.hash.slice(0, 7)}`, true) }}
+                onClick={() => { writeClipboard(c.hash).catch(() => {}); showToast(`Hash kopiert: ${c.hash.slice(0, 7)}`, true) }}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 6px', borderBottom: i < (data?.log.length ?? 0) - 1 ? 'var(--line)' : 'none', cursor: 'pointer', borderRadius: 4 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -2346,10 +2272,10 @@ export function UserStoriesCard({ projectId: activeProjectId, sessionId }: { pro
   const addBtn = (
     <button
       onClick={() => setShowNewTask(true)}
-      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '0 2px' }}
+      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', alignItems: 'center', padding: 0 }}
       title="Neuer Task"
     >
-      <IPlus style={{ width: 12, height: 12 }} />
+      <IPlus />
     </button>
   )
 
@@ -2371,7 +2297,7 @@ export function UserStoriesCard({ projectId: activeProjectId, sessionId }: { pro
           onClose={() => setShowNewTask(false)}
         />
       )}
-      <Card title={`Tasks${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false} action={addBtn}>
+      <SectionCard label="Tasks" count={allTickets.length > 0 ? allTickets.length : undefined} collapsible defaultOpen={false} action={addBtn}>
         {allTickets.length === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>Keine Tasks</div>
         ) : (
@@ -2387,7 +2313,7 @@ export function UserStoriesCard({ projectId: activeProjectId, sessionId }: { pro
         {allTickets.length > 8 && (
           <div style={{ fontSize: 10.5, color: 'var(--fg-3)', marginTop: 4 }}>+{allTickets.length - 8} weitere</div>
         )}
-      </Card>
+      </SectionCard>
     </>
   )
 }
@@ -2403,7 +2329,7 @@ function NotesCard({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <Card title="Notes" action={<IEdit style={{ color: 'var(--fg-3)' }} />}>
+    <SectionCard label="Notes" action={<IEdit />}>
       <textarea
         value={text}
         onChange={handleChange}
@@ -2424,7 +2350,7 @@ function NotesCard({ sessionId }: { sessionId: string }) {
           boxSizing: 'border-box',
         }}
       />
-    </Card>
+    </SectionCard>
   )
 }
 
@@ -2723,29 +2649,6 @@ const CS_PRICE_1K: Record<string, number> = {
   'gpt-4o': 0.005, 'gpt-4o-mini': 0.00015, 'deepseek-chat': 0.00028, 'deepseek-r1': 0.00219,
 }
 
-function SectionHeader({ label }: { label: string }) {
-  return (
-    <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--fg-3)', marginBottom: 7, marginTop: 2 }}>
-      {label}
-    </div>
-  )
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => {
-    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400) }).catch(() => {})
-  }
-  return (
-    <button onClick={copy} title={copied ? 'Kopiert!' : 'Kopieren'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: copied ? 'var(--ok)' : 'var(--fg-3)', padding: '2px 4px', display: 'flex', alignItems: 'center', gap: 3, fontSize: 10 }}>
-      <ICopy style={{ width: 10, height: 10 }} />
-      {copied && <span>Kopiert</span>}
-    </button>
-  )
-}
-
-type SearchResult = { humanSummary: string; detailed: string; agentContext: string; inputTokens: number; outputTokens: number }
-
 // ── Standalone CtxLogButton ───────────────────────────────────────────────────
 
 export function CtxLogButton({ projectId }: { projectId: string }) {
@@ -2870,7 +2773,7 @@ export function CtxLogButton({ projectId }: { projectId: string }) {
                             </span>
                           )}
                           <button
-                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.summary ?? '').catch(() => {}) }}
+                            onClick={e => { e.stopPropagation(); writeClipboard(item.summary ?? '').catch(() => {}) }}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}
                             title="Summary kopieren"
                           >
@@ -3165,216 +3068,6 @@ function ProjectBrainButton({ projectId }: { projectId: string }) {
   )
 }
 
-function AiSearchTab({ projectId, isOrbitSession }: { projectId: string; isOrbitSession: boolean }) {
-  const { aiFunctionMap, supabaseUrl, supabaseAnonKey, currentUser, setInputValue, docTemplates, addToast: addToastSearch } = useAppStore()
-  const [query, setQuery]       = useState('')
-  const [loading, setLoading]   = useState(false)
-  const [result, setResult]     = useState<SearchResult | null>(null)
-  const [msgCount, setMsgCount] = useState(0)
-  const taRef    = useRef<HTMLTextAreaElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
-
-  // Auto-grow textarea
-  useEffect(() => {
-    const ta = taRef.current
-    if (!ta) return
-    ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
-  }, [query])
-
-  // Esc → abort running search
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && loading) stopSearch() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading])
-
-  const stopSearch = () => {
-    abortRef.current?.abort()
-    setLoading(false)
-  }
-
-  const search = async () => {
-    if (!query.trim() || loading) return
-    const orP = getOrModel('contextSearch')
-    if (!orP) { addToastSearch({ type: 'error', title: 'OpenRouter API-Key fehlt', body: 'Bitte unter Einstellungen → API Credentials konfigurieren.' }); return }
-
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-
-    setLoading(true); setResult(null)
-    try {
-      // 1. Load agent messages from Supabase
-      type Msg = { role: string; content: string; ts: number; model?: string; source: 'agent' | 'orbit' }
-      const msgs: Msg[] = []
-      const sb = getSupabase(supabaseUrl, supabaseAnonKey)
-      if (sb && currentUser?.id) {
-        const agentMsgs = await loadLastProjectMessages(sb, currentUser.id, projectId, 200).catch(() => [])
-        for (const m of agentMsgs) msgs.push({ role: m.role, content: m.content, ts: m.ts, model: m.model, source: 'agent' })
-      }
-
-      // 2. Load orbit chat messages from JSONL
-      const listRes = await fetch(`/api/orbit/list-chats?projectId=${encodeURIComponent(projectId)}`, { signal: ctrl.signal }).catch(() => null)
-      if (listRes?.ok) {
-        const listData = await listRes.json() as { ok: boolean; chats: { chatId: string }[] }
-        if (listData.ok) {
-          for (const chat of (listData.chats ?? []).slice(0, 30)) {
-            if (ctrl.signal.aborted) break
-            const chatRes = await fetch(`/api/orbit/load-chat?projectId=${encodeURIComponent(projectId)}&chatId=${encodeURIComponent(chat.chatId)}`, { signal: ctrl.signal }).catch(() => null)
-            if (!chatRes?.ok) continue
-            const chatData = await chatRes.json() as { ok: boolean; messages: Array<{ role: string; content: string; ts: number; model?: string }> }
-            if (chatData.ok) {
-              for (const m of (chatData.messages ?? [])) msgs.push({ role: m.role, content: m.content, ts: m.ts, model: m.model, source: 'orbit' })
-            }
-          }
-        }
-      }
-
-      if (ctrl.signal.aborted) return
-
-      // Deduplicate + sort + truncate to 300 messages
-      const sorted = msgs
-        .filter((m, i, a) => a.findIndex(x => x.ts === m.ts && x.role === m.role && x.source === m.source) === i)
-        .sort((a, b) => a.ts - b.ts)
-        .slice(-300)
-      setMsgCount(sorted.length)
-
-      // 3. Call backend
-      const customPrompt = docTemplates.find(t => t.id === 'ai-prompt-context-search')?.content
-      const r = await fetch('/api/context-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim(), messages: sorted, provider: orP.provider, apiKey: orP.apiKey, model: orP.model, systemPromptOverride: customPrompt }),
-        signal: ctrl.signal,
-      })
-      const d = await r.json() as SearchResult & { ok: boolean; error?: string }
-      if (!d.ok) { addToastSearch({ type: 'error', title: 'Kontext Search fehlgeschlagen', body: d.error ?? 'Unbekannter Fehler' }); return }
-      setResult(d)
-    } catch (e) {
-      if ((e as { name?: string }).name !== 'AbortError') addToastSearch({ type: 'error', title: 'Kontext Search Fehler', body: String(e) })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const insertToChatbox = () => {
-    if (!result?.agentContext) return
-    setInputValue(result.agentContext)
-  }
-
-  const costStr = (() => {
-    if (!result) return null
-    const modelId = aiFunctionMap['contextSearch'] || 'deepseek/deepseek-chat-v3-0324'
-    const key = Object.keys(CS_PRICE_1K).find(k => modelId.includes(k))
-    if (!key) return null
-    const cost = (result.outputTokens / 1000) * CS_PRICE_1K[key]
-    return cost < 0.0001 ? '<$0.0001' : `~$${cost.toFixed(4)}`
-  })()
-
-  const pill: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 99, fontSize: 10, background: 'var(--bg-3)', border: '1px solid var(--line)', color: 'var(--fg-3)' }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 12, gap: 10, minHeight: 0 }}>
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBottom: 6 }}>
-        <ISpinner size={22} spin={false} style={{ flexShrink: 0 }} />
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1.2 }}>Kontext Search</div>
-          <div style={{ fontSize: 9.5, color: 'var(--fg-3)', lineHeight: 1.2 }}>Durchsucht Agent + Orbit Chat-Verlauf</div>
-        </div>
-      </div>
-
-      {/* Query input + button stacked — no gap, merged borders */}
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <textarea
-          ref={taRef}
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void search() } }}
-          placeholder="Frage stellen… (z.B. chatbox, login, welche html seiten wurden aufgerufen)"
-          style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', background: 'var(--bg-2)', border: '1px solid var(--line-strong)', borderTop: '1px solid var(--line-strong)', borderBottom: 'none', borderRadius: '4px 4px 0 0', color: 'var(--fg-0)', fontSize: 12, fontFamily: 'var(--font-ui)', outline: 'none', resize: 'none', lineHeight: 1.5, minHeight: 72, overflow: 'hidden' }}
-        />
-        <button
-          onClick={loading ? stopSearch : () => void search()}
-          disabled={!loading && !query.trim()}
-          title={loading ? 'Abbrechen (Esc)' : 'Suchen (Enter)'}
-          style={{ width: '100%', background: loading ? 'rgba(239,122,122,0.12)' : !query.trim() ? 'var(--bg-2)' : 'var(--accent)', border: loading ? '1px solid rgba(239,122,122,0.3)' : '1px solid var(--line-strong)', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '8px 10px', cursor: loading || query.trim() ? 'pointer' : 'default', color: loading ? 'var(--err)' : !query.trim() ? 'var(--fg-3)' : 'var(--accent-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-ui)', transition: 'background 0.15s', boxSizing: 'border-box' }}
-        >
-          {loading
-            ? <><IX style={{ width: 12, height: 12 }} /> Stopp</>
-            : <><ISpinner size={13} spin={false} style={{ opacity: !query.trim() ? 0.35 : 1, color: !query.trim() ? 'var(--accent)' : 'var(--accent-fg)' }} /> Kontext Search</>
-          }
-        </button>
-      </div>
-
-      {loading && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--fg-3)', fontSize: 11, padding: '4px 0' }}>
-          <ISpinner size={12} />
-          <span>Durchsuche {msgCount > 0 ? `${msgCount} Nachrichten` : 'Projekt-Historie'}…</span>
-          <span style={{ marginLeft: 'auto', fontSize: 9.5, opacity: 0.6 }}>Esc = Stopp</span>
-        </div>
-      )}
-
-      {result && (
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}>
-
-          {/* Human Summary */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 7 }}>
-              <SectionHeader label="Zusammenfassung" />
-              <span style={{ flex: 1 }} />
-              <CopyButton text={result.humanSummary} />
-            </div>
-            <div style={{ fontSize: 12, lineHeight: 1.7, color: 'var(--fg-1)', whiteSpace: 'pre-wrap' }}>{result.humanSummary}</div>
-          </div>
-
-          {/* Detailed */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 7 }}>
-              <SectionHeader label="Detailliert" />
-              <span style={{ flex: 1 }} />
-              <CopyButton text={result.detailed} />
-            </div>
-            <div style={{ fontSize: 11.5, lineHeight: 1.7, color: 'var(--fg-2)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-ui)' }}>{result.detailed}</div>
-          </div>
-
-          {/* Agent Context */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
-              <SectionHeader label="Für KI-Agent" />
-              <span style={{ flex: 1 }} />
-              <CopyButton text={result.agentContext} />
-              <button
-                onClick={insertToChatbox}
-                title="Als Entwurf in Chatbox einfügen"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 99, border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
-              >
-                <ISend style={{ width: 10, height: 10 }} />
-                Chatbox
-              </button>
-            </div>
-            <div style={{ padding: '8px 10px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 11, lineHeight: 1.65, color: 'var(--fg-1)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>
-              {result.agentContext}
-            </div>
-          </div>
-
-          {/* Token stats */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 4 }}>
-            <span style={pill}>↑ {result.inputTokens.toLocaleString('de-DE')} tk</span>
-            <span style={pill}>↓ {result.outputTokens.toLocaleString('de-DE')} tk</span>
-            {costStr && <span style={{ ...pill, color: 'var(--ok)' }}>{costStr}</span>}
-            <span style={{ ...pill, color: 'var(--fg-3)' }}>{msgCount} Nachrichten durchsucht</span>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Session Info card — shared by right panel and left sidebar ────────────────
-
 export function SessionInfoCard() {
   const { projects, activeProjectId, activeSessionId } = useAppStore()
   const project = projects.find(p => p.id === activeProjectId)
@@ -3421,7 +3114,7 @@ export function SessionInfoCard() {
   )
 }
 
-export function UtilityPanel() {
+export function RightSidebar() {
   const [tab, setTab] = useState(0)
   const [exporting, setExporting]  = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -3435,7 +3128,7 @@ export function UtilityPanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [tabConfigOpen])
   const { aliases, activeSessionId, projects, activeProjectId, createOrbitChat } = useAppStore()
-  const utilitySections  = useAppStore(s => s.utilitySections ?? DEFAULT_UTILITY_SECTIONS)
+  const utilitySections  = useAppStore(s => s.utilitySections ?? DEFAULT_RIGHT_SIDEBAR_SECTIONS)
   const setUtilitySections = useAppStore(s => s.setUtilitySections)
   const layoutSections    = useAppStore(s => s.layoutSections ?? DEFAULT_LAYOUT_SECTIONS)
   const setLayoutSections = useAppStore(s => s.setLayoutSections)
@@ -3821,7 +3514,7 @@ export function UtilityPanel() {
         {/* ── Tab Logs ── */}
         {tab === monitoringIdx && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <MonitoringPanel projectId={activeProjectId} />
+            <LogsTab projectId={activeProjectId} />
           </div>
         )}
 
@@ -3829,7 +3522,7 @@ export function UtilityPanel() {
         {terminalOpen && tab === terminalTabIdx && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
             {project
-              ? <XTermPane sessionId={termSessionId} cmd="zsh" args="" cwd={project.path} />
+              ? <TerminalChatPanel sessionId={termSessionId} cmd="zsh" args="" cwd={project.path} />
               : <div style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 12, marginTop: 40 }}>Kein Workspace ausgewählt</div>
             }
           </div>
@@ -4116,7 +3809,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
         )}
         {!error && content !== null && !editMode && parsedJson !== undefined && (
           <div style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: 10.5, lineHeight: 1.6 }}>
-            <JsonNode value={parsedJson} depth={0} />
+            <JsonTreeNode value={parsedJson} depth={0} />
           </div>
         )}
         {!error && content !== null && !editMode && parsedJson === undefined && (
@@ -4127,109 +3820,7 @@ function DataViewer({ files, activeIdx, onSelect, onClose }: {
   )
 }
 
-// ── JSON tree viewer ──────────────────────────────────────────────────────────
-
-function JsonNode({ value, depth }: { value: unknown; depth: number }): React.ReactElement {
-  if (value === null)           return <span style={{ color: 'var(--fg-3)' }}>null</span>
-  if (value === undefined)      return <span style={{ color: 'var(--fg-3)' }}>undefined</span>
-  if (typeof value === 'boolean') return <span style={{ color: '#3b82f6' }}>{String(value)}</span>
-  if (typeof value === 'number')  return <span style={{ color: '#10b981' }}>{value}</span>
-  if (typeof value === 'string')  return <span style={{ color: '#a78bfa' }}>"{value}"</span>
-  if (Array.isArray(value))       return <JsonArray arr={value} depth={depth} />
-  if (typeof value === 'object')  return <JsonObject obj={value as Record<string, unknown>} depth={depth} />
-  return <span>{String(value)}</span>
-}
-
-function JsonObject({ obj, depth }: { obj: Record<string, unknown>; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth >= 2)
-  const keys = Object.keys(obj)
-  if (keys.length === 0) return <span style={{ color: 'var(--fg-2)' }}>{'{}'}</span>
-  return (
-    <span>
-      <span
-        onClick={() => setCollapsed(c => !c)}
-        style={{ cursor: 'pointer', color: 'var(--fg-3)', userSelect: 'none', fontSize: 9 }}
-      >{collapsed ? '▶' : '▼'}</span>
-      {' '}
-      {collapsed ? (
-        <span
-          onClick={() => setCollapsed(false)}
-          style={{ color: 'var(--fg-3)', cursor: 'pointer', fontSize: 10 }}
-        >{'{'} {keys.length} {keys.length === 1 ? 'key' : 'keys'} {'}'}</span>
-      ) : (
-        <>
-          {'{'}
-          <div style={{ paddingLeft: 16 }}>
-            {keys.map((k, i) => (
-              <div key={k}>
-                <span style={{ color: 'var(--accent)' }}>"{k}"</span>
-                <span style={{ color: 'var(--fg-3)' }}>: </span>
-                <JsonNode value={obj[k]} depth={depth + 1} />
-                {i < keys.length - 1 && <span style={{ color: 'var(--fg-3)' }}>,</span>}
-              </div>
-            ))}
-          </div>
-          {'}'}
-        </>
-      )}
-    </span>
-  )
-}
-
-function JsonArray({ arr, depth }: { arr: unknown[]; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth >= 2)
-  if (arr.length === 0) return <span style={{ color: 'var(--fg-2)' }}>{'[]'}</span>
-  return (
-    <span>
-      <span
-        onClick={() => setCollapsed(c => !c)}
-        style={{ cursor: 'pointer', color: 'var(--fg-3)', userSelect: 'none', fontSize: 9 }}
-      >{collapsed ? '▶' : '▼'}</span>
-      {' '}
-      {collapsed ? (
-        <span
-          onClick={() => setCollapsed(false)}
-          style={{ color: 'var(--fg-3)', cursor: 'pointer', fontSize: 10 }}
-        >{'['} {arr.length} items {']'}</span>
-      ) : (
-        <>
-          {'['}
-          <div style={{ paddingLeft: 16 }}>
-            {arr.map((v, i) => (
-              <div key={i}>
-                <JsonNode value={v} depth={depth + 1} />
-                {i < arr.length - 1 && <span style={{ color: 'var(--fg-3)' }}>,</span>}
-              </div>
-            ))}
-          </div>
-          {']'}
-        </>
-      )}
-    </span>
-  )
-}
-
 // ── Text viewer with line numbers + search highlight ──────────────────────────
-
-function highlightSegments(line: string, query: string): React.ReactNode {
-  if (!query) return line
-  const parts: React.ReactNode[] = []
-  const lower = line.toLowerCase()
-  let cursor = 0
-  let idx = lower.indexOf(query)
-  while (idx !== -1) {
-    if (idx > cursor) parts.push(line.slice(cursor, idx))
-    parts.push(
-      <mark key={idx} style={{ background: 'rgba(255,200,50,0.4)', color: 'inherit', borderRadius: 2 }}>
-        {line.slice(idx, idx + query.length)}
-      </mark>
-    )
-    cursor = idx + query.length
-    idx = lower.indexOf(query, cursor)
-  }
-  if (cursor < line.length) parts.push(line.slice(cursor))
-  return parts
-}
 
 function TextViewer({ content, search, showLineNums, ext }: { content: string; search: string; showLineNums: boolean; ext: string }) {
   const lines = content.split('\n')
@@ -4278,30 +3869,6 @@ function TextViewer({ content, search, showLineNums, ext }: { content: string; s
 
 // ── shared primitives ─────────────────────────────────────────────────────────
 
-function Card({ title, action, children, collapsible, defaultOpen = true }: { title: string; action?: React.ReactNode; children: React.ReactNode; collapsible?: boolean; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div
-        onClick={collapsible ? () => setOpen(o => !o) : undefined}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: collapsible ? 'pointer' : 'default', userSelect: 'none', paddingBottom: open ? 6 : 0 }}
-      >
-        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1 }}>{title}</span>
-        {action && <span onClick={e => e.stopPropagation()}>{action}</span>}
-        {collapsible && (open
-          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-        )}
-      </div>
-      {open && (
-        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function Field({ label, value, mono, accent }: { label: string; value: string; mono?: boolean; accent?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', padding: '4px 0', fontSize: 11.5, borderBottom: '1px solid var(--line)' }}>
@@ -4323,7 +3890,7 @@ function FieldPlain({ label, value }: { label: string; value: string }) {
 function FieldPath({ label, path }: { label: string; path: string }) {
   const [copied, setCopied] = React.useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(path)
+    writeClipboard(path)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -4391,237 +3958,3 @@ function PromptsSectionWidget({ templates, onPick }: { templates: Template[]; on
   )
 }
 
-// ── QuickLinks widget ─────────────────────────────────────────────────────────
-
-function QuickLinksModal({ onClose }: { onClose: () => void }) {
-  const quickLinks    = useAppStore(s => s.quickLinks)
-  const setQuickLinks = useAppStore(s => s.setQuickLinks)
-
-  const [links, setLinks]           = useState<QuickLink[]>(quickLinks)
-  const [editId, setEditId]         = useState<string | null>(null)
-  const [editTitle, setEditTitle]   = useState('')
-  const [editUrl, setEditUrl]       = useState('')
-  const [newTitle, setNewTitle]     = useState('')
-  const [newUrl, setNewUrl]         = useState('')
-  const [dragIdx, setDragIdx]       = useState<number | null>(null)
-  const [dragOver, setDragOver]     = useState<number | null>(null)
-
-  const saveAll = (updated: QuickLink[]) => {
-    setLinks(updated)
-    setQuickLinks(updated)
-  }
-
-  const startEdit = (link: QuickLink) => {
-    setEditId(link.id)
-    setEditTitle(link.title)
-    setEditUrl(link.url)
-  }
-
-  const commitEdit = () => {
-    if (!editId) return
-    saveAll(links.map(l => l.id === editId ? { ...l, title: editTitle.trim() || editUrl, url: editUrl.trim() } : l))
-    setEditId(null)
-  }
-
-  const addLink = () => {
-    const url = newUrl.trim()
-    if (!url) return
-    const id = `ql-${Date.now()}`
-    const title = newTitle.trim() || url.replace(/^https?:\/\//, '').split('/')[0]
-    saveAll([...links, { id, title, url }])
-    setNewTitle('')
-    setNewUrl('')
-  }
-
-  const removeLink = (id: string) => saveAll(links.filter(l => l.id !== id))
-
-  const handleDrop = (targetIdx: number) => {
-    if (dragIdx === null || dragIdx === targetIdx) return
-    const arr = [...links]
-    const [moved] = arr.splice(dragIdx, 1)
-    arr.splice(targetIdx, 0, moved)
-    saveAll(arr)
-    setDragIdx(null)
-    setDragOver(null)
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }}
-      onClick={onClose}>
-      <div style={{ width: 480, minHeight: 280, maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line-strong)', borderRadius: 12, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}
-        onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-0)' }}>Quick Links verwalten</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-2)', display: 'flex', padding: 2 }}>
-            <IClose style={{ width: 14, height: 14 }} />
-          </button>
-        </div>
-
-        {/* Link list */}
-        <div style={{ flex: 1, minHeight: 80, overflowY: 'auto', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {links.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--fg-3)', textAlign: 'center', padding: '20px 0' }}>Noch keine Links — füge unten einen hinzu.</div>
-          )}
-          {links.map((link, i) => (
-            <div key={link.id}
-              draggable
-              onDragStart={() => setDragIdx(i)}
-              onDragOver={e => { e.preventDefault(); setDragOver(i) }}
-              onDrop={() => handleDrop(i)}
-              onDragEnd={() => { setDragIdx(null); setDragOver(null) }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, background: dragOver === i ? 'var(--bg-3)' : 'var(--bg-2)', border: `1px solid ${dragOver === i ? 'var(--accent-line)' : 'var(--line)'}`, cursor: 'grab', transition: 'border-color 0.1s' }}>
-              {/* Favicon */}
-              <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=16`}
-                style={{ width: 16, height: 16, flexShrink: 0, borderRadius: 3 }}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              {editId === link.id ? (
-                <>
-                  <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Titel" style={{ flex: '0 0 120px', padding: '3px 7px', borderRadius: 5, border: '1px solid var(--line-strong)', background: 'var(--bg-1)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-ui)', outline: 'none' }} autoFocus />
-                  <input value={editUrl} onChange={e => setEditUrl(e.target.value)} placeholder="https://…" style={{ flex: 1, padding: '3px 7px', borderRadius: 5, border: '1px solid var(--line-strong)', background: 'var(--bg-1)', color: 'var(--fg-0)', fontSize: 11, fontFamily: 'var(--font-mono)', outline: 'none' }} onKeyDown={e => e.key === 'Enter' && commitEdit()} />
-                  <button onClick={commitEdit} style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 5, padding: '3px 8px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✓</button>
-                  <button onClick={() => setEditId(null)} style={{ background: 'none', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}>✕</button>
-                </>
-              ) : (
-                <>
-                  <span style={{ flex: 1, fontSize: 12, color: 'var(--fg-0)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.title}</span>
-                  <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{link.url.replace(/^https?:\/\//, '')}</span>
-                  <button onClick={() => startEdit(link)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 2 }} title="Bearbeiten">
-                    <IEdit style={{ width: 11, height: 11 }} />
-                  </button>
-                  <button onClick={() => removeLink(link.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', padding: 2 }} title="Entfernen">
-                    <ITrash style={{ width: 11, height: 11 }} />
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Add new */}
-        <div style={{ padding: '10px 16px 14px', borderTop: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, background: 'var(--bg-1)' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Titel (optional)" style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line-strong)', background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11.5, fontFamily: 'var(--font-ui)', outline: 'none' }} />
-            <input value={newUrl} onChange={e => setNewUrl(e.target.value)} placeholder="https://…" style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--line-strong)', background: 'var(--bg-2)', color: 'var(--fg-0)', fontSize: 11.5, fontFamily: 'var(--font-mono)', outline: 'none' }} onKeyDown={e => e.key === 'Enter' && addLink()} />
-          </div>
-          <button onClick={addLink} style={{ background: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 6, padding: '8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', width: '100%' }}>
-            Hinzufügen
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const QL_LIMIT = 4
-
-export function QuickLinksWidget() {
-  const quickLinks    = useAppStore(s => s.quickLinks)
-  const setQuickLinks = useAppStore(s => s.setQuickLinks)
-  const [showModal, setShowModal] = useState(false)
-  const [open, setOpen]           = useState(true)
-  const [expanded, setExpanded]   = useState(false)
-  const dragQLIdx = useRef<number>(-1)
-  const [dragOverQL, setDragOverQL] = useState<number>(-1)
-
-  const openLink = (url: string) => window.open(url, '_blank', 'noopener,noreferrer')
-
-  const visibleLinks = quickLinks.length > QL_LIMIT && !expanded
-    ? quickLinks.slice(0, QL_LIMIT)
-    : quickLinks
-  const hiddenCount = quickLinks.length - QL_LIMIT
-
-  return (
-    <>
-      <div style={{ marginBottom: 20 }}>
-        {/* ── Section header ── */}
-        <div
-          onClick={() => setOpen(o => !o)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', paddingBottom: open ? 6 : 0 }}
-        >
-          <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1 }}>
-            Quick Links
-          </span>
-          <button
-            onClick={e => { e.stopPropagation(); setShowModal(true) }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', padding: '1px 3px', borderRadius: 4 }}
-            title="Link hinzufügen"
-          >
-            <IPlus style={{ width: 12, height: 12 }} />
-          </button>
-          {open
-            ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-            : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-          }
-        </div>
-
-        {/* ── Section body ── */}
-        {open && (
-          <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: 8 }}>
-            {quickLinks.length === 0 ? (
-              <div style={{ fontSize: 11, color: 'var(--fg-3)', textAlign: 'center', padding: '4px 0' }}>
-                Noch keine Quick Links angelegt
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {visibleLinks.map((link, idx) => (
-                  <div
-                    key={link.id}
-                    draggable
-                    onDragStart={() => { dragQLIdx.current = idx }}
-                    onDragOver={e => { e.preventDefault(); setDragOverQL(idx) }}
-                    onDragLeave={() => setDragOverQL(-1)}
-                    onDrop={e => {
-                      e.preventDefault()
-                      const from = dragQLIdx.current
-                      if (from === idx || from < 0) { setDragOverQL(-1); return }
-                      const reordered = [...quickLinks]
-                      const [moved] = reordered.splice(from, 1)
-                      reordered.splice(idx, 0, moved)
-                      setQuickLinks(reordered)
-                      dragQLIdx.current = -1
-                      setDragOverQL(-1)
-                    }}
-                    onDragEnd={() => { dragQLIdx.current = -1; setDragOverQL(-1) }}
-                    style={{
-                      borderTop: dragOverQL === idx && dragQLIdx.current > idx ? '2px solid var(--accent)' : '2px solid transparent',
-                      borderBottom: dragOverQL === idx && dragQLIdx.current < idx ? '2px solid var(--accent)' : '2px solid transparent',
-                      borderRadius: 6,
-                    }}
-                  >
-                    <button onClick={() => openLink(link.url)} title={link.url}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px', borderRadius: 6, background: 'var(--card-bg)', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', transition: 'background 0.12s' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-soft)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--card-bg)' }}>
-                      <IDrag style={{ width: 10, height: 10, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.5, cursor: 'grab' }} />
-                      <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=32`}
-                        style={{ width: 14, height: 14, borderRadius: 3, flexShrink: 0 }}
-                        onError={e => { (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23888"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12">${encodeURIComponent(link.title.charAt(0).toUpperCase())}</text></svg>` }} />
-                      <span style={{ flex: 1, fontSize: 11.5, color: 'var(--fg-0)' }}>{link.title}</span>
-                      <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', maxWidth: 120, flexShrink: 0 }}>{link.url.replace(/^https?:\/\//, '').split('/')[0]}</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {/* ── Expand / collapse toggle ── */}
-            {hiddenCount > 0 && (
-              <button
-                onClick={() => setExpanded(e => !e)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '7px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, width: '100%', color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-ui)' }}
-              >
-                {expanded
-                  ? <><IChevUp style={{ width: 11, height: 11 }} /> Weniger anzeigen</>
-                  : <><IChevDown style={{ width: 11, height: 11 }} /> {hiddenCount} weitere…</>
-                }
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {showModal && <QuickLinksModal onClose={() => setShowModal(false)} />}
-    </>
-  )
-}

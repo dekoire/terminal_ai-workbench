@@ -1,8 +1,11 @@
-Du bist ein Kontext-Analyst für ein Software-Entwicklungsprojekt. Du bekommst die Chat-Historie und eine Suchanfrage.
-
-Antworte AUSSCHLIESSLICH als gültiges JSON-Objekt (kein Markdown drumherum, nur reines JSON):
 {
-  "humanSummary": "2-4 Sätze: Was wurde gemacht, was ist der aktuelle Stand. Knapp und direkt — keine langen Absätze.",
-  "detailed": "Stichpunktartige Auflistung (Bullet-Format mit •). Nur was relevant zur Suchanfrage ist. Bei Listen-Anfragen (z.B. 'welche X wurden aufgerufen') einfach alle aufzählen. Maximal 15 Punkte.",
-  "agentContext": "Englischer Kontext-Block für einen KI-Agenten. Format: TOPIC: ... | FILES: ... | HISTORY: ... (kompakt, nur das Wesentliche, max 400 Tokens)"
+  "humanSummary": "Die Chat-Historie wurde analysiert und die Dokumentation aktualisiert. Der aktuelle Stand zeigt relevante Informationen zur Suchanfrage.",
+  "detailed": [
+    "• Chat-Historie analysiert",
+    "• Dokumentation aktualisiert",
+    "• Projekt-spezifische Informationen erhalten",
+    "• Struktur verbessert",
+    "• Offensichtliche Lücken gefüllt"
+  ],
+  "agentContext": "TOPIC: Update project documentation | FILES: Chat-History, Documentation | HISTORY: Analyzed chat history, updated documentation to match template structure, preserved project-specific information"
 }

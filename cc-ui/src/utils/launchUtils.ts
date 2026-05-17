@@ -1,5 +1,5 @@
 // ── Shared launch utilities ───────────────────────────────────────────────────
-// Used by useAppLauncher, CenterPane, and UIWorkshop.
+// Used by useAppLauncher, CenterPanel, and UIWorkshop.
 
 export interface ProjectConfig {
   startCmd: string | null

@@ -46,7 +46,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     id: 'ember', name: 'Ember', dark: true,
     accent: '#ff7f4d', accentFg: '#ffffff',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
-    line: '#333333', lineStrong: '#444444',
+    line: '#444444', lineStrong: '#444444',
     fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
@@ -56,7 +56,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     id: 'cobalt', name: 'Cobalt', dark: true,
     accent: '#0073ff', accentFg: '#ffffff',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
-    line: '#333333', lineStrong: '#444444',
+    line: '#444444', lineStrong: '#444444',
     fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
@@ -64,9 +64,9 @@ export const ACCENT_PRESETS: AccentPreset[] = [
 
   {
     id: 'midnight', name: 'Midnight', dark: true,
-    accent: '#9d6fff', accentFg: '#0a0a14',
+    accent: '#9d6fff', accentFg: '#ffffff',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
-    line: '#333333', lineStrong: '#444444',
+    line: '#444444', lineStrong: '#444444',
     fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
@@ -76,7 +76,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     id: 'forest', name: 'Forest', dark: true,
     accent: '#00e229', accentFg: '#ffffff',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
-    line: '#333333', lineStrong: '#444444',
+    line: '#444444', lineStrong: '#444444',
     fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
@@ -84,9 +84,9 @@ export const ACCENT_PRESETS: AccentPreset[] = [
 
   {
     id: 'rose', name: 'Rose', dark: true,
-    accent: '#ff47a6', accentFg: '#FFFFFFF',
+    accent: '#ff47a6', accentFg: '#ffffff',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
-    line: '#333333', lineStrong: '#444444',
+    line: '#444444', lineStrong: '#444444',
     fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
@@ -97,7 +97,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   {
     id: 'ember-light', name: 'Ember Light', dark: false,
     accent: '#d95f2a', accentFg: '#ffffff',
-    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    bg0: '#ffffff', bg1: '#f2f2f2', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
     fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
@@ -107,7 +107,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   {
     id: 'cobalt-light', name: 'Cobalt Light', dark: false,
     accent: '#1e40ff', accentFg: '#ffffff',
-    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    bg0: '#ffffff', bg1: '#f2f2f2', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
     fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
@@ -117,7 +117,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   {
     id: 'midnight-light', name: 'Midnight Light', dark: false,
     accent: '#8249ff', accentFg: '#ffffff',
-    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    bg0: '#ffffff', bg1: '#f2f2f2', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
     fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
@@ -127,7 +127,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   {
     id: 'forest-light', name: 'Forest Light', dark: false,
     accent: '#1a9e5c', accentFg: '#ffffff',
-    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    bg0: '#ffffff', bg1: '#f2f2f2', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
     fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#2e8a58', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
@@ -137,7 +137,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   {
     id: 'rose-light', name: 'Rose Light', dark: false,
     accent: '#e01e8c', accentFg: '#ffffff',
-    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    bg0: '#ffffff', bg1: '#f2f2f2', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
     fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',
@@ -150,7 +150,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     id: 'crimson', name: 'Crimson', dark: true,
     accent: '#ff3b4e', accentFg: '#ffffff',
     bg0: '#1F1F1E', bg1: '#262626', bg2: '#1F1F1E', bg3: '#444444', bg4: '#444444',
-    line: '#333333', lineStrong: '#444444',
+    line: '#444444', lineStrong: '#444444',
     fg0: '#ffffff', fg1: '#ffffff', fg2: '#ffffff', fg3: '#ababab',
     ok: '#7cd9a8', warn: '#f4c365', err: '#ef7a7a', info: '#8ab4ff',
     orbit: '#8b6cf7',
@@ -159,7 +159,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   {
     id: 'crimson-light', name: 'Crimson Light', dark: false,
     accent: '#c0192e', accentFg: '#ffffff',
-    bg0: '#ffffff', bg1: '#f6f6f6', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
+    bg0: '#ffffff', bg1: '#f2f2f2', bg2: '#ffffff', bg3: '#e8e8e8', bg4: '#dedede',
     line: '#D5D5D5', lineStrong: '#cccccc',
     fg0: '#090909', fg1: '#090909', fg2: '#444444', fg3: '#545454',
     ok: '#3d9b6c', warn: '#b88425', err: '#c0463f', info: '#4a7bce',

@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { SectionCard } from '../primitives/SectionCard'
 import { useAppStore, setActiveStorageUser, DEFAULT_SIDEBAR_SECTIONS, DEFAULT_LAYOUT_SECTIONS } from '../../store/useAppStore'
 import type { Project, Session, SidebarSection, SidebarSectionId, LayoutSection, AllSectionId } from '../../store/useAppStore'
 import { idAddress } from '../../lib/ids'
+import { triggerSupabaseSignOut } from '../../lib/useSupabaseSync'
 import { IChev, IChevUp, IChevDown, IFolder, IFolderOpen, ITerminal, IPlus, ISpark, IHistory, ISettings, IClose, ITrash, ICopy, IEdit, IGit, IKanban, ILoader, IMoon, ISun, ILogout, IBug, IStar, IUser, IShieldPlus, IShield, IOrbit, IBell, ISliders, ITag, IExternalLink, IBrain, ILayers, IDrag } from '../primitives/Icons'
-import { CtxLogButton, CompactGitCard, QuickLinksWidget, UserStoriesCard, SessionInfoCard } from './UtilityPanel'
+import { CtxLogButton, CompactGitCard, QuickLinksWidget, UserStoriesCard, SessionInfoCard } from './widgets'
 import { AdminPanel } from '../screens/AdminPanel'
 import avatarDefault from '../../assets/avatar.jpg'
 import { KanbanBoard, GlobalKanbanBoard } from './KanbanBoard'
 import { Kbd } from '../primitives/Kbd'
 import { updateDocsWithAI } from '../../utils/updateDocs'
+import { writeClipboard } from '../../lib/clipboard'
 import { DESIGN_PRESETS, applyPreset } from '../../theme/presets'
 
 // ── ContextMenu ───────────────────────────────────────────────────────────────
@@ -194,7 +197,7 @@ function AvatarPopoverBtn() {
           <PopMenuItem
             icon={<ILogout style={{ width: 13, height: 13 }} />}
             label="Ausloggen"
-            onClick={() => { setOpen(false); setActiveStorageUser(''); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
+            onClick={() => { setOpen(false); triggerSupabaseSignOut(); setActiveStorageUser(''); setCurrentUser(null); setScreen('login'); useAppStore.getState().resetUserData() }}
           />
           <div style={{ height: 6 }} />
         </div>
@@ -219,7 +222,7 @@ function PopMenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: s
 
 const PROJECTS_COLLAPSED = 5
 
-export function ProjectSidebar() {
+export function LeftSidebar() {
   const {
     projects, templates, activeProjectId, activeSessionId,
     setActiveProject, setActiveSession, setScreen, setNewProjectOpen, setNewSessionOpen,
@@ -259,7 +262,8 @@ export function ProjectSidebar() {
   const renderSection = (id: AllSectionId) => {
     switch (id) {
       case 'workspaces': return (
-        <CollapsibleSection label="Workspaces" count={projects.length} defaultOpen action={
+        <div style={{ padding: '0 10px' }}>
+        <SectionCard label="Workspaces" count={projects.length} defaultOpen noPadding action={
           <button onClick={() => setNewProjectOpen(true)} style={iconBtn}><IPlus /></button>
         }>
           {(projectsExpanded ? projects : projects.slice(0, PROJECTS_COLLAPSED)).map((p, idx) => (
@@ -317,7 +321,8 @@ export function ProjectSidebar() {
               {projectsExpanded ? 'Weniger anzeigen' : `${projects.length - PROJECTS_COLLAPSED} weitere`}
             </div>
           )}
-        </CollapsibleSection>
+        </SectionCard>
+        </div>
       )
       case 'prompts': return projects.length > 0 ? (
         <TemplatesSection
@@ -525,8 +530,8 @@ function ProjectRow({ project, active, open, onToggleOpen, activeSessionId, onSe
   const githubUrl = remoteUrl ? toRepoUrl(remoteUrl) : null
   const { open: openCtx, menu: ctxMenu } = useCtxMenu()
 
-  const copyPath = () => navigator.clipboard.writeText(project.path)
-  const copyName = () => navigator.clipboard.writeText(project.name)
+  const copyPath = () => writeClipboard(project.path)
+  const copyName = () => writeClipboard(project.name)
   const openFolder = () => fetch(`/api/open?path=${encodeURIComponent(project.path)}`)
 
   const handleContextMenu = (e: React.MouseEvent) => openCtx(e, [
@@ -568,7 +573,7 @@ function ProjectRow({ project, active, open, onToggleOpen, activeSessionId, onSe
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 8px',
+          display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px',
           margin: '1px 6px', borderRadius: 6, cursor: 'pointer',
           background: active ? 'var(--bg-2)' : hovered ? 'var(--bg-2)' : 'transparent',
           color: active ? 'var(--fg-0)' : 'var(--fg-1)',
@@ -625,7 +630,7 @@ function ProjectRow({ project, active, open, onToggleOpen, activeSessionId, onSe
   )
 }
 
-function SessionRow({ session, active, project, onSelect, onClose }: { session: Session; active: boolean; project: Project; onSelect: () => void; onClose: () => void }) {
+const SessionRow = React.memo(function SessionRow({ session, active, project, onSelect, onClose }: { session: Session; active: boolean; project: Project; onSelect: () => void; onClose: () => void }) {
   const { aliases, updateSession } = useAppStore()
   const [hovered, setHovered] = useState(false)
   const [permPending, setPermPending] = useState(false)
@@ -726,7 +731,7 @@ function SessionRow({ session, active, project, onSelect, onClose }: { session: 
     </div>
     </div>
   )
-}
+})
 
 const TEMPLATES_COLLAPSED = 4
 
@@ -820,236 +825,43 @@ function TemplatesSection({
 }) {
   const { updateTemplate, removeTemplate } = useAppStore()
   const [expanded, setExpanded] = useState(false)
-  const [sectionOpen, setSectionOpen] = useState(false)
   const visible = expanded ? templates : templates.slice(0, TEMPLATES_COLLAPSED)
   const hidden  = templates.length - TEMPLATES_COLLAPSED
 
   return (
-    <div style={{ marginBottom: 20, padding: '0 10px' }}>
-      <div
-        onClick={() => setSectionOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', paddingBottom: sectionOpen ? 6 : 0, cursor: 'pointer', userSelect: 'none' }}
+    <div style={{ padding: '0 10px' }}>
+      <SectionCard
+        label="Prompts"
+        count={templates.length}
+        defaultOpen={false}
+        noPadding
+        action={<button onClick={onAdd} style={iconBtn}><IPlus /></button>}
       >
-        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-          Prompts
-          <span style={{ fontWeight: 400, letterSpacing: 0 }}>({templates.length})</span>
-        </span>
-        <button onClick={e => { e.stopPropagation(); onAdd() }} style={iconBtn}><IPlus /></button>
-        {sectionOpen
-          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-        }
-      </div>
-
-      {sectionOpen && (
-        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden', padding: '4px 0', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          {visible.map((t) => (
-            <TemplateRow
-              key={t.id}
-              t={t}
-              onPick={() => onPick(t.body)}
-              onToggleFavorite={() => updateTemplate(t.id, { favorite: !t.favorite })}
-              onDelete={() => removeTemplate(t.id)}
-              onEditDone={(name) => updateTemplate(t.id, { name })}
-            />
-          ))}
-          {templates.length > TEMPLATES_COLLAPSED && (
-            <div
-              onClick={() => setExpanded(e => !e)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '3px 0', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 300, width: '100%' }}
-            >
-              {expanded ? <IChevUp style={{ width: 8, height: 8 }} /> : <IChevDown style={{ width: 8, height: 8 }} />}
-              {expanded ? 'Weniger anzeigen' : `${hidden} weitere`}
-            </div>
-          )}
-        </div>
-      )}
+        {visible.map((t) => (
+          <TemplateRow
+            key={t.id}
+            t={t}
+            onPick={() => onPick(t.body)}
+            onToggleFavorite={() => updateTemplate(t.id, { favorite: !t.favorite })}
+            onDelete={() => removeTemplate(t.id)}
+            onEditDone={(name) => updateTemplate(t.id, { name })}
+          />
+        ))}
+        {templates.length > TEMPLATES_COLLAPSED && (
+          <div
+            onClick={() => setExpanded(e => !e)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '3px 0', cursor: 'pointer', color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: 300, width: '100%' }}
+          >
+            {expanded ? <IChevUp style={{ width: 8, height: 8 }} /> : <IChevDown style={{ width: 8, height: 8 }} />}
+            {expanded ? 'Weniger anzeigen' : `${hidden} weitere`}
+          </div>
+        )}
+      </SectionCard>
     </div>
   )
 }
 
 // ── User Stories Section ───────────────────────────────────────────────────────
-
-const STORIES_COLLAPSED = 3
-
-// Inline type icons (mirrors KanbanBoard TypeIcon)
-function typeColor(type?: string) {
-  if (type === 'bug') return 'var(--err)'
-  if (type === 'nfc') return '#5b9cf6'
-  return 'var(--ok)'
-}
-
-function SidebarTypeIcon({ type }: { type?: string }) {
-  const s: React.CSSProperties = { width: 10, height: 10, flexShrink: 0 }
-  if (type === 'bug') return <IBug style={{ ...s, color: typeColor(type) }} />
-  if (type === 'nfc') return <IStar style={{ ...s, color: typeColor(type) }} />
-  return <IUser style={{ ...s, color: typeColor(type) }} />
-}
-
-function UserStoriesSection() {
-  const { kanban, projects } = useAppStore()
-  const [globalOpen, setGlobalOpen]   = useState(false)
-  const [sectionOpen, setSectionOpen] = useState(false)
-  const [expanded, setExpanded]       = useState(false)
-  // open a specific ticket directly in its project's KanbanBoard
-  const [openTicket, setOpenTicket]   = useState<{
-    projectId: string; projectName: string; projectPath: string; ticketId: string
-  } | null>(null)
-
-  // Flatten all tickets across projects, newest first
-  const allTickets = projects.flatMap(p =>
-    (kanban[p.id] ?? []).map(t => ({ ticket: t, project: p }))
-  ).sort((a, b) => {
-    const da = a.ticket.createdAt ? new Date(a.ticket.createdAt).getTime() : 0
-    const db = b.ticket.createdAt ? new Date(b.ticket.createdAt).getTime() : 0
-    return db - da
-  })
-
-  const totalCount = allTickets.length
-  const visible = expanded ? allTickets : allTickets.slice(0, STORIES_COLLAPSED)
-  const hidden = totalCount - STORIES_COLLAPSED
-
-  return (
-    <>
-      {globalOpen && <GlobalKanbanBoard onClose={() => setGlobalOpen(false)} />}
-      {openTicket && (
-        <KanbanBoard
-          projectId={openTicket.projectId}
-          projectName={openTicket.projectName}
-          projectPath={openTicket.projectPath}
-          initialDetailId={openTicket.ticketId}
-          onClose={() => setOpenTicket(null)}
-        />
-      )}
-
-      <div style={{ marginBottom: 14, paddingTop: 0, paddingBottom: 14 }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 10px 6px 14px',
-        }}>
-          <span
-            onClick={() => setSectionOpen(o => !o)}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', userSelect: 'none' }}
-          >
-            <IChev style={{ transform: sectionOpen ? 'rotate(90deg)' : 'none', width: 8, height: 8, transition: 'transform 0.1s', flexShrink: 0, color: 'var(--fg-3)' }} />
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.7, color: 'var(--fg-3)' }}>
-              User Stories
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 16, height: 16, padding: '0 5px', borderRadius: 99, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', color: 'var(--accent)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0, lineHeight: 1 }}>
-              {totalCount}
-            </span>
-          </span>
-          <button
-            onClick={e => { e.stopPropagation(); setGlobalOpen(true) }}
-            style={iconBtn}
-            title="Alle User Stories öffnen"
-          >
-            <IKanban style={{ width: 11, height: 11 }} />
-          </button>
-        </div>
-
-        {/* Story rows */}
-        {sectionOpen && (
-          <>
-            {visible.map(({ ticket, project }) => (
-              <StoryRow
-                key={ticket.id}
-                ticket={ticket}
-                projectName={project.name}
-                onOpen={() => setOpenTicket({
-                  projectId: project.id,
-                  projectName: project.name,
-                  projectPath: project.path,
-                  ticketId: ticket.id,
-                })}
-              />
-            ))}
-
-            {totalCount === 0 && (
-              <div style={{ padding: '3px 10px 3px 14px', fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>
-                Keine User Stories
-              </div>
-            )}
-
-            {/* Show more / less toggle */}
-            {totalCount > STORIES_COLLAPSED && (
-              <div
-                onClick={() => setExpanded(e => !e)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '3px 10px',
-                  margin: '1px 6px 0', borderRadius: 6, cursor: 'pointer',
-                  color: 'var(--fg-3)', fontSize: 10.5,
-                }}
-              >
-                <IChev style={{ transform: expanded ? 'rotate(90deg)' : 'none', width: 8, height: 8 }} />
-                {expanded ? 'Weniger anzeigen' : `${hidden} weitere`}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </>
-  )
-}
-
-function StoryRow({ ticket, projectName, onOpen }: {
-  ticket: { id: string; ticketNumber?: number; title: string; text?: string; createdAt?: string; type?: string }
-  projectName: string
-  onOpen: () => void
-}) {
-  const [hovered, setHovered] = useState(false)
-
-  const dateStr = ticket.createdAt
-    ? new Date(ticket.createdAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
-    : ''
-
-  return (
-    <div
-      onClick={onOpen}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '5px 10px',
-        margin: '0 6px 1px', borderRadius: 6, cursor: 'pointer',
-        background: hovered ? 'var(--bg-3)' : 'transparent',
-        color: 'var(--fg-1)',
-      }}
-    >
-      {/* Type icon */}
-      <SidebarTypeIcon type={ticket.type} />
-
-      {/* ID badge — same color as type icon */}
-      {ticket.ticketNumber != null && (
-        <span style={{ fontSize: 9.5, fontWeight: 700, color: typeColor(ticket.type), flexShrink: 0, letterSpacing: 0.2 }}>
-          #{ticket.ticketNumber}
-        </span>
-      )}
-
-      {/* Title */}
-      <span style={{ flex: 1, fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {ticket.title}
-      </span>
-
-      {/* Project name + date on hover */}
-      {hovered ? (
-        <span style={{ fontSize: 9.5, color: 'var(--accent)', flexShrink: 0, opacity: 0.85 }}>→</span>
-      ) : (
-        <>
-          <span style={{ fontSize: 9.5, color: 'var(--fg-3)', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 60, whiteSpace: 'nowrap' }}>
-            {projectName}
-          </span>
-          {dateStr && (
-            <span style={{ fontSize: 9, color: 'var(--fg-3)', flexShrink: 0, opacity: 0.6 }}>{dateStr}</span>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-// ── Compact GitHub section ────────────────────────────────────────────────────
 
 function CompactGitHubSection() {
   const { projects, activeProjectId } = useAppStore()
@@ -1106,34 +918,7 @@ function CompactQuickLinksSection() {
   )
 }
 
-// ── Collapsible section ───────────────────────────────────────────────────────
-
-function CollapsibleSection({ label, count, action, children, defaultOpen = true }: { label: string; count?: number; action?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div style={{ marginBottom: 20, padding: '0 10px' }}>
-      <div
-        onClick={() => setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', paddingBottom: open ? 6 : 0, cursor: 'pointer', userSelect: 'none' }}
-      >
-        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--fg-3)', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-          {label}
-          {count != null && <span style={{ fontWeight: 400, letterSpacing: 0 }}>({count})</span>}
-        </span>
-        {action && <span onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', color: 'var(--fg-2)' }}>{action}</span>}
-        {open
-          ? <IChevUp   style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-          : <IChevDown style={{ width: 11, height: 11, color: 'var(--fg-3)', flexShrink: 0 }} />
-        }
-      </div>
-      {open && React.Children.count(children) > 0 && (
-        <div style={{ background: 'var(--bg-2)', border: '0.5px solid var(--line-strong)', borderRadius: 10, overflow: 'hidden' }}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
+// CollapsibleSection replaced by SectionCard (src/components/primitives/SectionCard.tsx)
 
 const iconBtn: React.CSSProperties = {
   background: 'transparent', border: 'none', color: 'var(--fg-2)',
