@@ -2297,7 +2297,7 @@ export function UserStoriesCard({ projectId: activeProjectId, sessionId }: { pro
           onClose={() => setShowNewTask(false)}
         />
       )}
-      <SectionCard label={`Tasks${allTickets.length > 0 ? ` (${allTickets.length})` : ''}`} collapsible defaultOpen={false} action={addBtn}>
+      <SectionCard label="Tasks" count={allTickets.length > 0 ? allTickets.length : undefined} collapsible defaultOpen={false} action={addBtn}>
         {allTickets.length === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic' }}>Keine Tasks</div>
         ) : (
